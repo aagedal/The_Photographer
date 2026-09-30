@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+
+# Logs, coverage, and temporary editor files
+*.log
+coverage/
+*.tsbuildinfo
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local environment files
+.env
+.env.*
+!.env.example
