@@ -29,21 +29,41 @@ npm run preview
 | Zoom | Scroll over the world |
 | Raise/lower viewfinder | E |
 | Make a photograph | C or shutter button |
-| Set/pack tripod | T or Tripod toggle |
+| Slower / faster shutter | 1 / 2 |
+| Wider / narrower aperture | 3 / 4 |
+| Lower / higher ISO | 5 / 6 |
+| Set/pack tripod | T or tripod icon |
 | Toggle camera flash | F or Flash toggle |
 | Open lighting kit | L or Lighting button |
-| Assignment board | Q |
-| Photo journal | J |
-| World map | M |
-| Close dialog | Escape |
+| Pause menu: assignments, journal, map, controls | Escape or Esc button |
+| Back to pause menu / resume | Escape |
 
-Select an assignment, explore or use **Find the spot**, and frame the marked subject. Adjust shutter, aperture, ISO, filters, and tripod. **Try suggested settings** provides a starting point for experimentation. Feedback evaluates the subject, exposure, and the lesson; try again freely. Assignment XP is earned only once. Photographs and progress save locally in this browser, with the latest 16 frames retained. Download favourites from the photo review.
+Open **Esc → Assignments** to select an assignment, then explore or use **Esc → Find the spot**, and frame the marked subject. Adjust shutter, aperture, ISO, filters, and tripod. **Try suggested settings** provides a starting point for experimentation. Feedback evaluates the subject, exposure, and the lesson; try again freely. Assignment XP is earned only once. Photographs and progress save locally in this browser, with the latest 16 frames retained. Taking a photo shows a brief clickable preview without interrupting play. Open the preview or **Esc → Photo journal** for feedback and downloads.
 
-To restart, open **How to play → Start a fresh notebook**. The current notebook is backed up on this device before the new one starts. **Restore previous notebook** restores that backup.
+The HUD contains only compact camera settings, equipment icons, an ambient meter, and a small subject cue. Shortcuts work while playing; focused dropdowns keep their normal keyboard behavior. **T** unfolds the tripod in 0.42 seconds and packs it in 0.28 seconds. Movement and capture are blocked during the transition, and movement remains locked while deployed. Reduced-motion preferences skip the animation.
+
+To restart, open **Esc → Controls → Start a fresh notebook**. The current notebook is backed up on this device before the new one starts. **Restore previous notebook** restores that backup.
+
+## Sky, time, and meditation
+
+One 24-hour day takes **30 minutes of active play**. Menus and hidden tabs pause the clock; your saved world time resumes when you return. Sun and moon positions, shadow direction, sky and fog colours, stars, and outdoor exposure change with time. Twelve drifting blocky clouds use one instanced draw call; a repeating cloud-cover pattern gently attenuates sunlight. Clouds are stylized meshes, with approximate coverage and broad light attenuation rather than volumetric weather or individual cloud shadows.
+
+Use **Esc → Meditate** to skip forward with a brief sky transition to dawn, daylight, golden hour, night, or **For this assignment**. Reduced-motion preferences skip the transition; Esc interrupts meditation at the current time. Your location and camera settings stay in place.
+
+Five briefs require particular light:
+
+| Assignment | Time window |
+| --- | --- |
+| Chasing the golden hour | 16:30–18:00 |
+| Through the glass | 06:00–09:00 |
+| The evening edition | 18:00–20:00 |
+| Both astro assignments | 21:00–04:00 |
+
+Accepting an assignment or travelling preserves the clock. Suggested settings are calibrated for its preferred time; watch the meter as daylight changes. Other briefs accept any time, though outdoor exposure still matters. Controlled studio metering stays independent of the outdoor clock. Captures record their time and cloud cover; older notebook entries remain readable.
 
 ## Flash and studio practice
 
-Open **Lighting** below the world. The **Camera flash** tab offers manual power from 1/64 to full. The ambient meter shows continuous light; the subject reading also includes flash. Flash exposure depends on power, distance, aperture, ISO, and filters. Within the 1/250 s sync limit, shutter speed changes the ambient exposure while the brief flash contribution stays constant. Above that limit the flash is suppressed with feedback; high-speed sync is not implemented.
+Press **L**, click the lighting icon, or open **Esc → Lighting kit**. The **Camera flash** tab offers manual power from 1/64 to full. The ambient meter shows continuous light; the subject reading also includes flash. Flash exposure depends on power, distance, aperture, ISO, and filters. Within the 1/250 s sync limit, shutter speed changes the ambient exposure while the brief flash contribution stays constant. Above that limit the flash is suppressed with feedback; high-speed sync is not implemented.
 
 Switch to **Studio lights**, visit the studio, and tune the key, fill, and rim lights. Each has an on/off switch, power, angle, distance, height, and colour. Balanced, dramatic, rim-light, and lights-off presets provide starting points. Adjustments update the actual 3D lights and stands live, and save on this device. Unlike a flash pulse, these continuous studio lights respond to shutter duration as well as aperture and ISO.
 
@@ -51,7 +71,7 @@ Switch to **Studio lights**, visit the studio, and tune the key, fill, and rim l
 
 ## First milestone
 
-- A small connected world with six photography locations, stylized lighting, shadows, animated water and a runner, and a night sky.
+- A small connected world with six photography locations, stylized lighting, shadows, animated water and a runner, a moving sun and moon, drifting clouds, and a 30-minute day/night cycle.
 - Twelve playable prototype briefs: two each for nature, sports, news, wedding, studio, and astrophotography.
 - Calculated exposure, filter attenuation, composition/distance/obstruction checks, and lesson-specific feedback.
 - Manual flash with distance falloff and sync checking; adjustable continuous key, fill, and rim studio lights.
@@ -68,6 +88,9 @@ See [the development plan](docs/PLAN.md) for the full curriculum, milestones, te
 - `src/missions.ts` — assignment curriculum and suggested settings.
 - `src/photography.ts` — pure exposure and assessment model.
 - `src/lighting.ts` — flash exposure/sync, studio settings, and continuous-light metering.
+- `src/environment.ts` — world clock, sky/weather sampling, assignment time windows, and outdoor metering.
+- `src/controls.ts` — camera shortcuts and tripod transition state.
+- `src/tripod.ts` — lightweight first-person tripod animation, excluded from captures.
 - `src/main.ts` — exploration, camera interaction, captures, UI, and saves.
 - `src/style.css` — responsive interface.
 

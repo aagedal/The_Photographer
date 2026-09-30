@@ -3,6 +3,9 @@ import { categories, missions, type Category, type Mission } from './missions.ts
 import { assessPhoto, exposureStops, shutterLabel, type Assessment, type CameraSettings, type Framing } from './photography.ts';
 import { createWorld, subjectPosition } from './world.ts';
 import { defaultStudioRig, normalizeStudioRig, lightNames, studioExposureOffset, flashCanFire, flashPower, flashRenderIntensity, subjectExposureStops, type StudioRig } from './lighting.ts';
+import { adjustCameraSetting, shutterValues, apertureValues, isoValues, TripodState } from './controls.ts';
+import { createTripodView } from './tripod.ts';
+import { WorldClock, sampleSky, formatTime, missionAmbientEV, missionReferenceHour, isMissionTime, wrapHour } from './environment.ts';
 import './style.css';
 
 const paths: Record<string, string> = {
@@ -36,8 +39,8 @@ const categoryIcon: Record<Category, string> = { Nature: 'mountain', Sports: 'sp
 const esc = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
-interface Photo { id: string; missionId: string; image: string; settings: CameraSettings; result: Assessment; date: number; studio?: StudioRig }
-interface Save { version: 1; completed: string[]; photos: Photo[]; active: string; lighting?: { flashPower: number; studio: StudioRig } }
+interface Photo { id: string; missionId: string; image: string; settings: CameraSettings; result: Assessment; date: number; studio?: StudioRig; environment?: { hour: number; cloudCover: number } }
+interface Save { version: 1; completed: string[]; photos: Photo[]; active: string; hour?: number; lighting?: { flashPower: number; studio: StudioRig } }
 const storageKey = new URLSearchParams(location.search).has('playtest') ? 'the-photographer-playtest-v1' : 'the-photographer-save-v1';
 let storageAvailable = true;
 function loadSave(): Save {
@@ -47,6 +50,7 @@ function loadSave(): Save {
       version: 1,
       completed: Array.isArray(raw.completed) ? raw.completed.filter((id: unknown) => missions.some(m => m.id === id)) : [],
       active: missions.some(m => m.id === raw.active) ? raw.active : missions[0].id,
+      hour: Number.isFinite(raw.hour) ? wrapHour(raw.hour) : undefined,
       lighting: { flashPower: flashPower({ flashPower: raw.lighting?.flashPower } as CameraSettings), studio: normalizeStudioRig(raw.lighting?.studio) },
       photos: Array.isArray(raw.photos) ? raw.photos.filter((p: Photo) => missions.some(m => m.id === p.missionId) && typeof p.image === 'string' && /^data:image\/jpeg;base64,/.test(p.image) && p.image.length < 800000 && p.settings && p.result && Array.isArray(p.result.feedback)).slice(0, 16) : [],
     };
@@ -55,6 +59,9 @@ function loadSave(): Save {
 }
 const save = loadSave();
 let activeMission = missions.find(m => m.id === save.active)!;
+const clock = new WorldClock(save.hour ?? missionReferenceHour(activeMission));
+let meditation: { start: number; distance: number; elapsed: number; target: number } | null = null;
+let lastClockSave = 0;
 let settings: CameraSettings = { shutter: 1 / 125, aperture: 5.6, iso: 100, filter: 'none', tripod: false, panning: false, flashPower: save.lighting?.flashPower ?? 0 };
 let studioRig = normalizeStudioRig(save.lighting?.studio);
 let lightingOpen = false;
@@ -65,48 +72,40 @@ let boardCategory: Category | 'All' = 'All';
 let capturing = false;
 let toastTimer = 0;
 
-const shutterValues = [1 / 2000, 1 / 1000, 1 / 500, 1 / 250, 1 / 125, 1 / 60, 1 / 30, 1 / 15, 1 / 8, 0.25, 0.5, 1, 5, 10, 15, 30, 60];
-const apertureValues = [1.8, 2.8, 4, 5.6, 8, 11, 16, 22];
-const isoValues = [100, 200, 400, 800, 1600, 3200, 6400];
+const tripod = new TripodState();
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let tripodSettle = 0;
+let previewTimer = 0;
+let modalView: 'menu' | 'page' = 'page';
 const options = (values: number[], label: (v: number) => string, selected: number) => values.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${label(v)}</option>`).join('');
 
 $('app').innerHTML = `
-  <header>
-    <div class="brand"><span class="brand-icon">${icon('camera')}</span><div><h1>The Photographer</h1><p>A LITTLE WORLD. A DIFFERENT PERSPECTIVE.</p></div></div>
-    <nav aria-label="Main navigation">
-      <button id="nav-world" class="active" title="Explore the world">${icon('mountain')}<span>Explore</span></button>
-      <button id="nav-board" title="Assignments (Q)">${icon('flag')}<span>Assignments</span></button>
-      <button id="nav-journal" title="Photo journal (J)">${icon('book')}<span>Photo journal</span></button>
-      <button id="nav-help" title="How to play">${icon('info')}</button>
-    </nav>
-    <div class="profile"><span class="avatar">P</span><div><strong id="player-rank">A fresh perspective</strong><small id="player-progress">0 of 12 stories told</small></div></div>
-  </header>
   <main class="workspace">
-    <div class="world-toolbar"><span>YOUR NEXT GREAT SHOT IS OUT THERE.</span><span class="season"><i class="dot"></i>Willowbrook · A small photography adventure</span></div>
     <section class="stage" id="stage" aria-label="Interactive 3D photography world">
-      <div class="scene-tint"></div>
-      <aside class="mission-panel" id="mission-panel" aria-label="Active assignment"></aside>
-      <div class="scene-location"><span id="time-icon">${icon('sun')}</span><div><strong id="location-title">Willow Lake</strong><small id="light-label">Golden hour · Find the good light</small></div></div>
-      <div class="compass"><span>N</span><span id="compass-arrow">${icon('compass')}</span></div>
-      <button class="minimap" id="minimap-button" title="Open world map (M)" aria-label="Open world map"><canvas id="minimap" width="268" height="232"></canvas><div class="minimap-label">WILLOWBROOK ${icon('map').replace('<svg ', '<svg style="width:8px;height:8px;vertical-align:middle" ')}</div></button>
-      <div class="world-hint"><kbd>W A S D</kbd> walk <span class="look-hint">· Drag to look</span><span class="extra-hint">· Shift to wander faster</span></div>
-      <div class="scene-tools"><button id="explore-mode" class="selected">${icon('mountain')}Explore</button><button id="camera-mode">${icon('camera')}Viewfinder <span style="opacity:.5">E</span></button><button id="lighting-kit" aria-expanded="false">${icon('bolt')}Lighting</button></div>
+      <div class="scene-location"><span id="time-icon">${icon('sun')}</span><div><strong><span id="location-title"></span><span id="clock-label"></span></strong><small id="subject-cue"></small></div></div>
+      <button class="menu-button" id="menu-button" aria-label="Open pause menu (Escape)" title="Assignments, journal, map and controls (Esc)"><span>Esc</span></button>
       <aside id="lighting-panel" class="lighting-panel" aria-label="Lighting kit" hidden></aside>
       <div class="target-marker" id="target-marker"><span></span><small id="target-label"></small></div>
-      <div class="viewfinder" id="viewfinder"><span class="finder-meta">MANUAL · <span id="lens-label">35</span> MM · 3:2</span><span class="focus-point"></span></div>
+      <div class="viewfinder" id="viewfinder"><span class="finder-meta"><span id="lens-label">35</span> MM · 3:2</span><span class="focus-point"></span></div>
+      <div class="meditation-overlay" id="meditation-overlay" hidden><div>${icon('moon')}<p>Meditating…</p><strong id="meditation-time"></strong><small>Esc to return</small></div></div>
       <div class="flash" id="flash"></div>
+      <button id="capture-preview" class="capture-preview" aria-label="Review latest photograph" hidden></button>
+      <section class="camera-bar" aria-label="Manual camera settings">
+        <div class="setting" title="Shutter: 1 slower / 2 faster"><label for="shutter">SHUTTER <small>1 / 2</small></label><select id="shutter">${options(shutterValues, shutterLabel, settings.shutter)}</select></div>
+        <div class="setting" title="Aperture: 3 wider / 4 narrower"><label for="aperture">APERTURE <small>3 / 4</small></label><select id="aperture">${options(apertureValues, v => `f/${v}`, settings.aperture)}</select></div>
+        <div class="setting" title="ISO: 5 lower / 6 higher"><label for="iso">ISO <small>5 / 6</small></label><select id="iso">${options(isoValues, String, settings.iso)}</select></div>
+        <div class="setting filter-setting"><label for="filter">FILTER</label><select id="filter"><option value="none">—</option><option value="nd6">ND64</option><option value="cpl">CPL</option></select></div>
+        <div class="equipment">
+          <button id="camera-mode" aria-label="Toggle viewfinder (E)" aria-pressed="false" title="Viewfinder (E)">${icon('camera')}</button>
+          <button id="tripod" aria-label="Deploy tripod (T)" aria-pressed="false" title="Deploy tripod (T)">${icon('tripod')}</button>
+          <button id="panning" aria-label="Toggle panning" aria-pressed="false" title="Panning">${icon('move')}</button>
+          <button id="flash-toggle" aria-label="Toggle camera flash (F)" aria-pressed="false" title="Flash (F)">${icon('bolt')}</button>
+          <button id="lighting-kit" aria-label="Open lighting kit (L)" aria-expanded="false" title="Lighting kit (L)">${icon('studio')}</button>
+        </div>
+        <div class="exposure" title="Ambient exposure meter"><strong id="ev-label"></strong><div class="meter">${Array.from({ length: 11 }, () => '<i></i>').join('')}<span class="needle" id="meter-needle"></span></div></div>
+        <button id="capture" class="shutter-button" aria-label="Take a photograph (C)" title="Take a photograph (C)"><span></span></button>
+      </section>
     </section>
-    <section class="camera-bar" aria-label="Manual camera settings">
-      <div class="camera-id">${icon('camera')}<div><strong>Your trusty camera</strong><small>MANUAL MODE · <span id="bar-lens">35</span> MM</small></div></div>
-      <div class="setting"><label for="shutter">${icon('timer')}SHUTTER</label><select id="shutter">${options(shutterValues, shutterLabel, settings.shutter)}</select></div>
-      <div class="setting"><label for="aperture">${icon('aperture')}APERTURE</label><select id="aperture">${options(apertureValues, v => `f / ${v}`, settings.aperture)}</select></div>
-      <div class="setting"><label for="iso">${icon('sun')}ISO</label><select id="iso">${options(isoValues, String, settings.iso)}</select></div>
-      <div class="setting filter-setting"><label for="filter">${icon('filter')}LENS FILTER</label><select id="filter"><option value="none">No filter</option><option value="nd6">ND64 · 6 stops</option><option value="cpl">Polarizer</option></select></div>
-      <div class="equipment"><button id="tripod" aria-pressed="false">${icon('tripod')}Tripod<span class="switch"></span></button><button id="panning" aria-pressed="false">${icon('move')}Panning<span class="switch"></span></button><button id="flash-toggle" aria-pressed="false">${icon('bolt')}Flash<span class="switch"></span></button></div>
-      <div class="exposure"><strong>AMBIENT METER<span id="ev-label">0 EV</span></strong><div class="meter">${Array.from({ length: 11 }, () => '<i></i>').join('')}<span class="needle" id="meter-needle"></span></div><div class="meter-labels"><span>−3</span><span>0</span><span>+3</span></div></div>
-      <div class="shutter-wrap"><button id="capture" class="shutter-button" aria-label="Take a photograph (C)"><span>${icon('camera')}</span></button><div><strong>Make a photograph</strong><small>Press C · Take your time</small></div></div>
-    </section>
-    <footer class="status-bar"><span><i class="status-dot"></i><span id="status-text">A little curiosity goes a long way.</span></span><span class="build-label">EARLY PLAYABLE PROTOTYPE · 0.1</span><span><button id="quality" class="quality-button">Quality: balanced</button><span id="fps"></span></span></footer>
   </main>
   <dialog id="modal" aria-labelledby="modal-title"></dialog>
   <div class="toast" id="toast" role="status"></div>
@@ -129,6 +128,7 @@ renderer.domElement.classList.add('world'); renderer.domElement.tabIndex = 0;
 renderer.domElement.setAttribute('aria-label', 'Game world. WASD to walk, drag to look, C to photograph.');
 stage.prepend(renderer.domElement);
 const world = createWorld();
+const tripodView = createTripodView();
 const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 240);
 camera.rotation.order = 'YXZ';
 const player = new THREE.Vector3(...activeMission.viewpoint);
@@ -146,7 +146,7 @@ function toast(message: string) {
   window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => $('toast').classList.remove('show'), 3600);
 }
 function persist() {
-  save.active = activeMission.id;
+  save.active = activeMission.id; save.hour = clock.hour;
   save.lighting = { flashPower: flashPower(settings), studio: normalizeStudioRig(studioRig) };
   try { localStorage.setItem(storageKey, JSON.stringify(save)); storageAvailable = true; }
   catch {
@@ -156,27 +156,86 @@ function persist() {
   updateProgress();
 }
 function updateProgress() {
+  if (!$('menu-progress')) return;
   const xp = missions.filter(m => save.completed.includes(m.id)).reduce((total, m) => total + m.reward, 0);
-  $('player-progress').textContent = `${save.completed.length} of 12 stories told · ${xp} XP`;
-  $('player-rank').textContent = save.completed.length >= 12 ? 'An eye for every story' : save.completed.length >= 6 ? 'Finding your voice' : save.completed.length >= 1 ? 'An eye for a story' : 'A fresh perspective';
-  $('status-text').textContent = storageAvailable ? `${save.completed.length}/12 assignments · ${save.photos.length} photographs · Saved on this device` : 'Saving unavailable · This session only';
+  $('menu-progress').textContent = `${save.completed.length}/12 assignments · ${save.photos.length} photos · ${xp} XP`;
+  $('save-status').textContent = storageAvailable ? 'Saved on this device' : 'Saving unavailable · This session only';
 }
 function renderMission() {
-  const m = activeMission;
-  $('mission-panel').innerHTML = `
-    <div class="eyebrow">${icon('flag').replace('<svg ', '<svg style="width:12px;height:12px" ')}THE ASSIGNMENT<span class="mission-count">${String(missions.indexOf(m) + 1).padStart(2, '0')} / 12</span></div>
-    <span class="mission-category">${icon(categoryIcon[m.category])}${m.category} photography</span>
-    <h2>${esc(m.title)}</h2><p class="description">${esc(m.description)}</p>
-    <div class="mission-meta"><span>${icon('pin')}${esc(m.location)}</span><span class="reward">+ ${m.reward} XP</span></div>
-    <div class="field-notes"><strong>${icon('book')}A note for your camera bag</strong>${esc(m.lesson)}</div>
-    ${save.completed.includes(m.id) ? '<p class="completed-stamp">✓ Story told. There is always another angle.</p>' : ''}
-    <button class="primary" id="travel">Find the spot ${icon('arrow')}</button>
-    <button class="text-button" id="suggest">Try suggested settings ${icon('aperture').replace('<svg ', '<svg style="width:12px;height:12px" ')}</button>`;
-  $('travel').onclick = () => travelTo(m);
-  $('suggest').onclick = () => { settings = { ...m.recommended, flashPower: 0 }; if (m.category === 'Studio') { studioRig = defaultStudioRig(); applyStudioRig(); } syncSettings(); if (lightingOpen) renderLightingPanel(); persist(); toast('A starting point, not a rule. Adjust the settings and see what changes.'); };
-  $('location-title').textContent = m.location;
-  $('light-label').textContent = m.category === 'Astro' ? 'Blue night · Give the light time' : m.technique === 'news' ? 'Evening light · Find the story' : 'Golden hour · Find the good light';
-  $('time-icon').innerHTML = icon(m.category === 'Astro' ? 'moon' : 'sun');
+  $('location-title').textContent = activeMission.location;
+  $('subject-cue').textContent = activeMission.subject;
+  updateClockCue();
+}
+function requestTripod(deployed: boolean, immediate = reducedMotion.matches) {
+  tripod.request(deployed, immediate); tripodSettle = 0;
+  settings.tripod = tripod.deployed;
+  syncSettings();
+}
+function syncTripod() {
+  const button = $('tripod');
+  button.classList.toggle('on', tripod.target === 1);
+  button.classList.toggle('setting-up', tripod.transitioning);
+  button.setAttribute('aria-pressed', String(tripod.target === 1));
+  button.setAttribute('aria-busy', String(tripod.transitioning));
+  const label = tripod.transitioning ? (tripod.target ? 'Setting up tripod' : 'Packing tripod') : (tripod.deployed ? 'Pack tripod' : 'Deploy tripod');
+  button.setAttribute('aria-label', `${label} (T)`); button.title = `${label} (T)`;
+  $<HTMLButtonElement>('capture').disabled = tripod.transitioning || capturing || !!meditation;
+}
+function suggestSettings() {
+  settings = { ...activeMission.recommended, flashPower: 0 };
+  requestTripod(settings.tripod);
+  if (activeMission.category === 'Studio') { studioRig = defaultStudioRig(); applyStudioRig(); }
+  syncSettings(); if (lightingOpen) renderLightingPanel(); persist();
+  modal.close(); toast('Suggested settings applied.');
+}
+function openPauseMenu() {
+  const m = activeMission; persist();
+  showModal('The Photographer', 'PAUSED', '', `
+    <div class="pause-assignment"><span class="eyebrow">${m.category} · ${save.completed.includes(m.id) ? 'Completed' : 'Current assignment'}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>
+      ${m.timeWindow ? `<p class="mission-time ${isMissionTime(m, clock.hour) ? 'ready' : 'waiting'}">${esc(m.timeWindow.label)} · ${isMissionTime(m, clock.hour) ? 'Ready now' : 'Wait for the light'}</p>` : ''}<details><summary>Field notes</summary><p>${esc(m.lesson)}</p></details>
+      <div class="pause-actions"><button class="secondary" id="travel">${icon('pin')}Find the spot</button><button class="secondary" id="suggest">Suggested settings</button></div>
+    </div>
+    <div class="pause-grid"><button id="menu-board">${icon('flag')}Assignments</button><button id="menu-journal">${icon('book')}Photo journal</button><button id="menu-map">${icon('map')}World map</button><button id="menu-help">${icon('info')}Controls</button><button id="menu-lighting">${icon('studio')}Lighting kit</button><button id="quality">${icon('sun')}Quality: ${lowQuality ? 'performance' : 'balanced'}</button><button id="menu-meditate">${icon('moon')}Meditate · ${formatTime(clock.hour)}</button></div>
+    <div class="pause-footer"><div><span id="menu-progress"></span><small id="save-status"></small></div><button class="primary" id="resume">Resume <kbd>Esc</kbd></button></div>`, 'menu');
+  $('travel').onclick = () => { modal.close(); travelTo(m); };
+  $('suggest').onclick = suggestSettings;
+  $('menu-board').onclick = openBoard; $('menu-journal').onclick = openJournal;
+  $('menu-meditate').onclick = openMeditation;
+  $('menu-map').onclick = openMap; $('menu-help').onclick = openHelp;
+  $('menu-lighting').onclick = () => { modal.close(); if (!lightingOpen) toggleLightingKit(); };
+  $('quality').onclick = () => { toggleQuality(); openPauseMenu(); };
+  $('resume').onclick = () => modal.close(); updateProgress();
+}
+function updateClockCue() {
+  const time = formatTime(clock.hour), phase = sampleSky(clock.hour).night > 0.5 ? 'moon' : 'sun';
+  if ($('clock-label').textContent !== time) $('clock-label').textContent = time;
+  if ($('time-icon').dataset.phase !== phase) { $('time-icon').innerHTML = icon(phase); $('time-icon').dataset.phase = phase; }
+}
+function openMeditation() {
+  showModal('Wait for the light.', 'MEDITATION', `${formatTime(clock.hour)} now · One day takes 30 minutes of active play. Time pauses in menus.`, `
+    <p class="meditation-note">Sit quietly and let the world turn. Camera settings and position stay as they are.</p>
+    <div class="meditation-options"><button data-hour="${missionReferenceHour(activeMission)}" class="assignment-time">${icon('flag')}For this assignment <span>${formatTime(missionReferenceHour(activeMission))}${activeMission.timeWindow ? ` · ${esc(activeMission.timeWindow.label.split(' · ')[0])}` : ' · Afternoon'}</span></button>
+      ${[[6.5,'Dawn'],[12,'Daylight'],[17,'Golden hour'],[23,'Night']].map(([hour,label]) => `<button data-hour="${hour}">${icon(hour === 23 ? 'moon' : 'sun')}${label}<span>${formatTime(Number(hour))}</span></button>`).join('')}
+    </div>`);
+  modal.querySelectorAll<HTMLButtonElement>('[data-hour]').forEach(button => button.onclick = () => startMeditation(Number(button.dataset.hour)));
+}
+function startMeditation(target: number) {
+  modal.close(); keys.clear(); drag = false;
+  if (lightingOpen) toggleLightingKit();
+  if (reducedMotion.matches) { clock.skipTo(target); finishMeditation(); return; }
+  meditation = { start: clock.hour, distance: wrapHour(target - clock.hour), elapsed: 0, target };
+  $('meditation-overlay').hidden = false; syncTripod();
+}
+function finishMeditation() {
+  meditation = null; $('meditation-overlay').hidden = true;
+  world.setTime(clock.hour); renderer.shadowMap.needsUpdate = true;
+  updateClockCue(); updateExposure(); syncTripod(); persist();
+}
+function leaveModal() { if (modalView === 'menu') modal.close(); else openPauseMenu(); }
+function toggleQuality() {
+  lowQuality = !lowQuality;
+  renderer.setPixelRatio(lowQuality ? 1 : Math.min(devicePixelRatio, 1.5));
+  renderer.shadowMap.enabled = !lowQuality; renderer.shadowMap.needsUpdate = true; resize();
 }
 function faceSubject(m: Mission) {
   const p = subjectPosition(world, m);
@@ -185,25 +244,25 @@ function faceSubject(m: Mission) {
   updateCamera();
 }
 function travelTo(m: Mission) {
-  player.set(...m.viewpoint); settings.tripod = false;
+  player.set(...m.viewpoint); requestTripod(false, true);
   // Travel preserves manual exposure choices but packs the tripod away.
   syncSettings(); faceSubject(m); renderer.shadowMap.needsUpdate = true;
-  toast(`You arrived at ${m.location}. Drag to look, or press E to raise your camera.`);
+  toast(m.location);
 }
 function selectMission(m: Mission) {
-  activeMission = m; world.setNight(m.category === 'Astro'); renderer.shadowMap.needsUpdate = true;
+  activeMission = m; renderer.shadowMap.needsUpdate = true;
   lightingMode = m.category === 'Studio' ? 'studio' : 'flash';
   applyStudioRig(); setCameraMode(false); renderMission(); updateExposure(); persist(); if (lightingOpen) renderLightingPanel();
 }
 function syncSettings() {
   for (const key of ['shutter', 'aperture', 'iso', 'filter'] as const) $<HTMLSelectElement>(key).value = String(settings[key]);
-  for (const key of ['tripod', 'panning'] as const) { $(key).classList.toggle('on', settings[key]); $(key).setAttribute('aria-pressed', String(settings[key])); }
+  for (const key of ['panning'] as const) { $(key).classList.toggle('on', settings[key]); $(key).setAttribute('aria-pressed', String(settings[key])); }
   $('flash-toggle').classList.toggle('on', flashPower(settings) > 0); $('flash-toggle').setAttribute('aria-pressed', String(flashPower(settings) > 0));
   renderer.shadowMap.needsUpdate = true;
-  updateExposure();
+  syncTripod(); updateExposure();
 }
 function sceneEV() {
-  return activeMission.ev + (activeMission.category === 'Studio' ? studioExposureOffset(studioRig, subjectPosition(world, activeMission).y) : 0);
+  return missionAmbientEV(activeMission, clock.hour) + (activeMission.category === 'Studio' ? studioExposureOffset(studioRig, subjectPosition(world, activeMission).y) : 0);
 }
 function updateExposure() {
   const stops = exposureStops(settings, sceneEV());
@@ -215,10 +274,12 @@ function updateExposure() {
 }
 function setCameraMode(value: boolean) {
   cameraMode = value; stage.classList.toggle('camera-mode', value);
-  $('camera-mode').classList.toggle('selected', value); $('explore-mode').classList.toggle('selected', !value); updateExposure();
+  $('camera-mode').classList.toggle('selected', value); $('camera-mode').setAttribute('aria-pressed', String(value)); updateExposure();
 }
 function updateCamera() {
-  camera.position.copy(player); camera.rotation.set(pitch, yaw, 0); camera.updateMatrixWorld();
+  camera.position.copy(player);
+  const dip = !reducedMotion.matches && tripod.transitioning ? Math.sin(tripod.progress * Math.PI) : 0;
+  camera.position.y -= dip * 0.07; camera.rotation.set(pitch - dip * 0.025, yaw, 0); camera.updateMatrixWorld();
 }
 function applyStudioRig() {
   const target = activeMission.category === 'Studio' ? subjectPosition(world, activeMission) : new THREE.Vector3(28, 1.35, -26);
@@ -229,7 +290,9 @@ function applyCameraLight(s: CameraSettings, takingPhoto = false) {
   const preview = takingPhoto || cameraMode || lightingOpen;
   // Apply ambient exposure in linear renderer space. Divide the brief pulse by this gain
   // so changing shutter duration cannot change flash exposure within the sync range.
-  const stops = exposureStops(s, activeMission.ev);
+  const timeOffset = missionAmbientEV(activeMission, clock.hour) - activeMission.ev;
+  const renderedLightRatio = activeMission.category === 'Studio' ? 1 : sampleSky(clock.hour).lightLevel / sampleSky(missionReferenceHour(activeMission)).lightLevel;
+  const stops = exposureStops(s, activeMission.ev) + timeOffset - Math.log2(renderedLightRatio);
   const gain = preview ? THREE.MathUtils.clamp(2 ** stops, takingPhoto ? 0.000001 : 0.025, takingPhoto ? 32 : 8) : 1;
   renderer.toneMappingExposure = 1.05 * gain;
   const direction = camera.getWorldDirection(new THREE.Vector3());
@@ -272,7 +335,7 @@ function renderLightingPanel() {
     for (const name of lightNames) studioRig[name].enabled = false;
     const target = subjectPosition(world, activeMission); player.set(target.x, 1.7, target.z + 3.5);
     settings = { shutter: 1 / 250, aperture: 4, iso: 100, filter: 'none', tripod: false, panning: false, flashPower: 0.25 };
-    applyStudioRig(); faceSubject(activeMission); setCameraMode(true); syncSettings(); persist(); lightingMode = 'flash'; renderLightingPanel();
+    requestTripod(false, true); applyStudioRig(); faceSubject(activeMission); setCameraMode(true); syncSettings(); persist(); lightingMode = 'flash'; renderLightingPanel();
     toast('Close subject, 1/4 flash, darker room. Change shutter speed and compare the ambient reading.');
   };
   $<HTMLSelectElement>('flash-power').onchange = e => { settings.flashPower = Number((e.target as HTMLSelectElement).value); syncSettings(); renderer.shadowMap.needsUpdate = true; persist(); };
@@ -380,31 +443,37 @@ function makePhoto(s: CameraSettings, frame: Framing): string {
 }
 
 function capture() {
-  if (modal.open || capturing) return;
-  capturing = true; keys.clear();
+  if (modal.open || capturing || tripod.transitioning || meditation) return;
+  capturing = true; syncTripod(); keys.clear();
   const captureSettings = { ...settings };
   updateCamera(); world.update(elapsed, captureSettings); world.scene.updateMatrixWorld(true);
   const frame = getFraming();
   const ambientEV = sceneEV();
-  const result = assessPhoto(activeMission, captureSettings, frame, { ambientEV, subjectStops: subjectExposureStops(captureSettings, ambientEV, frame.distance, activeMission.category !== 'Astro' && frame.visible && !frame.occluded) });
-  const photo: Photo = { id: crypto.randomUUID(), missionId: activeMission.id, image: makePhoto(captureSettings, frame), settings: captureSettings, result, date: Date.now(), studio: activeMission.category === 'Studio' ? normalizeStudioRig(studioRig) : undefined };
+  const result = assessPhoto(activeMission, captureSettings, frame, { hour: clock.hour, ambientEV, subjectStops: subjectExposureStops(captureSettings, ambientEV, frame.distance, activeMission.category !== 'Astro' && frame.visible && !frame.occluded) });
+  const photo: Photo = { id: crypto.randomUUID(), missionId: activeMission.id, image: makePhoto(captureSettings, frame), settings: captureSettings, result, date: Date.now(), studio: activeMission.category === 'Studio' ? normalizeStudioRig(studioRig) : undefined, environment: { hour: clock.hour, cloudCover: sampleSky(clock.hour).cloudCover } };
   save.photos.unshift(photo); save.photos = save.photos.slice(0, 16);
   if (result.passed && !save.completed.includes(activeMission.id)) save.completed.push(activeMission.id);
   persist(); renderMission();
   $('flash').classList.remove('fire'); void $('flash').offsetWidth; $('flash').classList.add('fire');
-  window.setTimeout(() => { capturing = false; openReview(photo); }, 280);
+  window.setTimeout(() => {
+    capturing = false; syncTripod();
+    const preview = $('capture-preview'); preview.hidden = false;
+    preview.innerHTML = `<img src="${esc(photo.image)}" alt="Latest photograph"/><span>${result.passed ? '✓ Assignment complete' : 'Photo saved'} · ${result.score}/100</span>`;
+    preview.onclick = () => { preview.hidden = true; openReview(photo); };
+    window.clearTimeout(previewTimer); previewTimer = window.setTimeout(() => preview.hidden = true, 6000);
+  }, 280);
 }
 
-function showModal(title: string, eyebrow: string, subtitle: string, content: string) {
-  keys.clear(); drag = false;
-  modal.innerHTML = `<div class="modal-header"><div><div class="eyebrow">${esc(eyebrow)}</div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" id="close-modal" aria-label="Close dialog">${icon('close')}</button></div><div class="modal-body">${content}</div>`;
+function showModal(title: string, eyebrow: string, subtitle: string, content: string, view: 'menu' | 'page' = 'page') {
+  modalView = view; keys.clear(); drag = false;
+  modal.innerHTML = `<div class="modal-header"><div><div class="eyebrow">${esc(eyebrow)}</div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" id="close-modal" aria-label="${view === 'menu' ? 'Resume game' : 'Back to pause menu'}">${icon('close')}</button></div><div class="modal-body">${content}</div>`;
   if (!modal.open) modal.showModal();
-  $('close-modal').onclick = () => modal.close();
+  $('close-modal').onclick = leaveModal;
 }
 function openBoard() {
-  showModal('There’s a story everywhere.', 'THE ASSIGNMENT BOARD', 'Six ways of seeing. Twelve small stories. Pick the one that calls to you.', `<div class="category-tabs">${(['All', ...categories] as const).map(c => `<button data-category="${c}" class="${boardCategory === c ? 'active' : ''}">${c}</button>`).join('')}</div><div class="mission-grid">${missions.filter(m => boardCategory === 'All' || m.category === boardCategory).map(m => `<button class="assignment-card" data-mission="${m.id}"><span class="eyebrow">${icon(categoryIcon[m.category]).replace('<svg ', '<svg style="width:13px;height:13px" ')}${m.category} · ${m.location}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p><span class="card-footer"><span>${save.completed.includes(m.id) ? '✓ Story told' : 'Prototype assignment'}</span><span>+ ${m.reward} XP →</span></span></button>`).join('')}</div>`);
+  showModal('There’s a story everywhere.', 'THE ASSIGNMENT BOARD', 'Six ways of seeing. Twelve small stories. Pick the one that calls to you.', `<div class="category-tabs">${(['All', ...categories] as const).map(c => `<button data-category="${c}" class="${boardCategory === c ? 'active' : ''}">${c}</button>`).join('')}</div><div class="mission-grid">${missions.filter(m => boardCategory === 'All' || m.category === boardCategory).map(m => `<button class="assignment-card" data-mission="${m.id}"><span class="eyebrow">${icon(categoryIcon[m.category]).replace('<svg ', '<svg style="width:13px;height:13px" ')}${m.category} · ${m.location}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p><span class="card-footer"><span>${save.completed.includes(m.id) ? '✓ Story told' : m.timeWindow ? esc(m.timeWindow.label) : 'Any time'}</span><span>+ ${m.reward} XP →</span></span></button>`).join('')}</div>`);
   modal.querySelectorAll<HTMLButtonElement>('[data-category]').forEach(b => b.onclick = () => { boardCategory = b.dataset.category as typeof boardCategory; openBoard(); });
-  modal.querySelectorAll<HTMLButtonElement>('[data-mission]').forEach(b => b.onclick = () => { selectMission(missions.find(m => m.id === b.dataset.mission)!); modal.close(); toast('Assignment accepted. Walk there or use “Find the spot”.'); });
+  modal.querySelectorAll<HTMLButtonElement>('[data-mission]').forEach(b => b.onclick = () => { selectMission(missions.find(m => m.id === b.dataset.mission)!); modal.close(); toast('Assignment accepted · Esc for details.'); });
 }
 function openJournal() {
   showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told. The latest 16 photos are kept on this device.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category} · ${p.result.passed ? '✓ Assignment complete' : 'A work in progress'} · ${p.result.score}/100</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press C to make your first photograph.</p></div>`);
@@ -414,7 +483,7 @@ function openReview(photo: Photo) {
   const m = missions.find(m => m.id === photo.missionId)!;
   const { result, settings: s } = photo;
   showModal(result.passed ? 'A story worth keeping.' : 'One frame closer.', 'IN THE DARKROOM', `${m.title} · ${m.location}`, `
-    <div class="review-layout"><div><img class="review-photo" src="${esc(photo.image)}" alt="Your captured photograph"/><div class="photo-settings"><span>${shutterLabel(s.shutter)}${s.shutter < 0.25 ? ' s' : ''}</span><span>f/${s.aperture}</span><span>ISO ${s.iso}</span><span>${s.filter === 'nd6' ? 'ND64' : s.filter === 'cpl' ? 'Polarizer' : 'No filter'}</span>${s.tripod ? '<span>Tripod</span>' : ''}${s.panning ? '<span>Panning</span>' : ''}${flashPower(s) > 0 ? `<span>Flash ${flashPower(s) === 1 ? 'full' : `1/${Math.round(1 / flashPower(s))}`} ${flashCanFire(s) ? '' : '(not synced)'}</span>` : ''}${photo.studio ? `<span>Studio: ${lightNames.map(n => `${n} ${photo.studio![n].enabled ? Math.round(photo.studio![n].power * 100) : 0}%`).join(' · ')}</span>` : ''}</div><p style="font-size:9px;color:#8b927b;line-height:1.6;margin-top:14px">Exposure and lighting falloff are calculated. Blur, noise, and optical effects are simplified teaching cues in this prototype.</p></div>
+    <div class="review-layout"><div><img class="review-photo" src="${esc(photo.image)}" alt="Your captured photograph"/><div class="photo-settings"><span>${shutterLabel(s.shutter)}${s.shutter < 0.25 ? ' s' : ''}</span><span>f/${s.aperture}</span><span>ISO ${s.iso}</span>${Number.isFinite(photo.environment?.hour) ? `<span>${formatTime(photo.environment!.hour)} · ${Math.round(photo.environment!.cloudCover * 100)}% cloud cover</span>` : ''}<span>${s.filter === 'nd6' ? 'ND64' : s.filter === 'cpl' ? 'Polarizer' : 'No filter'}</span>${s.tripod ? '<span>Tripod</span>' : ''}${s.panning ? '<span>Panning</span>' : ''}${flashPower(s) > 0 ? `<span>Flash ${flashPower(s) === 1 ? 'full' : `1/${Math.round(1 / flashPower(s))}`} ${flashCanFire(s) ? '' : '(not synced)'}</span>` : ''}${photo.studio ? `<span>Studio: ${lightNames.map(n => `${n} ${photo.studio![n].enabled ? Math.round(photo.studio![n].power * 100) : 0}%`).join(' · ')}</span>` : ''}</div><p style="font-size:9px;color:#8b927b;line-height:1.6;margin-top:14px">Exposure and lighting falloff are calculated. Blur, noise, and optical effects are simplified teaching cues in this prototype.</p></div>
     <div><div class="review-score">${result.score}<small> / 100</small></div><p class="review-verdict">${result.passed ? `Assignment complete · ${m.reward} XP earned once` : 'Keep exploring. Every attempt teaches you something.'}</p>${result.feedback.map(f => `<div class="feedback-row ${f.passed ? '' : 'missed'}"><span class="feedback-icon">${icon(f.passed ? 'check' : 'info')}</span><div><strong>${esc(f.label)}</strong><p>${esc(f.text)}</p></div></div>`).join('')}</div></div>
     <div class="review-actions"><a class="secondary" id="download-photo" style="text-decoration:none;color:inherit" href="${esc(photo.image)}" download="willowbrook-${m.id}-${photo.date}.jpg">${icon('download')}Keep a copy</a><button class="primary" id="review-next">${result.passed ? 'Find another story' : 'Try another frame'}${icon('arrow')}</button></div>`);
   $('review-next').onclick = () => { if (result.passed) { boardCategory = 'All'; openBoard(); } else { modal.close(); setCameraMode(true); } };
@@ -451,10 +520,11 @@ function openMap() {
 function openHelp() {
   showModal('Take your time. Look around.', 'WELCOME TO WILLOWBROOK', 'An early prototype about learning the craft, one photograph at a time.', `<div class="help-grid">
     <div class="help-card"><strong>Wander and frame</strong><kbd>W A S D</kbd> walk · <kbd>Shift</kbd> move faster.<br/>Drag the world to look around. Arrow keys also aim. Scroll over the world to zoom. <kbd>E</kbd> raises the viewfinder.</div>
-    <div class="help-card"><strong>Make a photograph</strong>Choose shutter speed, aperture, ISO, and a filter beneath the world. <kbd>C</kbd> takes a photo. <kbd>T</kbd> unfolds the tripod. The light meter should sit near zero.</div>
-    <div class="help-card"><strong>Find your next story</strong><kbd>Q</kbd> assignments · <kbd>M</kbd> map · <kbd>J</kbd> journal.<br/>Accept an assignment, then explore or use “Find the spot”. Suggested settings are available for experimenting.</div>
-    <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Read the feedback and try again. Higher ISO is often the right choice when a moment moves fast.</div>
+    <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>C</kbd> takes a photo. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
+    <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, map and field notes. Press it again to resume. From a submenu, Esc returns to the pause menu.<br/>Accept an assignment, then explore or use “Find the spot”. Suggested settings are available for experimenting.</div>
+    <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Click the brief thumbnail or open the journal to read feedback and try again. Higher ISO is often the right choice when a moment moves fast.</div>
     <div class="help-card"><strong>Shape the light</strong><kbd>L</kbd> opens the Lighting kit; <kbd>F</kbd> toggles flash. Adjust manual flash power or visit the studio to move and tune key, fill, and rim lights. A brief flash favours close subjects; shutter speed controls the ambient within the 1/250 s sync limit.</div>
+    <div class="help-card"><strong>Wait for the light</strong>The sun, clouds, exposure and stars change through a 30-minute day. Some assignments need a particular time. Open <kbd>Esc</kbd> → Meditate to skip ahead to dawn, daylight, golden hour, night or the assignment’s preferred time. Time pauses while menus are open.</div>
     <div class="help-card"><strong>Your little collection</strong>Progress and the latest 16 photographs save in this browser on this device. Download favourites from the darkroom. This prototype is designed for a desktop keyboard and mouse.</div>
   </div><div class="review-actions"><button class="secondary" id="new-notebook">Start a fresh notebook</button><button class="primary" id="begin-explore">Let’s find the light ${icon('arrow')}</button></div>`);
   $('begin-explore').onclick = () => modal.close();
@@ -475,7 +545,7 @@ function openNewNotebook() {
     catch { toast('The backup could not be saved. Your current notebook has been kept.'); return; }
     save.completed = []; save.photos = []; activeMission = missions[0];
     settings = { shutter: 1 / 125, aperture: 5.6, iso: 100, filter: 'none', tripod: false, panning: false, flashPower: 0 }; studioRig = defaultStudioRig();
-    selectMission(activeMission); player.set(...activeMission.viewpoint); camera.fov = 55; camera.updateProjectionMatrix(); faceSubject(activeMission); syncSettings(); updateLensLabel(); modal.close();
+    clock.skipTo(17); world.setTime(clock.hour); requestTripod(false, true); selectMission(activeMission); player.set(...activeMission.viewpoint); camera.fov = 55; camera.updateProjectionMatrix(); faceSubject(activeMission); syncSettings(); updateLensLabel(); modal.close();
     toast('A fresh notebook. Your previous photographs are safely backed up on this device.');
   };
 }
@@ -483,50 +553,46 @@ function openNewNotebook() {
 function updateLensLabel() {
   const cropY = Math.min(1, camera.aspect / 1.5);
   const focal = Math.round(24 / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * cropY));
-  $('lens-label').textContent = String(focal); $('bar-lens').textContent = String(focal);
+  $('lens-label').textContent = String(focal);
 }
 
 for (const key of ['shutter', 'aperture', 'iso'] as const) $<HTMLSelectElement>(key).addEventListener('change', e => { settings[key] = Number((e.target as HTMLSelectElement).value); updateExposure(); });
 $<HTMLSelectElement>('filter').addEventListener('change', e => { settings.filter = (e.target as HTMLSelectElement).value as CameraSettings['filter']; updateExposure(); });
-for (const key of ['tripod', 'panning'] as const) $(key).onclick = () => { settings[key] = !settings[key]; syncSettings(); if (key === 'tripod') toast(settings.tripod ? 'Tripod set. Your camera stays here until you pack it away.' : 'Tripod packed. Ready to wander.'); };
+$('tripod').onclick = () => requestTripod(tripod.target === 0);
+$('panning').onclick = () => { settings.panning = !settings.panning; syncSettings(); };
 $('capture').onclick = capture;
 $('lighting-kit').onclick = toggleLightingKit;
-$('flash-toggle').onclick = () => { settings.flashPower = flashPower(settings) > 0 ? 0 : 0.25; syncSettings(); if (lightingOpen) renderLightingPanel(); persist(); toast(flashPower(settings) > 0 ? 'Flash set to 1/4 power. Open Lighting for power controls and a subject reading.' : 'Flash off.'); };
-$('camera-mode').onclick = () => setCameraMode(true); $('explore-mode').onclick = () => setCameraMode(false);
-$('nav-world').onclick = () => { if (modal.open) modal.close(); setCameraMode(false); };
-$('nav-board').onclick = openBoard; $('nav-journal').onclick = openJournal; $('nav-help').onclick = openHelp;
-$('minimap-button').onclick = openMap;
-$('quality').onclick = () => {
-  lowQuality = !lowQuality; renderer.setPixelRatio(lowQuality ? 1 : Math.min(devicePixelRatio, 1.5)); renderer.shadowMap.enabled = !lowQuality; renderer.shadowMap.needsUpdate = true; resize();
-  $('quality').textContent = `Quality: ${lowQuality ? 'performance' : 'balanced'}`;
-  toast(lowQuality ? 'Performance mode: lower resolution and shadows off.' : 'Balanced mode: soft lighting and shadows.');
-};
-modal.addEventListener('click', e => { if (e.target === modal) { const r = modal.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) modal.close(); } });
-modal.addEventListener('close', () => { keys.clear(); drag = false; });
+$('flash-toggle').onclick = () => { settings.flashPower = flashPower(settings) > 0 ? 0 : 0.25; syncSettings(); if (lightingOpen) renderLightingPanel(); persist(); };
+$('camera-mode').onclick = () => setCameraMode(!cameraMode);
+$('menu-button').onclick = openPauseMenu;
+modal.addEventListener('cancel', e => { e.preventDefault(); leaveModal(); });
+modal.addEventListener('click', e => { if (e.target === modal) { const r = modal.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) leaveModal(); } });
+modal.addEventListener('close', () => { keys.clear(); drag = false; renderer.domElement.focus({ preventScroll: true }); });
 document.addEventListener('keydown', e => {
-  if ((e.target as HTMLElement).matches('select,input,textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (modal.open || capturing) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   const key = e.key.toLowerCase();
+  if (key === 'escape') { e.preventDefault(); if (meditation) finishMeditation(); if (!e.repeat) { if (modal.open) leaveModal(); else openPauseMenu(); } return; }
+  if ((e.target as HTMLElement).matches('select,input,textarea') || modal.open || capturing || meditation) return;
+  const adjustment = adjustCameraSetting(settings, e.code.startsWith('Digit') ? e.code.slice(5) : key);
+  if (adjustment) { e.preventDefault(); settings = adjustment.settings; syncSettings(); return; }
   if (['w', 'a', 's', 'd', 'shift', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' '].includes(key)) { e.preventDefault(); keys.add(key); }
   if (e.repeat) return;
   if (key === 'c') { e.preventDefault(); capture(); }
   if (key === 'e') { e.preventDefault(); setCameraMode(!cameraMode); }
-  if (key === 't') $('tripod').click();
+  if (key === 't') { e.preventDefault(); $('tripod').click(); }
   if (key === 'f') $('flash-toggle').click();
   if (key === 'l') toggleLightingKit();
-  if (key === 'q') openBoard();
-  if (key === 'j') openJournal();
-  if (key === 'm') openMap();
 });
 document.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => { keys.clear(); drag = false; });
-document.addEventListener('visibilitychange', () => { keys.clear(); drag = false; });
+document.addEventListener('visibilitychange', () => { keys.clear(); drag = false; previousTime = performance.now(); if (document.hidden) persist(); });
+window.addEventListener('pagehide', persist);
 renderer.domElement.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || modal.open || capturing) return;
+  if (e.button !== 0 || modal.open || capturing || tripod.transitioning || meditation) return;
   drag = true; lastPointerX = e.clientX; lastPointerY = e.clientY; renderer.domElement.setPointerCapture(e.pointerId);
 });
 renderer.domElement.addEventListener('pointermove', e => {
-  if (!drag || modal.open || capturing) return;
+  if (!drag || modal.open || capturing || tripod.transitioning || meditation) return;
   yaw -= (e.clientX - lastPointerX) * 0.004;
   pitch = THREE.MathUtils.clamp(pitch - (e.clientY - lastPointerY) * 0.003, -1.3, 1.3);
   lastPointerX = e.clientX; lastPointerY = e.clientY;
@@ -534,22 +600,35 @@ renderer.domElement.addEventListener('pointermove', e => {
 renderer.domElement.addEventListener('pointerup', () => { drag = false; });
 renderer.domElement.addEventListener('pointercancel', () => { drag = false; });
 renderer.domElement.addEventListener('wheel', e => {
-  e.preventDefault(); camera.fov = THREE.MathUtils.clamp(camera.fov + e.deltaY * 0.02, 28, 75); camera.updateProjectionMatrix();
+  e.preventDefault(); if (modal.open || capturing || meditation) return; camera.fov = THREE.MathUtils.clamp(camera.fov + e.deltaY * 0.02, 28, 75); camera.updateProjectionMatrix();
   updateLensLabel();
 }, { passive: false });
 renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); keys.clear(); toast('Graphics were interrupted. Reload to return to your saved journal.'); });
 
-world.setNight(activeMission.category === 'Astro'); applyStudioRig(); world.update(0, settings); world.scene.updateMatrixWorld(true);
+world.setTime(clock.hour); applyStudioRig(); world.update(0, settings); world.scene.updateMatrixWorld(true);
 faceSubject(activeMission); renderMission(); syncSettings(); updateProgress(); resize(); updateLensLabel();
 renderer.shadowMap.needsUpdate = true;
-let previousTime = performance.now(), lastMapTime = 0, frameCount = 0, fpsTime = performance.now();
+let previousTime = performance.now(), lastMeterTime = 0;
 function animate(now: number) {
-  const dt = Math.min((now - previousTime) / 1000, 0.05); previousTime = now;
-  if (!modal.open && !capturing) {
-    elapsed += dt;
-    if (keys.has('arrowleft')) yaw += dt; if (keys.has('arrowright')) yaw -= dt;
-    if (keys.has('arrowup')) pitch = Math.min(1.3, pitch + dt * 0.7); if (keys.has('arrowdown')) pitch = Math.max(-1.3, pitch - dt * 0.7);
-    if (!settings.tripod) {
+  const realDt = document.hidden ? 0 : Math.max(0, (now - previousTime) / 1000);
+  const dt = Math.min(realDt, 0.05); previousTime = now;
+  if (meditation) {
+    meditation.elapsed += realDt;
+    const progress = Math.min(1, meditation.elapsed / 1.5);
+    clock.skipTo(meditation.start + meditation.distance * (progress * progress * (3 - 2 * progress)));
+    world.setTime(clock.hour); $('meditation-time').textContent = formatTime(clock.hour);
+    if (progress === 1) { clock.skipTo(meditation.target); finishMeditation(); }
+  } else if (!modal.open && !capturing) {
+    elapsed += dt; clock.advance(realDt); world.setTime(clock.hour);
+    const wasTransitioning = tripod.transitioning;
+    tripod.update(dt);
+    if (wasTransitioning) {
+      settings.tripod = tripod.deployed; syncTripod();
+      if (!tripod.transitioning) tripodSettle = tripod.deployed ? 0.18 : 0;
+    } else tripodSettle = Math.max(0, tripodSettle - dt);
+    if (!tripod.transitioning && keys.has('arrowleft')) yaw += dt; if (!tripod.transitioning && keys.has('arrowright')) yaw -= dt;
+    if (!tripod.transitioning && keys.has('arrowup')) pitch = Math.min(1.3, pitch + dt * 0.7); if (!tripod.transitioning && keys.has('arrowdown')) pitch = Math.max(-1.3, pitch - dt * 0.7);
+    if (!tripod.movementLocked) {
       const forward = Number(keys.has('w')) - Number(keys.has('s')), side = Number(keys.has('d')) - Number(keys.has('a'));
       const length = Math.hypot(forward, side) || 1, speed = (keys.has('shift') ? 8 : 4.5) * dt;
       const dx = (-Math.sin(yaw) * forward + Math.cos(yaw) * side) / length * speed;
@@ -564,17 +643,17 @@ function animate(now: number) {
   const marker = $('target-marker');
   marker.style.display = p.z > -1 && p.z < 1 && Math.abs(p.x) < 0.94 && Math.abs(p.y) < 0.9 ? '' : 'none';
   marker.style.left = `${(p.x * 0.5 + 0.5) * 100}%`; marker.style.top = `${(-p.y * 0.5 + 0.5) * 100}%`;
-  $('target-label').textContent = `${activeMission.subject} · ${Math.round(distance)} m`;
-  $('compass-arrow').style.transform = `rotate(${yaw * 180 / Math.PI}deg)`;
+  $('target-label').textContent = `${Math.round(distance)} m`;
   applyCameraLight(settings);
-  if (now - lastMapTime > 150) {
-    drawMap($<HTMLCanvasElement>('minimap')); updateExposure(); lastMapTime = now;
-    if (flashCanFire(settings) && (cameraMode || lightingOpen)) renderer.shadowMap.needsUpdate = true;
+  if (now - lastMeterTime > 150) {
+    updateClockCue(); updateExposure(); renderer.shadowMap.needsUpdate = true; lastMeterTime = now;
   }
   renderer.render(world.scene, camera);
-  frameCount++;
-  if (now - fpsTime > 1500) { $('fps').textContent = `· ${Math.round(frameCount * 1000 / (now - fpsTime))} fps`; frameCount = 0; fpsTime = now; }
+  if (!reducedMotion.matches && (tripod.transitioning || tripodSettle > 0)) {
+    tripodView.update(tripod.progress, tripod.transitioning ? 1 : tripodSettle / 0.18, camera.aspect);
+    renderer.autoClear = false; renderer.clearDepth(); renderer.render(tripodView.scene, tripodView.camera); renderer.autoClear = true;
+  }
+  if (!modal.open && now - lastClockSave > 60000) { persist(); lastClockSave = now; }
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
-window.setTimeout(() => { if (save.photos.length === 0) toast('Welcome to Willowbrook. Drag to look, WASD to walk. Your first story is waiting.'); }, 800);

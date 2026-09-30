@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assessPhoto, cameraEV, exposureStops, filterStops } from '../src/photography.ts';
+import { missionReferenceHour, missionAmbientEV } from '../src/environment.ts';
 import { categories, missions } from '../src/missions.ts';
 
 const frame = { visible: true, distance: 20, centerOffset: 0.25, occluded: false };
@@ -25,7 +26,8 @@ test('the curriculum contains two distinct missions per discipline', () => {
 });
 for (const m of missions) {
   test(`suggested settings complete ${m.id} when properly framed`, () => {
-    const result = assessPhoto(m, m.recommended, frame);
+    const hour = missionReferenceHour(m), ambientEV = missionAmbientEV(m, hour);
+    const result = assessPhoto(m, m.recommended, frame, { hour, ambientEV, subjectStops: exposureStops(m.recommended, ambientEV) });
     assert.equal(result.passed, true, JSON.stringify(result.feedback));
     assert.equal(result.score, 100);
   });

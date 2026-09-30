@@ -1,11 +1,12 @@
 import * as THREE from 'three';
+import { sampleSky } from './environment.ts';
 import type { Mission } from './missions.ts';
 import { defaultStudioRig, lightNames, lightPosition, type StudioRig } from './lighting.ts';
 
 export interface World {
   scene: THREE.Scene; subjects: Map<string, THREE.Object3D>; solids: THREE.Object3D[];
   update: (time: number, settings: { filter: string; shutter: number }) => void;
-  setNight: (night: boolean) => void;
+  setTime: (hour: number) => void;
   setStudioRig: (rig: StudioRig, focus: [number, number, number], controlled: boolean) => void;
   setFlash: (position: [number, number, number], direction: [number, number, number], intensity: number) => void;
   canWalk: (x: number, z: number) => boolean;
@@ -36,11 +37,24 @@ export function createWorld(): World {
   const seed = (n: number) => { const a = Math.sin(n * 127.1 + 311.7) * 43758.5453; return a - Math.floor(a); };
   const hemi = new THREE.HemisphereLight('#e6edd4', '#647c56', 2.3); scene.add(hemi);
   const sun = new THREE.DirectionalLight('#ffe4ad', 3.5);
-  sun.position.set(-32, 45, 24); sun.castShadow = true;
+  sun.name = 'sun-light'; sun.position.set(-32, 45, 24); sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, near: 1, far: 130 });
   sun.shadow.bias = -0.001; sun.shadow.normalBias = 0.035;
   scene.add(sun, sun.target);
+  const moon = new THREE.DirectionalLight('#a5badd', 0); moon.name = 'moon-light'; scene.add(moon, moon.target);
+  const sunDisc = new THREE.Mesh(new THREE.IcosahedronGeometry(2, 1), new THREE.MeshBasicMaterial({ color: '#ffe4ad', fog: false, toneMapped: false }));
+  sunDisc.name = 'sun-disc'; scene.add(sunDisc);
+  const moonDisc = new THREE.Mesh(new THREE.IcosahedronGeometry(1.4, 1), new THREE.MeshBasicMaterial({ color: '#d1dcec', fog: false, toneMapped: false }));
+  moonDisc.name = 'moon-disc'; scene.add(moonDisc);
+  // Twelve boxy clouds, five puffs each, share a single instanced draw call.
+  const cloudMaterial = new THREE.MeshBasicMaterial({ color: '#eef3e3', fog: false });
+  const clouds = new THREE.InstancedMesh(cube, cloudMaterial, 60); clouds.name = 'clouds'; clouds.frustumCulled = false; scene.add(clouds);
+  const cloudDummy = new THREE.Object3D();
+  const skyColour = new THREE.Color(), cloudColour = new THREE.Color();
+  const nightColour = new THREE.Color('#111d30'), dayColour = new THREE.Color('#bcd8d2'), sunsetColour = new THREE.Color('#e8b38a');
+  const skyLightColour = new THREE.Color('#e6edd4'), sunWarmColour = new THREE.Color('#ffad71');
+  const darkCloud = new THREE.Color('#293b50'), whiteCloud = new THREE.Color('#eef3e3'), sunsetCloud = new THREE.Color('#edc4a0');
   // Shared primitive geometry keeps the scenery inexpensive and deliberately chunky.
   box(0, -0.65, 0, 110, 1.2, 110, '#88a86c');
   box(0, -2.2, 0, 111, 2.2, 111, '#a99778');
@@ -218,19 +232,37 @@ export function createWorld(): World {
     box(x, 1.6, z, 0.1, 3.2, 0.1, '#566958'); box(x, 3.3, z, 0.5, 0.5, 0.5, '#e8d6a4');
     const lamp = new THREE.PointLight('#ffce81', 3, 10); lamp.position.set(x, 3.2, z); scene.add(lamp);
   }
-  // Night-sky stars, rendered only for astronomy assignments.
+  // Stars fade in with the night everywhere in town.
   const vertices: number[] = [];
   for (let i = 0; i < 700; i++) { const a = seed(i + 3) * Math.PI * 2, b = seed(i + 97) * Math.PI * 0.43; vertices.push(Math.cos(a) * Math.cos(b) * 120, Math.sin(b) * 120 + 10, Math.sin(a) * Math.cos(b) * 120); }
   const starsGeo = new THREE.BufferGeometry(); starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  const stars = new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: '#fff4d9', size: 0.35, sizeAttenuation: true, fog: false })); stars.visible = false; scene.add(stars);
+  const stars = new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: '#fff4d9', size: 0.35, sizeAttenuation: true, fog: false, transparent: true, depthWrite: false })); stars.name = 'night-stars'; stars.visible = false; scene.add(stars);
   const nightFocus = new THREE.Object3D(); nightFocus.position.set(-4, 22, -42); scene.add(nightFocus); subjects.set('Night sky', nightFocus);
-  let night = false;
+  let sky = sampleSky(17);
   let studioMode = false;
   const applyEnvironment = () => {
-    hemi.intensity = night ? 0.5 : studioMode ? 0.25 : 2.3;
-    hemi.color.set(night ? '#889fc5' : '#e6edd4');
-    sun.intensity = night ? 0.6 : studioMode ? 0.25 : 3.5;
-    sun.color.set(night ? '#a5badd' : '#ffe4ad');
+    hemi.intensity = studioMode ? 0.25 : 0.18 + sky.daylight * 2.12;
+    hemi.color.set('#889fc5').lerp(skyLightColour, sky.daylight);
+    sun.intensity = sky.sunStrength * (studioMode ? 0.25 : 3.5);
+    sun.color.set('#ffe4ad').lerp(sunWarmColour, sky.warmth);
+    moon.intensity = sky.night * (studioMode ? 0.03 : 0.22);
+    sun.position.set(...sky.sunPosition); moon.position.copy(sun.position).multiplyScalar(-1);
+    sunDisc.position.copy(sun.position); moonDisc.position.copy(moon.position);
+    sunDisc.visible = sky.elevation > -0.03; moonDisc.visible = sky.elevation < 0.03;
+    skyColour.copy(nightColour).lerp(dayColour, sky.daylight).lerp(sunsetColour, sky.warmth * 0.65);
+    (scene.background as THREE.Color).copy(skyColour);
+    (scene.fog as THREE.Fog).color.copy(skyColour); (scene.fog as THREE.Fog).near = 38 + sky.daylight * 17;
+    stars.rotation.y = sky.hour / 24 * Math.PI * 2; stars.visible = sky.night > 0.01; (stars.material as THREE.PointsMaterial).opacity = sky.night * (1 - sky.cloudCover * 0.45);
+    cloudColour.copy(darkCloud).lerp(whiteCloud, sky.daylight).lerp(sunsetCloud, sky.warmth * 0.6);
+    cloudMaterial.color.copy(cloudColour);
+    for (let i = 0; i < 60; i++) {
+      const cluster = Math.floor(i / 5), puff = i % 5;
+      const drift = ((seed(cluster + 500) * 300 + sky.hour * 12.5) % 300) - 150;
+      cloudDummy.position.set(drift + (puff - 2) * 3.5, 38 + seed(cluster + 501) * 16 + seed(i + 520) * 2, -110 + seed(cluster + 502) * 220);
+      cloudDummy.scale.set((6 + seed(i + 510) * 5) * (0.75 + sky.cloudCover), 1.5 + seed(i + 511) * 2.5, 4 + seed(i + 512) * 4);
+      cloudDummy.updateMatrix(); clouds.setMatrixAt(i, cloudDummy.matrix);
+    }
+    clouds.instanceMatrix.needsUpdate = true;
   };
   const setStudioRig = (rig: StudioRig, focus: [number, number, number], controlled: boolean) => {
     studioMode = controlled; applyEnvironment();
@@ -251,12 +283,7 @@ export function createWorld(): World {
   setStudioRig(defaultStudioRig(), [28, 1.35, -26], false);
   return {
     scene, subjects, solids,
-    setNight(value) {
-      night = value; stars.visible = night;
-      scene.background = new THREE.Color(night ? '#111d30' : '#d6ddca');
-      scene.fog = new THREE.Fog(night ? '#172539' : '#d6ddca', night ? 38 : 55, 150);
-      applyEnvironment();
-    },
+    setTime(hour) { sky = sampleSky(hour); applyEnvironment(); },
     setStudioRig,
     setFlash(position, direction, intensity) {
       cameraFlash.visible = intensity > 0; cameraFlash.intensity = intensity;
@@ -270,7 +297,6 @@ export function createWorld(): World {
       ripples.children.forEach((m, i) => { m.position.x += Math.sin(time + i) * 0.0008; m.scale.z = 0.03 + Math.sin(time * 1.5 + i) * 0.01; });
       streaks.forEach((s, i) => { s.position.y = 3.8 - ((time * 2 + i * 0.5) % 3.8); s.scale.y = settings.shutter >= 0.25 ? 2.5 : 0.6; });
       glassMat.opacity = settings.filter === 'cpl' ? 0.08 : 0.42;
-      if (night) stars.rotation.y = time * 0.0002;
     },
     canWalk(x, z) {
       if (Math.abs(x) > 51 || Math.abs(z) > 51) return false;

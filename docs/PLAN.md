@@ -45,3 +45,9 @@ The post-capture blur/noise, water smoothing, depth-of-field cues, and polarizer
 ## Validation
 
 Automated tests for exposure math, filter attenuation, noisy-but-successful sports captures, ND-supported water exposures, tripod-sensitive night captures, framing failures, and each mission's recommended camera settings. TypeScript checking and production build. Browser inspection of the rendered world, controls, capture/review loop, mission completion, save persistence, and responsive UI. Hardware frame-rate targets remain unverified until profiling on target devices.
+
+## World time and minimal UI extension
+
+Implemented a compact full-screen HUD with assignment details, journal, map, help and quality in the Esc menu. Camera shortcuts: 1/2 shutter, 3/4 aperture, 5/6 ISO, T tripod. Tripod setup/packing uses a brief first-person animation with movement and capture locked during transitions. Captures show a brief thumbnail and open feedback on request.
+
+The world now turns through a 30-minute day, paused in menus and hidden tabs. Sun/moon positions, shadows, sky, fog, stars and outdoor metering follow the clock. Twelve boxy clouds share one instanced draw call and a repeating weather pattern affects sunlight. Meditation skips ahead to named times or the active assignment's preferred light, preserving location and settings. Five briefs have time windows, including overnight intervals; captures retain the time and cloud cover. Cloud shading and coverage are approximations; individual moving cloud shadows and volumetric weather remain future work.

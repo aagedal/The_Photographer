@@ -1,3 +1,4 @@
+import { formatTime, isMissionTime } from './environment.ts';
 import type { Mission } from './missions.ts';
 export interface CameraSettings { shutter: number; aperture: number; iso: number; filter: 'none' | 'nd6' | 'cpl'; tripod: boolean; panning: boolean; flashPower?: number }
 export interface Framing { visible: boolean; distance: number; centerOffset: number; occluded: boolean }
@@ -6,7 +7,7 @@ export interface Assessment { score: number; passed: boolean; exposureStops: num
 export const filterStops = (filter: CameraSettings['filter']) => filter === 'nd6' ? 6 : filter === 'cpl' ? 1 : 0;
 export const cameraEV = (s: CameraSettings) => Math.log2(s.aperture ** 2 / s.shutter) - Math.log2(s.iso / 100) + filterStops(s.filter);
 export const exposureStops = (s: CameraSettings, sceneEV: number) => sceneEV - cameraEV(s);
-export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing, lighting?: { subjectStops: number; ambientEV: number }): Assessment {
+export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing, lighting?: { subjectStops: number; ambientEV: number; hour?: number }): Assessment {
   const stops = lighting?.subjectStops ?? exposureStops(s, mission.ev);
   const exposureOK = Math.abs(stops) <= 1.6;
   const framingOK = frame.visible && !frame.occluded && frame.distance < 65 && frame.distance > 2 && frame.centerOffset < 0.9;
@@ -21,6 +22,10 @@ export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing,
       const ambient = exposureStops(s, lighting.ambientEV);
       feedback.push({ label: 'Light balance', passed: true, text: `Ambient ${ambient >= 0 ? '+' : ''}${ambient.toFixed(1)} EV; subject ${stops >= 0 ? '+' : ''}${stops.toFixed(1)} EV. Flash falls off with distance, so a close subject can stay brighter than the background.` });
     }
+  }
+  if (mission.timeWindow && lighting?.hour !== undefined) {
+    const ready = isMissionTime(mission, lighting.hour);
+    feedback.push({ label: 'Time of day', passed: ready, text: ready ? `You caught the right light at ${formatTime(lighting.hour)}. ${mission.timeWindow.label}.` : `Taken at ${formatTime(lighting.hour)}. This assignment needs ${mission.timeWindow.label.toLowerCase()}. Meditate from the Esc menu to wait for its preferred time.` });
   }
   const add = (label: string, passed: boolean, yes: string, no: string) => feedback.push({ label, passed, text: passed ? yes : no });
   switch (mission.technique) {

@@ -4,7 +4,7 @@ Validated on 30 September 2026.
 
 ## Automated
 
-- 33 tests pass using Node's test runner.
+- 47 tests pass using Node's test runner.
 - Exposure math: doubling ISO, exposure time, or aperture area changes exposure by the expected stop.
 - Filters: ND64 attenuates six stops; prototype CPL attenuates one stop.
 - All twelve suggested camera setups pass their assignment's lesson assessment with valid framing.
@@ -13,7 +13,8 @@ Validated on 30 September 2026.
 - Lake and boundary restrictions work while the pier stays walkable.
 - Flash tests cover inverse-square distance falloff, power/aperture/ISO/filter response, shutter-independent pulse exposure within sync, suppression beyond sync, and a lit close portrait with dark ambient exposure.
 - Studio tests cover continuous-light metering, moving and aiming the actual lights, colour and power, disabling lights, and migration of old/malformed lighting saves.
-- Strict TypeScript check and Vite production build pass. The renderer makes the main bundle larger than Vite's default 500 kB warning threshold (about 153 kB compressed); no build error.
+- Controls tests cover both shortcut directions, exposure effects, clamped limits, tripod stability/locking, reversal during setup, and instant setup/packing.
+- Strict TypeScript check and Vite production build pass. The renderer makes the main bundle larger than Vite's default 500 kB warning threshold (about 156 kB compressed); no build error.
 
 ## Browser playtesting
 
@@ -29,6 +30,30 @@ Validated on 30 September 2026.
 - A 1/4-power close flash portrait passes with approximately −6 EV ambient and −0.4 EV subject exposure. Switching from 1/250 to 1/125 increases ambient exposure by one stop while the subject reading stays near −0.4 EV.
 - At 1/500, flash is suppressed, the subject is dark, and the review explains the sync limit. Returning to 1/250 restores the lit portrait.
 - Studio power, angle, distance, height, and colour controls operate through the UI; lighting settings survive reload. The actual studio lamps, illuminated subjects, and shadows were visually inspected.
+
+## Minimal UI and keyboard pass
+
+- Full-screen HUD inspected at the default 1280 × 720 viewport and at 480 × 740; controls stay inside the viewport with no horizontal overflow.
+- Esc opens the pause menu. Assignments, journal, map, and controls are accessed there; Esc from a submenu returns to the menu, and Esc from the menu resumes.
+- Numeric shortcuts change shutter, aperture, and ISO in the UI. Native input controls retain their keyboard behavior while focused.
+- T starts the visible first-person deployment, marks the tripod busy, and disables capture. When ready, it shows “Pack tripod” and re-enables capture; packing returns it to “Deploy tripod”.
+- Capture saves with a thumbnail and no automatic dialog. Clicking the preview opens feedback; captured settings include the deployed tripod.
+- The first-person model renders in a separate scene and is excluded from photo capture. Reduced-motion setup uses the instant transition path, covered by a state test.
+- No browser console errors observed in this pass. Browser tests used the isolated playtest notebook.
+- Screenshot: `docs/minimal-ui.png`.
+
+## Sky and world clock
+
+- Clock tests verify a full 24-hour cycle in 1,800 seconds, midnight wrapping, normalization of saved time and meditation targets, and safe handling of invalid frame times.
+- Sky tests verify east-to-west sun movement, twilight warmth, bounded cloud cover, continuous light/weather across midnight and twilight, and brighter outdoor metering during the day.
+- Time-window tests include both interval endpoints and windows crossing midnight. A correctly framed, exposed, technically valid photograph fails a timed brief outside its required window.
+- All twelve suggested camera setups pass at their preferred time with the runtime time context supplied.
+- World integration tests inspect actual sun/moon positions and intensities, sky colour, fading stars, and changes to the 60 cloud instance matrices.
+- Browser: meditation transitions to 23:00, blocks capture during the transition, and resumes without a modal. Stars and dark cloud silhouettes appear over the lake.
+- Browser: selecting an astro assignment preserves the current clock; its night capture passes at 100/100 and records the time and cloud cover. Skipping to daylight produces exposure and time-window failures with meditation guidance.
+- Browser: the world clock survives a reload and stays fixed while the pause menu is open. “For this assignment” skips back to golden-hour light and the lighthouse capture completes at 100/100.
+- Preview screenshots: `docs/daylight.png`, `docs/minimal-ui.png` (golden hour), and `docs/night.png`.
+- Browser: no console errors observed during these captures. All testing uses the isolated playtest notebook.
 
 ## Remaining validation
 
