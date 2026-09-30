@@ -1,12 +1,13 @@
 import { formatTime, isMissionTime } from './environment.ts';
 import type { Mission } from './missions.ts';
-export interface CameraSettings { shutter: number; aperture: number; iso: number; filter: 'none' | 'nd6' | 'cpl'; tripod: boolean; panning: boolean; flashPower?: number; focalLength?: number }
+import { filterStops, graduatedStops, type FilterId } from './filters.ts';
+export { filterStops } from './filters.ts';
+export interface CameraSettings { shutter: number; aperture: number; iso: number; filter: FilterId; gradPosition?: number; tripod: boolean; panning: boolean; flashPower?: number; focalLength?: number; focusDistance?: number }
 export interface Framing { visible: boolean; distance: number; centerOffset: number; occluded: boolean }
 export interface Feedback { label: string; passed: boolean; text: string }
 export interface Assessment { score: number; passed: boolean; exposureStops: number; feedback: Feedback[] }
-export const filterStops = (filter: CameraSettings['filter']) => filter === 'nd6' ? 6 : filter === 'cpl' ? 1 : 0;
-export const cameraEV = (s: CameraSettings) => Math.log2(s.aperture ** 2 / s.shutter) - Math.log2(s.iso / 100) + filterStops(s.filter);
-export const exposureStops = (s: CameraSettings, sceneEV: number) => sceneEV - cameraEV(s);
+export const cameraEV = (s: CameraSettings, imageY = 0.5) => Math.log2(s.aperture ** 2 / s.shutter) - Math.log2(s.iso / 100) + filterStops(s.filter) + graduatedStops(s.filter, imageY, s.gradPosition);
+export const exposureStops = (s: CameraSettings, sceneEV: number, imageY = 0.5) => sceneEV - cameraEV(s, imageY);
 export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing, lighting?: { subjectStops: number; ambientEV: number; hour?: number; gearReady?: boolean }): Assessment {
   const stops = lighting?.subjectStops ?? exposureStops(s, mission.ev);
   const exposureOK = Math.abs(stops) <= 1.6;
@@ -36,7 +37,7 @@ export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing,
     case 'landscape': add('Depth', s.aperture >= 8, 'Stopping down helps the landscape stay in focus.', 'Try f/8 or smaller (a larger f-number) to keep more of the landscape in focus.'); break;
     case 'water':
       add('Movement', s.shutter >= 0.25, 'The long exposure lets flowing water soften.', 'Try 1/4 second or longer to let the water move through the frame.');
-      add('Light control', s.filter === 'nd6', 'The ND filter makes room for a long exposure in daylight.', 'Fit the ND64 filter: it cuts six stops of daylight.');
+      add('Light control', ['nd4', 'nd5', 'nd6'].includes(s.filter), 'The ND filter makes room for a long exposure in daylight.', 'Buy and fit an ND16, ND32, or ND64 filter, then balance shutter and aperture. A graduated filter only darkens part of the frame.');
       add('Stability', s.tripod, 'The tripod keeps the rocks still while the water moves.', 'Use the tripod so the whole photograph does not shake.'); break;
     case 'freeze': add('The moment', s.shutter <= 1 / 500, s.iso >= 800 ? 'Fast shutter, a little noise, and a sharp moment. That is a good trade.' : 'The fast shutter freezes the runner’s movement.', 'Try 1/500 second or faster; raise ISO when you need more light.'); break;
     case 'pan': add('A sense of speed', s.shutter >= 1 / 125 && s.shutter <= 1 / 15 && s.panning, 'Following the runner keeps them clear against a moving background.', 'Use 1/30–1/125 second and switch on Panning to practice following the runner.'); break;

@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Photography rendering checks</title>
+<style>body{margin:24px;background:#17251e;color:#f5f1df;font:14px system-ui}button{padding:12px}section{display:flex;flex-wrap:wrap;gap:16px}figure{margin:0;width:450px}canvas,img{display:block;width:450px;height:300px}figcaption{padding:10px 0}pre{white-space:pre-wrap}</style>
+<h1>Photography rendering checks</h1>
+<button id="run">Run GPU checks</button> <button id="notebook">Prepare isolated game notebook</button> <button id="filter-notebook">Prepare filter shop notebook</button>
+<a href="/?playtest=rendering-checks">Open isolated game</a>
+<a href="/?playtest=filter-checks">Open filter shop game</a>
+<button id="creek-notebook">Prepare waterfall notebook</button> <a href="/?playtest=creek-checks">Open waterfall game</a>
+<pre id="results">Ready. Run with npm run dev, then visit /tests/rendering.html.</pre><section id="images"></section>
+<script type="module" src="./rendering.ts"></script></html>

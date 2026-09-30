@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { createWaterSurface, createFishSchool, isolateReflections } from './water.ts';
+import { createWaterfall } from './waterfall.ts';
+import { creekDistance } from './creek.ts';
 import { WORLD_HALF, terrainHeight, trails, distanceToTrail } from './terrain.ts';
 import { npcCatalog, npcPosition } from './exploration.ts';
 import { sampleSky } from './environment.ts';
@@ -83,11 +87,12 @@ export function createWorld(): World {
   terrain.rotateX(-Math.PI / 2);
   const positions = terrain.getAttribute('position');
   const colours: number[] = [];
-  const grass = new THREE.Color('#88a86c'), highland = new THREE.Color('#929678'), pathColour = new THREE.Color('#c3b694');
+  const grass = new THREE.Color('#88a86c'), highland = new THREE.Color('#929678'), pathColour = new THREE.Color('#c3b694'), lakebed = new THREE.Color('#8fa99b');
   for (let i = 0; i < positions.count; i++) {
     const x = positions.getX(i), z = positions.getZ(i), height = terrainHeight(x, z);
     positions.setY(i, height - 0.055);
     const colour = grass.clone().lerp(highland, Math.min(1, height / 20));
+    if (height < -0.1 || Math.hypot((x - 76) / 14, (z + 54) / 11) < 0.9) colour.lerp(lakebed, Math.min(1, Math.max(0, -height) + 0.6));
     colour.multiplyScalar(0.94 + seed(i + 308) * 0.12);
     if (distanceToTrail(x, z) < 1.6) colour.copy(pathColour);
     colours.push(colour.r, colour.g, colour.b);
@@ -95,27 +100,41 @@ export function createWorld(): World {
   terrain.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3)); terrain.computeVertexNormals();
   const land = new THREE.Mesh(terrain, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 }));
   land.name = 'rolling-terrain'; land.receiveShadow = true; scene.add(land); solids.push(land);
-  box(0, -3, 0, WORLD_HALF * 2, 4, WORLD_HALF * 2, '#a99778');
+  box(0, -5, 0, WORLD_HALF * 2, 4, WORLD_HALF * 2, '#a99778');
   box(0, -0.01, 16, 90, 0.08, 3.2, '#c3b694');
   box(15, 0, -11, 3.6, 0.08, 56, '#c3b694');
   box(-22, 0, 25, 29, 0.09, 3, '#c3b694');
   box(-4, 0, -25, 2.5, 0.08, 25, '#b0a686');
   // A turquoise lake, a shoreline made from simple blocks, and a wooden jetty.
-  const waterMat = new THREE.MeshPhysicalMaterial({ color: '#659a90', metalness: 0.25, roughness: 0.25, transparent: true, opacity: 0.94 });
-  const water = new THREE.Mesh(new THREE.BoxGeometry(28, 0.12, 23), waterMat);
-  water.position.set(-7, 0.05, -3); water.receiveShadow = true; scene.add(water);
+  const lake = createWaterSurface(new THREE.PlaneGeometry(28, 23), -7, 0.11, -3, 'lake');
+  scene.add(lake.tint, lake.reflection);
+  const schools = [
+    createFishSchool(-4.7, 0.11, 4.5, 2.2, 1.2, 5, 'jetty'),
+    createFishSchool(-12, 0.11, -3, 4, 3, 7, 'lake'),
+    createFishSchool(1, 0.11, -7, 3, 2.5, 5, 'east-lake'),
+    createFishSchool(76, 1.28, -54, 5, 4, 6, 'wetland'),
+  ];
+  schools.forEach(school => scene.add(school.group));
+  // Pebbles and aquatic plants make the new shallow basin readable through water.
+  const pebbleGeometry = new THREE.IcosahedronGeometry(1, 0);
+  for (let i = 0; i < 32; i++) {
+    const x = -18 + seed(i + 600) * 22, z = -11 + seed(i + 620) * 18;
+    const pebble = new THREE.Mesh(pebbleGeometry, material(i % 2 ? '#a2a184' : '#8c9980'));
+    pebble.position.set(x, terrainHeight(x, z) + 0.06, z); pebble.scale.set(0.18 + seed(i) * 0.18, 0.12, 0.22); scene.add(pebble);
+    if (i % 3 === 0) for (let blade = 0; blade < 3; blade++) {
+      const plant = box(x + blade * 0.11, terrainHeight(x, z) + 0.2, z, 0.035, 0.38 + seed(i + blade) * 0.15, 0.05, '#547957');
+      plant.rotation.z = (blade - 1) * 0.25; plant.castShadow = false;
+    }
+  }
   blockers.push({ x: -7, z: -3, w: 28, d: 23 });
   box(-7, 0.04, 9.2, 30, 0.2, 0.9, '#bdbe97');
-  box(-21.4, 0.02, -3, 0.7, 0.15, 24, '#bdbe97');
+  // Open the western shoreline where Fern Creek joins the lake.
+  box(-21.4, 0.02, -8.5, 0.7, 0.15, 13, '#bdbe97');
+  box(-21.4, 0.02, 6.5, 0.7, 0.15, 5, '#bdbe97');
   box(7.4, 0.02, -3, 0.7, 0.15, 24, '#bdbe97');
   box(0, 0.34, 8, 3.2, 0.3, 10, '#a17c52');
   for (let i = 0; i < 15; i++) box(0, 0.51, 3.5 + i * 0.64, 3.2, 0.06, 0.09, '#755a42');
   for (const x of [-1.6, 1.6]) for (const z of [3.6, 8, 12]) box(x, 0.5, z, 0.2, 1.6, 0.2, '#795b3e');
-  const ripples = new THREE.Group(); scene.add(ripples);
-  for (let i = 0; i < 30; i++) {
-    const ripple = box(-19 + seed(i) * 24, 0.13, -13 + seed(i + 52) * 21, 0.7 + seed(i + 7) * 2, 0.014, 0.04, '#b3cabe', ripples);
-    ripple.castShadow = false;
-  }
   // Low-poly mountains create a layered skyline without texture maps.
   for (let i = 0; i < 14; i++) {
     const x = -170 + i * 26;
@@ -184,12 +203,8 @@ export function createWorld(): World {
     const m = new THREE.Mesh(new THREE.DodecahedronGeometry(scale, 0), material('#8c9380'));
     m.position.set(x, y, z); m.rotation.set(seed(x) * 2, seed(z) * 3, 0.2); m.castShadow = true; m.receiveShadow = true; scene.add(m); solids.push(m); return m;
   };
-  rock(-24, 1.1, -10.5, 2.3);
-  for (let i = 0; i < 8; i++) rock(i % 2 ? -27 : -21, 0.5 + seed(i) * 0.5, -12 + i * 0.9, 0.8 + seed(i + 89) * 0.7);
-  box(-24, 0.06, -4, 4.5, 0.13, 10, '#709d94');
-  const waterfall = box(-24, 2, -8, 2.3, 3.8, 0.28, '#bcddd2'); waterfall.castShadow = false; subjects.set('Waterfall', waterfall);
-  const streaks: THREE.Mesh[] = [];
-  for (let i = 0; i < 8; i++) { const m = box(-24.9 + i * 0.26, seed(i) * 4, -7.83, 0.06, 0.6, 0.03, '#e4eee0'); m.castShadow = false; streaks.push(m); }
+  const creek = createWaterfall(); scene.add(creek.group); solids.push(...creek.solids); subjects.set('Waterfall', creek.focus);
+  blockers.push({ x: -24, z: -15.5, w: 22, d: 9.8 });
   // Benches, reeds, flowers, boulders, and paths give the world human scale.
   const bench = (x: number, z: number, rotation = 0) => {
     const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = rotation; scene.add(g);
@@ -256,15 +271,37 @@ export function createWorld(): World {
   for (const z of [-2.5, -1.8, 11.8, 12.5]) box(29, 0.15, z, 18, 0.02, 0.07, '#e1c9a4');
   const runner = person(27, 7, '#d68456'); subjects.set('Runner', runner.focus);
   bench(38, 16, Math.PI); box(35, 0.8, 16, 0.1, 1.6, 0.1, '#697855'); box(35, 1.7, 16, 2.7, 0.7, 0.15, '#e0d4b1');
-  // Bakery is open at the front, with a simulated reflective window.
+  // Bakery is open at the front, with transparent glass and a planar reflection.
   box(13, 2, -17, 9, 4, 0.4, '#dbc3a5', scene, true);
   box(8.5, 2, -14, 0.4, 4, 6, '#dbc3a5', scene, true); box(17.5, 2, -14, 0.4, 4, 6, '#dbc3a5', scene, true);
   box(13, 4.2, -14, 9.5, 0.5, 6.5, '#93775b'); box(13, 0.05, -14, 9, 0.1, 6, '#bba789');
   box(13, 1, -13.5, 6, 1, 0.8, '#a58861');
   const baker = person(13, -14.6, '#ede0bc'); subjects.set('Baker', baker.focus);
-  const glassMat = new THREE.MeshPhysicalMaterial({ color: '#c9e1d3', roughness: 0.1, metalness: 0.45, transparent: true, opacity: 0.42, side: THREE.DoubleSide });
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 3.5), glassMat); glass.position.set(13, 2, -10.95); scene.add(glass);
-  for (const x of [8.6, 13, 17.4]) box(x, 2, -10.85, 0.09, 4, 0.1, '#657963');
+  const glassMat = new THREE.MeshPhysicalMaterial({ color: '#d0e3d9', roughness: 0.1, metalness: 0, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 3.5), glassMat); glass.name = 'bakery-glass'; glass.position.set(13, 2, -10.95); scene.add(glass);
+  const reflection = new Reflector(new THREE.PlaneGeometry(8.5, 3.5), {
+    textureWidth: 512, textureHeight: 256, multisample: 0, clipBias: 0.003,
+    shader: {
+      name: 'WindowReflection',
+      uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, strength: { value: 0.6 } },
+      vertexShader: `uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 worldPosition;
+        void main() { vUv = textureMatrix * vec4(position, 1.0); worldPosition = (modelMatrix * vec4(position, 1.0)).xyz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float strength; varying vec4 vUv; varying vec3 worldPosition;
+        void main() {
+          vec3 viewDirection = normalize(cameraPosition - worldPosition);
+          float grazing = pow(1.0 - abs(viewDirection.z), 3.0);
+          vec3 reflected = texture2DProj(tDiffuse, vUv).rgb * vec3(0.93, 0.98, 1.0);
+          gl_FragColor = vec4(reflected, strength * (0.8 + 0.2 * grazing));
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    },
+  });
+  const reflectionMaterial = reflection.material as THREE.ShaderMaterial;
+  reflection.name = 'bakery-reflection'; reflection.position.set(13, 2, -10.94);
+  reflectionMaterial.transparent = true; reflectionMaterial.depthWrite = false; reflection.renderOrder = 1;
+  scene.add(reflection);
+  for (const x of [8.6, 13.8, 17.4]) box(x, 2, -10.85, 0.09, 4, 0.1, '#657963');
   box(13, 3.8, -10.85, 9, 0.1, 0.1, '#657963');
   const reporter = person(8, -7, '#718b86'); subjects.set('Reporter', reporter.focus);
   box(8.45, 1.15, -6.85, 0.13, 0.38, 0.13, '#394d45');
@@ -315,8 +352,9 @@ export function createWorld(): World {
     const lamp = new THREE.PointLight('#ffce81', 3, 10); lamp.position.set(x, 3.2, z); scene.add(lamp);
   }
   // A wetland, bird perch and raised hide make the long-lens assignment a real place.
-  const pond = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.12, 32), waterMat);
-  pond.position.set(76, 1.22, -54); pond.scale.set(14, 1, 11); scene.add(pond);
+  const pondGeometry = new THREE.CircleGeometry(1, 48); pondGeometry.scale(14, 11, 1);
+  const pond = createWaterSurface(pondGeometry, 76, 1.28, -54, 'wetland'); scene.add(pond.tint, pond.reflection);
+  isolateReflections([reflection, lake.reflection, pond.reflection, creek.river.reflection]);
   const bird = new THREE.Group(); bird.name = 'kingfisher'; bird.position.set(76, 3.6, -54); scene.add(bird);
   box(76, 2.35, -54, 0.18, 2.25, 0.18, '#80684d'); box(76, 3.39, -54, 1.6, 0.12, 0.17, '#80684d');
   sphere(0, 0, 0, 0.15, 0.23, 0.29, '#397f96', bird);
@@ -417,7 +455,7 @@ export function createWorld(): World {
     }
   };
   setStudioRig(defaultStudioRig(), [28, 1.35, -26], false);
-  batchMeshes(scene, new Set([...solids, ...streaks]));
+  batchMeshes(scene, new Set(solids));
   return {
     scene, subjects, solids,
     groundHeight: terrainHeight,
@@ -434,13 +472,16 @@ export function createWorld(): World {
       runner.legs[0].rotation.x = Math.sin(time * 9) * 0.5; runner.legs[1].rotation.x = -Math.sin(time * 9) * 0.5;
       people.forEach((g, i) => { if (g !== runner.group) g.rotation.y = Math.sin(time * 0.45 + i) * 0.12; });
       bird.rotation.y = Math.sin(time * 0.9) * 0.32; birdHead.rotation.y = Math.sin(time * 1.7) * 0.25;
-      ripples.children.forEach((m, i) => { m.position.x = -19 + seed(i) * 24 + Math.sin(time + i) * 0.35; m.scale.z = 0.03 + Math.sin(time * 1.5 + i) * 0.01; });
-      streaks.forEach((s, i) => { s.position.y = 3.8 - (((time * 2 + i * 0.5) % 3.8 + 3.8) % 3.8); s.scale.y = 0.6; });
-      glassMat.opacity = settings.filter === 'cpl' ? 0.08 : 0.42;
+      lake.update(time, settings.filter, sky.daylight); pond.update(time, settings.filter, sky.daylight);
+      schools.forEach(school => school.update(time));
+      creek.update(time, settings.filter, sky.daylight);
+      // A CPL suppresses reflected light without removing the window itself.
+      reflectionMaterial.uniforms.strength.value = settings.filter === 'cpl' ? 0.06 : 0.6;
     },
     canWalk(x, z) {
       if (Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4) return false;
       if (Math.hypot((x - 76) / 14, (z + 54) / 11) < 1) return false;
+      if (creekDistance(x, z) < 1.08) return false;
       // The jetty is a narrow walkable exception inside the lake boundary.
       return !blockers.some(b => Math.abs(x - b.x) < b.w / 2 + 0.25 && Math.abs(z - b.z) < b.d / 2 + 0.25 && !(b.w === 28 && Math.abs(x) < 1.25 && z > 3.5));
     },

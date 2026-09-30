@@ -30,12 +30,16 @@ test('old notebook migration preserves evidence of previous assignments without 
   const all = npcCatalog.reduce(discoverNPC, normalizeDiscovered(undefined));
   assert.deepEqual(new Set(all), new Set(missions.map(m => m.id)));
 });
-test('bird progression can be funded by four starter-kit assignments without repeat payments', () => {
+test('five briefs fund the wildlife lens after buying ND64 and CPL, without repeat payments', () => {
   const completed = ['nature-1', 'nature-2', 'sports-1'];
-  assert.equal(purchaseGear(empty, completed, 'telephoto').ok, false);
+  let kit = purchaseGear(empty, ['nature-1'], 'nd6').economy;
+  kit = purchaseGear(kit, completed, 'cpl').economy;
+  assert.equal(purchaseGear(kit, completed, 'telephoto').ok, false);
   completed.push('news-1');
-  const bought = purchaseGear(empty, completed, 'telephoto');
-  assert.equal(bought.ok, true); assert.equal(balance(bought.economy, completed), 120);
+  assert.equal(purchaseGear(kit, completed, 'telephoto').ok, false);
+  completed.push('studio-1');
+  const bought = purchaseGear(kit, completed, 'telephoto');
+  assert.equal(bought.ok, true); assert.equal(balance(bought.economy, completed), 95);
   assert.equal(canAcceptMission(birdMission, ['nature-birds'], bought.economy), true);
   assert.equal(canAcceptMission(birdMission, ['nature-1'], bought.economy), false);
   assert.deepEqual(normalizeEconomy(JSON.parse(JSON.stringify(bought.economy)), completed), bought.economy);

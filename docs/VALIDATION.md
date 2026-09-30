@@ -4,7 +4,7 @@ Validated on 30 September 2026.
 
 ## Automated
 
-- 70 tests pass using Node's test runner.
+- 85 tests pass using Node's test runner.
 - Exposure math: doubling ISO, exposure time, or aperture area changes exposure by the expected stop.
 - Filters: ND64 attenuates six stops; prototype CPL attenuates one stop.
 - All thirteen suggested camera setups pass their assignment's lesson assessment with valid framing.
@@ -88,6 +88,48 @@ Validated on 30 September 2026.
 - The GPU capture shaders produced no warnings or errors during the initial Space capture. Images retain the centered 3:2 framing and correct orientation. Long exposures are computed immediately with a maximum of 33 samples.
 - Testing used isolated named playtest notebooks. Temporary mission discovery, gear, and fixed-time fixtures were removed afterward.
 - Preview: `docs/motion-panning.jpg`.
+
+## Scene-depth optics and combined motion
+
+- Replaced the portrait-only canvas blur/ellipse with scene-depth blur in every assignment. The blur radius follows a full-frame thin-lens circle of confusion, aperture, focal length, and axial focus distance. Each temporal sample is blurred before linear-light accumulation, preserving the brief flash contribution.
+- The live viewfinder uses the same optics and tone mapping as saved photographs. Autofocus follows an unobstructed assignment subject in the sensor crop, falls back to the center surface when aiming away, and focuses at infinity for sky subjects. The reticle tracks the focus point, and the focus distance is retained in photo metadata and review.
+- Three new Node tests cover the focus plane, foreground/background defocus, aperture and focal-length response, closer focus, output resolution, infinity focus, and sensor crop math. The browser harness is included in strict TypeScript checking.
+- All eleven GPU checks pass at `/tests/rendering.html` in the Codex in-app browser. At matched exposure, a 120 mm lens focused at 2.95 m increases measured background edge contrast from 1.86 at f/1.8 to 4.98 at f/16, while the textured focused subject remains identical. Refocusing on the background reduces foreground edge contrast from 6.86 to 2.21.
+- The live preview and saved f/1.8 frame match exactly at 900 × 600. After resizing to 450 × 900, the centered sensor crop differs from the scaled photo by 1.046 of 255 mean RGB levels. Motion and depth blur also coexist in a single exposure.
+- Actual world captures compare the runner at 1/1000 s and 0.5 s: subject pixels change by 9.79 mean RGB levels while static scenery remains identical on a tripod. Panning changes background pixels by 19.04 levels. Returning to the original sample restores an identical frame.
+- A deliberately failed sample restores the previous render target and auto-clear flag. The game releases capture controls on rendering failure and retains earlier successful burst frames.
+- Game UI: a 120 mm f/1.8, 1/1000 s portrait focuses at 9.0 m, saves with visible background separation, and passes the couple assignment at 100/100. The new focus controls and review were inspected in the normal game, using only the isolated `rendering-checks` notebook.
+- No browser console errors or warnings during the GPU checks or portrait capture. Production build passes; the existing bundle-size warning remains. Kernel limits and transparent-surface/silhouette approximations are documented in the development plan.
+
+## Filter purchases, graduated ND, and glass reflections
+
+- Filters are purchasable gear: ND16 $45, ND32 $60, ND64 $75, CPL $90, and soft GND8 $100. Ownership gates fitting, suggested settings, and capture. New notebooks start without filters; pre-filter-shop saves retain ND64/CPL as gifts. A saved migration marker prevents gifts being added to new notebooks on later loads.
+- Seven additional Node tests cover purchase gating/prices/duplicate charges, ownership round-trips, idempotent legacy gifts, four/five/six-stop ambient and flash attenuation, graduated endpoints/transition/metering, all three uniform NDs in the creek assessment, rejection of GND for that lesson, and actual planar reflection suppression without removing glass tint. The wildlife funding test now includes ND64/CPL costs and five early assignments.
+- All sixteen GPU checks pass. Graduated ND reduces measured top brightness by 133.03 of 255 RGB levels while leaving the bottom identical. Moving the transition changes the middle exposure. Graduated live preview matches capture, including the centered crop after portrait resizing. Previous motion/depth checks continue to pass.
+- The bakery window renders actual reflected scenery at 512 × 256. At matched exposure the CPL comparison changes window pixels by 20.01 mean RGB levels; reflected trees and buildings fade and the baker becomes visible. The center mullion was moved off the baker's face. Fixed polarizer suppression remains a simplified model.
+- UI playtest used only `filter-checks`: selecting unowned ND16 opened the shop and retained the prior fitted filter. Buying it changed the wallet from $460 to $415 and fitted it. Suggested settings chose ND16, 1/4 s, f/11, ISO 100; the tripod waterfall photograph passed 100/100 and paid $180.
+- Buying ND32, ND64, CPL, and GND8 brought total filter spending to $370 and the wallet to $270 against $640 earned. Owned rows show fitting/removal controls. Ownership, the fitted GND, and its 65% transition survived reload without added gifts or charges. Moving the transition after reload raises the viewfinder; a saved GND frame retained its 60% transition in review and correctly failed the uniform-ND creek lesson.
+- No browser shader errors or warnings during rendering checks or captures. Strict TypeScript, production build, and Node tests pass; the existing bundle-size warning remains.
+- Preview: `docs/polarizer-comparison.png` (matched exposure, no CPL above / CPL below).
+
+## Reflective water and swimming fish
+
+- The main lake and wetland render translucent water with animated ripple distortion, reflected scenery, and angle-dependent reflection strength. CPL suppresses the reflection contribution to 12%; underwater tint and fish remain intact. The terrain has shallow submerged basins while the jetty remains level and walkable.
+- Four schools contain 23 fish, rendered in four instanced draw calls per school. Three new Node tests check fish bounds above the lakebed/below the surface across negative and positive simulation times, deterministic rewind, surface depth/polarizer behavior, and reflection isolation/visibility restoration on failure. Existing viewpoint, trail, movement, filter, and motion checks continue to pass.
+- All 22 GPU checks pass. At matched exposure, CPL changes lake pixels by 10.90 mean RGB levels. Removing fish changes the submerged region by 4.03 levels, confirming visibility through the surface. Animated frames and a one-second swimming exposure differ from a frozen frame, returning to the original simulation time restores an identical frame, and the live viewfinder matches the saved photograph.
+- The rendered comparison was visually inspected: reflections of shoreline trees soften the underwater scene without CPL; fitting CPL clears glare over fish, pebbles, and plants. No shader warnings or browser errors occurred. Water/transparent-surface optics remain stylized approximations.
+- Normal game playtest used only the separate `water-checks` notebook. The live viewfinder showed rippled lighthouse/shoreline reflections and submerged fish. Capturing saved a lake photograph successfully without browser warnings or errors; the player's notebook was untouched.
+- Preview: `docs/water-and-fish.png` (lake comparison: no CPL on the left, CPL on the right, at matched exposure).
+- Game preview: `docs/reflective-lake.png`.
+
+## Expanded waterfall, cliff and connected river
+
+- Fern Creek has a roughly nine-metre falling curtain over a cliff more than 20 metres wide. Offset rock strata, moss on the upper faces, firs, bank boulders, and ferns replace the old small rock backdrop. Whitewater, spray, expanding plunge-pool rings and downstream foam animate from absolute simulation time.
+- The channel widens into a plunge pool and bends into Willow Lake through the opened western shore. Two additional Node tests sample the entire channel to verify visible surface coverage, submerged terrain, blocked water/cliff movement, ranger access, cliff/fall dimensions, finite negative-time animation, and exact foam/spray rewind. All viewpoint, trail, fish, exposure and economy tests still pass.
+- All 26 GPU checks pass. A matched-exposure half-second capture changes falling water/spray by 4.41 mean RGB levels while a cliff region stays sharp. Returning to the initial simulation time restores an identical frame, and the live viewfinder matches the saved waterfall photograph. Existing depth of field, lake/CPL, fish and motion checks continue to pass.
+- Browser playtesting uses only the separate `creek-checks` notebook. A 35 mm, 0.5 s, f/8, ISO 100, ND64 tripod photo from the updated viewpoint in afternoon light passes at 100/100 and pays $180. The enlarged scene and river connection were visually inspected. No shader warnings or browser errors occurred.
+- Strict TypeScript, production build, 85 Node tests, and whitespace checks pass. The existing bundle-size warning remains. Water effects are stylized and do not simulate fluid dynamics.
+- Previews: `docs/fern-creek.png` and `docs/waterfall-shutter-comparison.png`.
 
 ## Remaining validation
 

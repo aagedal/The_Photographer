@@ -1,10 +1,12 @@
 import { missions } from './missions.ts';
+import { filterCatalog, isFilterGear, type FilterId } from './filters.ts';
 
 export const gearCatalog = [
   { id: 'zoom', name: '24–120 mm zoom lens', price: 120, icon: 'aperture', description: 'Frame distant subjects or go wide. Scroll or use −/+ to zoom.' },
   { id: 'flash', name: 'Camera flash', price: 180, icon: 'bolt', description: 'Light a close subject against a darker background. F toggles flash; L adjusts power.' },
   { id: 'burst', name: 'Burst camera', price: 360, icon: 'burst', description: 'Catch changing moments with three frames at 5 fps. B switches single / burst; Space or C shoots.' },
   { id: 'telephoto', name: '200–600 mm wildlife lens', price: 480, icon: 'aperture', description: 'Unlock bird close-ups from a respectful distance. Equip in the shop, then scroll or use −/+ to zoom.' },
+  ...filterCatalog.map(filter => ({ id: filter.id, name: filter.name, price: filter.price, icon: 'filter', description: filter.description })),
 ] as const;
 export type GearId = typeof gearCatalog[number]['id'];
 export interface Economy { purchased: GearId[]; gifted: GearId[]; burstEnabled: boolean }
@@ -12,14 +14,18 @@ export const money = (amount: number) => `$${amount}`;
 export const normalizeCompleted = (raw: unknown): string[] => Array.isArray(raw) ? [...new Set(raw.filter((id): id is string => missions.some(m => m.id === id)))] : [];
 export const earnedMoney = (completed: string[]) => missions.filter(m => completed.includes(m.id)).reduce((sum, m) => sum + m.payment, 0);
 export const ownsGear = (economy: Economy, id: GearId) => economy.purchased.includes(id) || economy.gifted.includes(id);
+export const equippedFilter = (raw: unknown, economy: Economy): FilterId => isFilterGear(raw) && ownsGear(economy, raw) ? raw : 'none';
 export const balance = (economy: Economy, completed: string[]) => earnedMoney(completed) - gearCatalog.filter(g => economy.purchased.includes(g.id)).reduce((sum, g) => sum + g.price, 0);
 
-export function normalizeEconomy(raw: unknown, completed: string[], legacyFlashUsed = false): Economy {
+export function normalizeEconomy(raw: unknown, completed: string[], legacyFlashUsed = false, legacyFilters = false): Economy {
   const data = raw && typeof raw === 'object' ? raw as Partial<Economy> : {};
   const validIds = (value: unknown): GearId[] => Array.isArray(value) ? [...new Set(value.filter((id): id is GearId => gearCatalog.some(g => g.id === id)))] : [];
   const gifted = validIds(data.gifted);
   // Preserve a flash already used in an older notebook when adding the shop.
-  if (raw === undefined && legacyFlashUsed) gifted.push('flash');
+  if (raw === undefined && legacyFlashUsed && !gifted.includes('flash')) gifted.push('flash');
+  if (legacyFilters) for (const id of ['nd6', 'cpl'] as const) {
+    if (!gifted.includes(id) && !validIds(data.purchased).includes(id)) gifted.push(id);
+  }
   const economy: Economy = { purchased: [], gifted, burstEnabled: false };
   for (const id of validIds(data.purchased)) {
     const gear = gearCatalog.find(g => g.id === id)!;

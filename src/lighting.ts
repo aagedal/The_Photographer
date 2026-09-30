@@ -1,4 +1,5 @@
 import { filterStops, exposureStops, type CameraSettings } from './photography.ts';
+import { graduatedStops } from './filters.ts';
 
 export const FLASH_GUIDE_NUMBER = 24;
 export const FLASH_SYNC_SPEED = 1 / 250;
@@ -50,14 +51,14 @@ export function flashCanFire(settings: CameraSettings): boolean {
   return flashPower(settings) > 0 && settings.shutter >= FLASH_SYNC_SPEED;
 }
 // Relative exposure from a brief flash pulse. Deliberately independent of shutter duration within sync.
-export function flashExposure(settings: CameraSettings, distance: number): number {
+export function flashExposure(settings: CameraSettings, distance: number, imageY = 0.5): number {
   if (!flashCanFire(settings) || !Number.isFinite(distance) || distance <= 0) return 0;
-  return (FLASH_GUIDE_NUMBER / (settings.aperture * Math.max(distance, 0.3))) ** 2 * flashPower(settings) * settings.iso / 100 * 2 ** -filterStops(settings.filter);
+  return (FLASH_GUIDE_NUMBER / (settings.aperture * Math.max(distance, 0.3))) ** 2 * flashPower(settings) * settings.iso / 100 * 2 ** -(filterStops(settings.filter) + graduatedStops(settings.filter, imageY, settings.gradPosition));
 }
 export function flashRenderIntensity(settings: CameraSettings): number {
   if (!flashCanFire(settings)) return 0;
   return 220 * flashPower(settings) * (4 / settings.aperture) ** 2 * settings.iso / 100 * 2 ** -filterStops(settings.filter);
 }
-export function subjectExposureStops(settings: CameraSettings, sceneEV: number, distance: number, receivesFlash = true): number {
-  return Math.log2(2 ** exposureStops(settings, sceneEV) + (receivesFlash ? flashExposure(settings, distance) : 0));
+export function subjectExposureStops(settings: CameraSettings, sceneEV: number, distance: number, receivesFlash = true, imageY = 0.5): number {
+  return Math.log2(2 ** exposureStops(settings, sceneEV, imageY) + (receivesFlash ? flashExposure(settings, distance, imageY) : 0));
 }

@@ -50,6 +50,11 @@ h1,h2,h3,p { margin:0; }
 .viewfinder:after { inset:0 33.333%; border:0; border-left:1px solid #fff3; border-right:1px solid #fff3; }
 .focus-point { position:absolute; top:50%; left:50%; width:22px; height:22px; transform:translate(-50%,-50%); border:1px solid #eef2d6; }
 .finder-meta { position:absolute; top:8px; left:10px; color:#eef0df; font-size:9px; letter-spacing:1px; text-shadow:0 1px 4px #213c2b; }
+.finder-focus { position:absolute; bottom:8px; left:10px; color:#eef0df; font-size:9px; letter-spacing:.5px; text-shadow:0 1px 4px #213c2b; }
+.gradient-control { position:absolute; right:24px; top:72px; width:180px; padding:10px 12px; background:#f9f8f1ed; border:1px solid #fff8; border-radius:8px; font-size:10px; }
+.gradient-control output { float:right; color:var(--muted); }
+.gradient-control input { display:block; width:100%; margin:9px 0; accent-color:#718448; }
+.gradient-control small { display:block; font-size:9px; color:var(--muted); }
 .camera-mode .viewfinder { display:block; }
 .camera-mode .target-marker { visibility:hidden; }
 .flash { position:absolute; inset:0; background:#fff; pointer-events:none; z-index:8; opacity:0; }

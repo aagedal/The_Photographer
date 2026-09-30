@@ -44,6 +44,8 @@ A fresh notebook starts with **Chasing the golden hour**, the lighthouse assignm
 
 Saved photographs accumulate scene motion over the selected shutter interval: fast shutters freeze subjects, slow shutters soften flowing water and smear the runner. A tripod removes simulated handheld shake; Panning tracks the runner and lets the background streak. Motion blur appears in the photograph, while the live view remains responsive.
 
+**E** previews depth of field through the viewfinder. Autofocus follows the unobstructed assignment subject inside the 3:2 frame; when you aim away, it focuses on the center surface. The AF box and distance readout show the focus plane. Aperture, focal length, and focus distance affect foreground and background softness in every assignment. For obvious separation, try a longer lens and a closer subject at f/1.8–f/2.8; stop down for more depth. The journal retains the captured focus distance.
+
 The HUD contains only compact camera settings, equipment icons, an ambient meter, and a small subject cue. Shortcuts work while playing; focused dropdowns keep their normal keyboard behavior. Without a tripod, the camera has a tiny handheld wobble, softened at long focal lengths for precise aiming. **T** unfolds the tripod in 0.42 seconds and packs it in 0.28 seconds; the wobble smoothly settles during setup and returns during packing. Movement and capture are blocked during the transition, and movement remains locked while deployed. Reduced-motion preferences disable the wobble and skip the animation.
 
 To restart, open **Esc → Controls → Start a fresh notebook**. The current notebook is backed up on this device before the new one starts. **Restore previous notebook** restores that backup.
@@ -58,8 +60,13 @@ Successful assignments pay **$120–$260**, once per brief. Failed attempts cost
 | Camera flash | $180 | Light nearby subjects; F toggles, L adjusts power |
 | Burst camera | $360 | Three frames at 5 fps; B toggles single/burst, Space or C shoots |
 | 200–600 mm wildlife lens | $480 | Equip it for distant bird close-ups; unlocks the kingfisher brief |
+| ND16 filter | $45 | Four stops of uniform light reduction |
+| ND32 filter | $60 | Five stops of uniform light reduction |
+| ND64 filter | $75 | Six stops of uniform light reduction |
+| Circular polarizer | $90 | Reduce glass and water glare; one-stop light cost |
+| Soft graduated ND8 | $100 | Up to three stops over the top of the frame; adjustable transition |
 
-The starter kit includes a fixed 35 mm lens, tripod, ND/CPL filters, and studio lights. The original twelve briefs are achievable with it. The new bird brief requires the wildlife lens. Four starter-kit briefs (lighthouse, creek, freezing the runner, and the morning baker) pay $600, enough to buy it without repeating a mission. The first five original briefs still fund the zoom, flash, and burst camera with $120 left over. Purchases take effect immediately and save with the notebook. Choose your equipped lens at the top of the gear shop; each has its own focal range, and the equipped lens and focal length persist.
+The starter kit includes a fixed 35 mm lens, tripod, and studio lights. Filters are separate purchases. New notebooks can fund any first filter with the lighthouse’s $120 payment; filter-free sports, wedding, studio, and astro briefs also earn money. Existing notebooks retain their previously included ND64 and CPL at no charge. Five briefs (lighthouse, creek, freezing the runner, morning baker, and studio portrait) pay $740: enough for ND64, CPL, and the wildlife lens with $95 left over, without repeating a mission. Purchases take effect immediately and save with the notebook. Choose your equipped lens at the top of the gear shop; each has its own focal range, and the equipped lens and focal length persist.
 
 A burst samples the moving world between frames, keeps every frame in the journal, and previews the highest-scoring frame. Camera settings stay fixed during the sequence; you can keep aiming. Completed missions from older notebooks receive back pay, and a flash already used in those notebooks is kept for free. Starting a fresh notebook also resets money and purchases; its backup preserves them.
 
@@ -96,6 +103,20 @@ Switch to **Studio lights**, visit the studio, and tune the key, fill, and rim l
 
 **Try a close flash portrait**, available after buying the flash, sets up a nearby subject with the studio lamps off and 1/4 flash power. Compare it with flash off, then change shutter speed to explore the background/subject balance. The flash preview appears as a steady light for easy adjustments; photographs simulate a brief pulse. Captures record flash power and the studio rig in their journal entry.
 
+## Filters and reflections
+
+Use **Esc → Gear shop** to buy a filter. Buying fits it immediately; owned filters have **Fit filter / Remove filter** buttons. The FILTER dropdown switches among owned filters; choosing a locked option opens its shop card. One filter is fitted at a time, and ownership, the fitted filter, and graduated transition height survive reloads.
+
+ND16, ND32, and ND64 attenuate both ambient and flash by four, five, and six stops. All three work for the creek assignment when you balance exposure. Suggested settings adapt to an owned ND: ND16 uses 1/4 s at f/11, ND32 uses 1/2 s at f/11, and ND64 uses 1/2 s at f/8, all at ISO 100. Missing required filters open the shop instead of being supplied by suggested settings.
+
+The soft graduated ND8 darkens the top by three stops and leaves the bottom clear. Fit it to raise the viewfinder, then move **GND transition** to align the soft band with your horizon. The slider previews changes live. Center metering and subject feedback account for attenuation at their position in the 3:2 crop; the saved photograph applies the same gradient to ambient and flash before motion accumulation and tone mapping. A graduated filter does not replace a uniform ND for the creek lesson.
+
+The bakery window reflects actual scenery using a planar reflection. A CPL reduces the reflected contribution to one tenth while retaining the glass tint, making the baker easier to see. Compensate for its one-stop light loss with shutter, aperture, or ISO. Polarizer rotation and fully physical angle-dependent suppression remain future work.
+
+The lake and wetland now have translucent water, animated rippled reflections, shallow basins, and 23 swimming fish. Look down beside the jetty to see a nearby school, or explore the lake edges and bird pond. A CPL suppresses surface glare and makes the fish and lakebed clearer. The schools swim continuously with moving tails; fast shutters freeze them and longer exposures record their movement. Reflection strength increases at shallow viewing angles. Water remains a stylized surface rather than a fluid or refraction simulation.
+
+Fern Creek drops over a roughly nine-metre cliff of layered crags, mossy ledges, and firs. The falling curtain spills into a plunge pool with spray and expanding ripples, then a winding river carries foam into Willow Lake through an opening in the western shore. The creek assignment’s viewpoint frames the enlarged cliff and river. Fast shutters retain whitewater detail; the suggested half-second ND64 tripod exposure softens the flow while keeping the rock faces sharp. The river and cliff restrict walking, with dry banks available for exploration.
+
 ## First milestone
 
 - A connected town with six original photography locations, rolling hills, woodland and meadow trails, and a bird wetland, stylized lighting, shadows, animated water and a runner, a moving sun and moon, drifting clouds, and a 30-minute day/night cycle.
@@ -106,7 +127,7 @@ Switch to **Studio lights**, visit the studio, and tune the key, fill, and rim l
 - Actual 3:2 image captures, simplified visual effects, photo review, downloads, and a persistent journal.
 - A map, travel shortcuts, keyboard aiming, and a performance setting.
 
-This is a foundation, not the finished game. Motion blur accumulates up to 33 scene samples over the selected shutter interval, with simulated handheld shake, runner tracking, flowing water, and a brief flash pulse. Long exposures render immediately rather than waiting for the shutter duration. Background separation uses an image-space approximation, panning uses a switch, glass reflections are simulated, and star motion follows a simplified sky rotation. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, variable flash duration, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. Deeper NPC stories, staged events, focus simulation, audio, full collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
+This is a foundation, not the finished game. Motion blur accumulates up to 33 scene samples over the selected shutter interval, with simulated handheld shake, runner tracking, flowing water, and a brief flash pulse. Long exposures render immediately rather than waiting for the shutter duration. Depth of field uses scene depth and a thin-lens blur radius, with a bounded disk kernel; transparent surfaces and blur around silhouettes remain approximations. Panning uses a switch, window reflections render the surrounding scene with simplified polarizer suppression, and star motion follows a simplified sky rotation. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, variable flash duration, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. Deeper NPC stories, staged events, manual focus controls, audio, full collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
 
 See [the development plan](docs/PLAN.md) for the full curriculum, milestones, technical direction, and validation approach.
 
@@ -115,6 +136,9 @@ See [the development plan](docs/PLAN.md) for the full curriculum, milestones, te
 - `src/world.ts` — procedural scenery, lighting, subjects, and animation.
 - `src/missions.ts` — assignment curriculum and suggested settings.
 - `src/photography.ts` — pure exposure and assessment model.
+- `src/optics.ts` / `src/depth-of-field.ts` — thin-lens math and shared scene-depth blur for the live viewfinder and saved photographs.
+- `tests/rendering.html` — development-only GPU checks; run the dev server and visit `/tests/rendering.html`. The optional notebook fixture uses a separate playtest save.
+- `src/filters.ts` — filter catalog, strengths, labels, and graduated attenuation.
 - `src/lighting.ts` — flash exposure/sync, studio settings, and continuous-light metering.
 - `src/environment.ts` — world clock, sky/weather sampling, assignment time windows, and outdoor metering.
 - `src/exploration.ts` — locals, mission discovery, proximity, and equipment gates.

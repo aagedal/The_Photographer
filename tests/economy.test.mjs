@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gearCatalog, normalizeCompleted, normalizeEconomy, earnedMoney, balance, ownsGear, purchaseGear, completeMission, captureCount, focalRange, zoomFocal, fovForFocal, CaptureSequence } from '../src/economy.ts';
+import { gearCatalog, normalizeCompleted, normalizeEconomy, earnedMoney, balance, ownsGear, equippedFilter, purchaseGear, completeMission, captureCount, focalRange, zoomFocal, fovForFocal, CaptureSequence } from '../src/economy.ts';
 import { missions } from '../src/missions.ts';
 const empty = () => normalizeEconomy(undefined, []);
 
@@ -26,12 +26,35 @@ test('starter purchases cannot overdraw the wallet or charge twice', () => {
   assert.equal(purchaseGear(bought.economy,completed,'zoom').reason,'owned');
   assert.deepEqual(state,empty());
 });
-test('first five briefs fund the original three upgrades without repeating a mission', () => {
+test('payments from five briefs cover original upgrade prices before filter spending', () => {
   const completed = []; let state=empty();
   for (const mission of missions.slice(0,5)) completed.push(mission.id);
-  for (const gear of gearCatalog.filter(g => g.id !== 'telephoto')) { const bought=purchaseGear(state,completed,gear.id); assert.equal(bought.ok,true); state=bought.economy; }
+  const originalUpgrades = gearCatalog.filter(g => ['zoom', 'flash', 'burst'].includes(g.id));
+  for (const gear of originalUpgrades) { const bought=purchaseGear(state,completed,gear.id); assert.equal(bought.ok,true); state=bought.economy; }
   assert.equal(balance(state,completed),120);
-  assert.ok(gearCatalog.filter(g => g.id !== 'telephoto').every(gear=>ownsGear(state,gear.id)));
+  assert.ok(originalUpgrades.every(gear=>ownsGear(state,gear.id)));
+});
+test('filters require a purchase, charge once, and retain ownership after reload', () => {
+  for (const id of ['nd4', 'nd5', 'nd6', 'cpl', 'gnd3']) {
+    assert.equal(equippedFilter(id, empty()), 'none');
+    assert.equal(purchaseGear(empty(), [], id).ok, false);
+    const bought = purchaseGear(empty(), ['nature-1'], id);
+    assert.equal(bought.ok, true);
+    assert.equal(balance(bought.economy, ['nature-1']), 120 - gearCatalog.find(g => g.id === id).price);
+    assert.equal(equippedFilter(id, bought.economy), id);
+    assert.equal(purchaseGear(bought.economy, ['nature-1'], id).reason, 'owned');
+    const restored = normalizeEconomy(JSON.parse(JSON.stringify(bought.economy)), ['nature-1']);
+    assert.equal(equippedFilter(id, restored), id);
+  }
+  assert.equal(equippedFilter('missing', empty()), 'none');
+});
+test('older notebooks retain exactly their previous two filters without a charge or duplicate gifts', () => {
+  const migrated = normalizeEconomy(undefined, [], false, true);
+  assert.deepEqual(migrated.gifted, ['nd6', 'cpl']);
+  assert.equal(balance(migrated, []), 0);
+  assert.deepEqual(normalizeEconomy(migrated, [], false, true), migrated);
+  assert.deepEqual(normalizeEconomy(migrated, [], false, false), migrated);
+  assert.ok(['nd4', 'nd5', 'gnd3'].every(id => !ownsGear(migrated, id)));
 });
 test('old notebooks receive back pay and keep a flash already in use', () => {
   const state=normalizeEconomy(undefined,['nature-1','studio-1'],true);
