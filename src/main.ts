@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { categories, missions, type Category, type Mission } from './missions.ts';
+import { missions, type Category, type Mission } from './missions.ts';
 import { assessPhoto, exposureStops, shutterLabel, type Assessment, type CameraSettings, type Framing } from './photography.ts';
 import { createWorld, subjectPosition } from './world.ts';
 import { defaultStudioRig, normalizeStudioRig, lightNames, studioExposureOffset, flashCanFire, flashPower, flashRenderIntensity, subjectExposureStops, type StudioRig } from './lighting.ts';
@@ -16,6 +16,9 @@ import { WORLD_HALF, coastline, terrainHeight, trails } from './terrain.ts';
 import { npcCatalog, nearestNPC, normalizeDiscovered, discoverNPC, canAcceptMission, missionGearReady, type NPC } from './exploration.ts';
 import { WorldAudio } from './audio.ts';
 import { localActivity, townRoad } from './life.ts';
+import { openingScenes } from './opening.ts';
+import { cameraStore, atCameraStore } from './camera-store.ts';
+import { notebookMissions, type MissionSection } from './notebook.ts';
 import './style.css';
 
 const paths: Record<string, string> = {
@@ -54,7 +57,7 @@ const esc = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 interface Photo { payment?: number; burst?: { id: string; index: number; total: number }; id: string; missionId: string; image: string; settings: CameraSettings; result: Assessment; date: number; studio?: StudioRig; environment?: { hour: number; cloudCover: number } }
-interface Save { focus?: { mode: 'auto' | 'manual'; distance: number }; sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
+interface Save { openingSeen?: boolean; focus?: { mode: 'auto' | 'manual'; distance: number }; sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
 const playtest = new URLSearchParams(location.search).get('playtest');
 const storageKey = playtest === null ? 'the-photographer-save-v1' : `the-photographer-playtest${playtest && playtest !== '1' ? `-${playtest.slice(0,32)}` : ''}-v1`;
 let storageAvailable = true;
@@ -65,6 +68,7 @@ function loadSave(): Save {
       const completed = normalizeCompleted(raw.completed);
       return {
       version: 1,
+      openingSeen: raw.openingSeen !== false,
       focus: new FocusState(raw.focus),
       sound: { enabled: raw.sound?.enabled !== false, volume: Number.isFinite(raw.sound?.volume) ? Math.max(0, Math.min(1, raw.sound.volume)) : 0.6 },
       filterShopVersion: 1, filter: raw.filter, gradPosition: gradientPosition(raw.gradPosition),
@@ -80,7 +84,7 @@ function loadSave(): Save {
     };
     }
   } catch { storageAvailable = false; }
-  return { version: 1, filterShopVersion: 1, discovered: normalizeDiscovered(undefined), completed: [], photos: [], active: missions[0].id, economy: normalizeEconomy(undefined, []) };
+  return { openingSeen: false, version: 1, filterShopVersion: 1, discovered: normalizeDiscovered(undefined), completed: [], photos: [], active: missions[0].id, economy: normalizeEconomy(undefined, []) };
 }
 const save = loadSave();
 const focus = new FocusState(save.focus);
@@ -90,6 +94,8 @@ document.addEventListener('pointerdown', () => audio.unlock(), { passive: true }
 document.addEventListener('keydown', () => audio.unlock());
 let activeMission = missions.find(m => m.id === save.active && canAcceptMission(m, save.discovered, save.economy)) ?? missions[0];
 const clock = new WorldClock(save.hour ?? missionReferenceHour(activeMission));
+let openingStep: number | null = null;
+let openingSeconds = 0;
 let meditation: { start: number; distance: number; elapsed: number; target: number } | null = null;
 let lastClockSave = 0;
 let equippedLens = normalizeLens(save.lens, save.economy);
@@ -100,7 +106,9 @@ let lightingOpen = false;
 let lightingMode: 'flash' | 'studio' = 'flash';
 let cameraMode = false;
 let lowQuality = false;
-let boardCategory: Category | 'All' = 'All';
+type PauseTab = 'assignments' | 'journal' | 'explore' | 'settings';
+let pauseTab: PauseTab = 'assignments';
+let missionSection: MissionSection = 'active';
 let capturing = false;
 const captureSequence = new CaptureSequence();
 let shotSettings: CameraSettings | null = null;
@@ -122,7 +130,7 @@ $('app').innerHTML = `
   <main class="workspace">
     <section class="stage" id="stage" aria-label="Interactive 3D photography world">
       <div class="scene-location"><span id="time-icon">${icon('sun')}</span><div><strong><span id="location-title"></span><span id="clock-label"></span></strong><small id="subject-cue"></small></div></div>
-      <button class="menu-button" id="menu-button" aria-label="Open pause menu (Escape)" title="Assignments, journal, map and controls (Esc)"><span>Esc</span></button>
+      <button class="menu-button" id="menu-button" aria-label="Open pause menu (Escape)" title="Assignments, journal, exploration and settings (Esc)"><span>Esc</span></button>
       <aside id="lighting-panel" class="lighting-panel" aria-label="Lighting kit" hidden></aside>
       <div class="target-marker" id="target-marker"><span></span><small id="target-label"></small></div>
       <div class="viewfinder" id="viewfinder"><span class="finder-meta"><span id="lens-label">35</span> MM · <span id="lens-type">PRIME</span> · 3:2</span><span class="focus-point" id="focus-point"></span><span class="finder-focus" id="focus-label"></span></div>
@@ -135,6 +143,7 @@ $('app').innerHTML = `
         <p id="focus-status"></p>
       </aside>
       <label class="gradient-control" id="gradient-control" hidden>GND transition <output id="gradient-value">50%</output><input id="gradient-position" type="range" min="10" max="90" step="5" value="50" aria-label="Graduated ND transition height"/><small>Dark above · clear below</small></label>
+      <section class="opening-overlay" id="opening-overlay" aria-label="Arrival in Willowbrook" hidden></section>
       <div class="meditation-overlay" id="meditation-overlay" hidden><div>${icon('moon')}<p>Meditating…</p><strong id="meditation-time"></strong><small>Esc to return</small></div></div>
       <button class="npc-prompt" id="npc-prompt" hidden></button>
       <div class="flash" id="flash"></div>
@@ -143,6 +152,7 @@ $('app').innerHTML = `
         <div class="setting" title="Shutter: 1 slower / 2 faster"><label for="shutter">SHUTTER <small>1 / 2</small></label><select id="shutter">${options(shutterValues, shutterLabel, settings.shutter)}</select></div>
         <div class="setting" title="Aperture: 3 wider / 4 narrower"><label for="aperture">APERTURE <small>3 / 4</small></label><select id="aperture">${options(apertureValues, v => `f/${v}`, settings.aperture)}</select></div>
         <div class="setting" title="ISO: 5 lower / 6 higher"><label for="iso">ISO <small>5 / 6</small></label><select id="iso">${options(isoValues, String, settings.iso)}</select></div>
+        <div class="setting lens-setting"><label for="lens">LENS</label><select id="lens" aria-label="Equipped lens"></select></div>
         <div class="setting filter-setting"><label for="filter">FILTER</label><select id="filter"><option value="none">—</option>${filterCatalog.map(filter => `<option value="${filter.id}">${filter.id === 'gnd3' ? 'GND8' : filter.label}</option>`).join('')}</select></div>
         <div class="equipment">
           <button id="camera-mode" aria-label="Toggle viewfinder (E)" aria-pressed="false" title="Viewfinder (E)">${icon('camera')}</button>
@@ -150,7 +160,7 @@ $('app').innerHTML = `
           <button id="tripod" aria-label="Deploy tripod (T)" aria-pressed="false" title="Deploy tripod (T)">${icon('tripod')}</button>
           <button id="panning" aria-label="Toggle panning" aria-pressed="false" title="Panning">${icon('move')}</button>
           <button id="flash-toggle" aria-label="Toggle camera flash (F)" aria-pressed="false" title="Flash (F)">${icon('bolt')}</button>
-          <button id="burst-mode" aria-label="Unlock burst camera in gear shop" aria-pressed="false" title="Burst camera (B)">${icon('burst')}</button>
+          <button id="burst-mode" aria-label="Unlock burst camera in camera store" aria-pressed="false" title="Burst camera (B)">${icon('burst')}</button>
           <button id="lighting-kit" aria-label="Open lighting kit (L)" aria-expanded="false" title="Lighting kit (L)">${icon('studio')}</button>
         </div>
         <div class="exposure" title="Ambient exposure meter"><strong id="ev-label"></strong><div class="meter">${Array.from({ length: 11 }, () => '<i></i>').join('')}<span class="needle" id="meter-needle"></span></div></div>
@@ -184,7 +194,7 @@ const viewfinderRenderer = createViewfinderRenderer();
 const tripodView = createTripodView();
 const camera = new THREE.PerspectiveCamera(fovForFocal(focalLength, 1), 1, 0.1, 450);
 camera.rotation.order = 'YXZ';
-const player = new THREE.Vector3(...activeMission.viewpoint);
+const player = new THREE.Vector3(activeMission.viewpoint[0], world.groundHeight(activeMission.viewpoint[0], activeMission.viewpoint[2]) + 1.7, activeMission.viewpoint[2]);
 let yaw = 0, pitch = 0;
 const keys = new Set<string>();
 const targetVector = new THREE.Vector3();
@@ -195,6 +205,35 @@ let focusDistance = focus.distance;
 let drag = false;
 let lastPointerX = 0, lastPointerY = 0;
 
+function startOpening() {
+  modal.close(); keys.clear(); drag = false; setCameraMode(false);
+  if (lightingOpen) toggleLightingKit();
+  requestTripod(false, true); openingStep = 0; openingSeconds = 0;
+  clock.skipTo(17); world.setTime(clock.hour); stage.classList.add('opening');
+  $('opening-overlay').hidden = false; renderOpening();
+}
+function renderOpening() {
+  const beat = openingScenes[openingStep!];
+  $('opening-overlay').innerHTML = `<button class="opening-skip" id="skip-opening">Skip introduction <kbd>Esc</kbd></button><div class="opening-caption"><span class="eyebrow">WILLOWBROOK · ${openingStep! + 1} / ${openingScenes.length}</span><h1>${beat.title}</h1><p class="opening-speaker">${beat.speaker}</p><p class="opening-line">“${beat.line}”</p><button class="primary" id="opening-next">${beat.action}${icon('arrow')}</button></div>`;
+  $('skip-opening').onclick = () => finishOpening(true);
+  $('opening-next').onclick = () => {
+    if (openingStep === openingScenes.length - 1) finishOpening(false);
+    else { openingStep!++; openingSeconds = 0; renderOpening(); }
+  };
+  $('opening-next').focus();
+}
+function finishOpening(skipped: boolean) {
+  openingStep = null; world.opening.finish(); stage.classList.remove('opening'); $('opening-overlay').hidden = true;
+  save.openingSeen = true; keys.clear(); drag = false;
+  if (!skipped) {
+    const deer = missions.find(m => m.id === 'intro-deer')!;
+    save.discovered = normalizeDiscovered(save.discovered, [deer.id]); selectMission(deer);
+    settings = { ...deer.recommended, flashPower: 0 }; focus.mode = 'auto'; equipLens('prime');
+    travelTo(deer); setCameraMode(true); syncSettings();
+    toast('Your first hunt: frame the deer, give it space, and press Space or C.');
+  } else { selectMission(missions[0]); travelTo(activeMission); toast('Welcome to Willowbrook. Esc opens your notebook.'); }
+  persist(); renderer.domElement.focus({ preventScroll: true });
+}
 function toast(message: string) {
   $('toast').textContent = message; $('toast').classList.add('show');
   window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => $('toast').classList.remove('show'), 3600);
@@ -237,7 +276,7 @@ function syncTripod() {
   const label = tripod.transitioning ? (tripod.target ? 'Setting up tripod' : 'Packing tripod') : (tripod.deployed ? 'Pack tripod' : 'Deploy tripod');
   button.setAttribute('aria-label', `${label} (T)`); button.title = `${label} (T)`;
   $<HTMLButtonElement>('capture').disabled = tripod.transitioning || capturing || !!meditation || performance.now() < shootReadyAt;
-  for (const id of ['shutter', 'aperture', 'iso', 'filter', 'gradient-position', 'tripod', 'panning', 'flash-toggle', 'burst-mode', 'lighting-kit', 'focus-toggle', 'focus-mode', 'focus-acquire']) ($<HTMLButtonElement | HTMLSelectElement | HTMLInputElement>(id)).disabled = capturing;
+  for (const id of ['shutter', 'aperture', 'iso', 'lens', 'filter', 'gradient-position', 'tripod', 'panning', 'flash-toggle', 'burst-mode', 'lighting-kit', 'focus-toggle', 'focus-mode', 'focus-acquire']) ($<HTMLButtonElement | HTMLSelectElement | HTMLInputElement>(id)).disabled = capturing;
   $<HTMLInputElement>('focus-distance').disabled = capturing || focus.mode === 'auto';
 }
 function suggestSettings() {
@@ -258,36 +297,46 @@ function suggestSettings() {
   syncSettings(); if (lightingOpen) renderLightingPanel(); persist();
   modal.close(); toast('Suggested settings applied.');
 }
-function openPauseMenu() {
-  const m = activeMission; persist();
-  showModal('The Photographer', 'PAUSED', '', `
-    <div class="pause-assignment"><span class="eyebrow">${m.category} · ${money(m.payment)} ${save.completed.includes(m.id) ? 'paid' : 'payment'} · ${save.completed.includes(m.id) ? 'Completed' : 'Current assignment'}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>
-      ${m.timeWindow ? `<p class="mission-time ${isMissionTime(m, clock.hour) ? 'ready' : 'waiting'}">${esc(m.timeWindow.label)} · ${isMissionTime(m, clock.hour) ? 'Ready now' : 'Wait for the light'}</p>` : ''}<details><summary>Field notes</summary><p>${esc(m.lesson)}</p></details>
-      <div class="pause-actions"><button class="secondary" id="travel">${icon('pin')}Find the spot</button><button class="secondary" id="suggest">Suggested settings</button></div>
-    </div>
-    <div class="pause-grid"><button id="menu-board">${icon('flag')}Assignments</button><button id="menu-journal">${icon('book')}Photo journal</button><button id="menu-map">${icon('map')}World map</button><button id="menu-help">${icon('info')}Controls</button><button id="menu-shop">${icon('shop')}Gear shop · ${money(balance(save.economy, save.completed))}</button><button id="menu-lighting">${icon('studio')}Lighting kit</button><button id="quality">${icon('sun')}Quality: ${lowQuality ? 'performance' : 'balanced'}</button><button id="menu-sound">${icon('sound')}Sound: ${audio.enabled ? 'on' : 'off'}</button><button id="menu-meditate">${icon('moon')}Meditate · ${formatTime(clock.hour)}</button></div>
-    <div class="pause-footer"><div><span id="menu-progress"></span><small id="save-status"></small></div><button class="primary" id="resume">Resume <kbd>Esc</kbd></button></div>`, 'menu');
-  $('travel').onclick = () => { modal.close(); travelTo(m); };
-  $('suggest').onclick = suggestSettings;
-  $('menu-board').onclick = openBoard; $('menu-journal').onclick = openJournal;
-  $('menu-shop').onclick = openGearShop;
-  $('menu-meditate').onclick = openMeditation;
-  $('menu-sound').onclick = openSound;
-  $('menu-map').onclick = openMap; $('menu-help').onclick = openHelp;
-  $('menu-lighting').onclick = () => { modal.close(); if (!lightingOpen) toggleLightingKit(); };
-  $('quality').onclick = () => { toggleQuality(); openPauseMenu(); };
-  $('resume').onclick = () => modal.close(); updateProgress();
+function pauseNavigation() {
+  const tabs: [PauseTab, string][] = [['assignments', 'Assignments'], ['journal', 'Journal'], ['explore', 'Explore'], ['settings', 'Settings']];
+  return `<div class="pause-tabs" role="tablist" aria-label="Pause menu">${tabs.map(([id, label]) => `<button role="tab" id="tab-${id}" data-pause-tab="${id}" aria-selected="${pauseTab === id}" aria-controls="pause-panel" tabindex="${pauseTab === id ? 0 : -1}">${label}</button>`).join('')}</div>`;
 }
-function openSound() {
-  showModal('Listen to Willowbrook.', 'SOUND', 'Wind, water, birds and quiet streets change as the day turns.', `<div class="help-card"><p>Sound starts after your first click or key press, and pauses in menus or when you leave the game. ${audio.available ? '' : 'Audio is unavailable in this browser.'}</p><button class="secondary" id="sound-toggle" aria-pressed="${audio.enabled}" ${audio.available ? '' : 'disabled'}>${audio.enabled ? 'Mute sound' : 'Enable sound'}</button><p><label for="sound-volume">Volume <span id="sound-value">${Math.round(audio.volume * 100)}%</span></label></p><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(audio.volume * 100)}" style="width:100%" aria-label="Ambient sound volume" /></div>`);
-  $('sound-toggle').onclick = () => { audio.enabled = !audio.enabled; if (audio.enabled) audio.unlock(); else audio.silence(); persist(); openSound(); };
+function openPauseMenu(tab: PauseTab = pauseTab) {
+  pauseTab = tab; persist();
+  if (tab === 'journal') openJournal(true);
+  else if (tab === 'explore') openMap(true);
+  else if (tab === 'settings') openSettings();
+  else openBoard();
+}
+function activeMissionContent() {
+  const m = activeMission;
+  if (save.completed.includes(m.id)) return `<div class="empty"><span class="mission-badge complete">${icon('check')}Completed</span><h3>${esc(m.title)}</h3><p>This assignment is finished. Choose an available story for your next photograph.</p><button class="secondary" id="choose-available">Browse available assignments</button></div>`;
+  return `<article class="pause-assignment"><span class="mission-badge">Active assignment</span><span class="eyebrow">${m.category} · ${esc(m.location)} · ${m.payment ? `${money(m.payment)} payment` : 'First photograph'}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>
+    ${m.timeWindow ? `<p class="mission-time ${isMissionTime(m, clock.hour) ? 'ready' : 'waiting'}">${esc(m.timeWindow.label)} · ${isMissionTime(m, clock.hour) ? 'Ready now' : 'Wait for the light'}</p>` : ''}
+    <details><summary>Field notes</summary><p>${esc(m.lesson)}</p></details>
+    <div class="pause-actions"><button class="secondary" id="travel">${icon('pin')}Find the spot</button><button class="secondary" id="suggest">Suggested settings</button></div></article>`;
+}
+function openSettings() {
+  pauseTab = 'settings';
+  showModal('Make yourself at home.', 'PAUSED · SETTINGS', 'Sound, display, controls, and your saved notebook.', `<div class="settings-stack">
+    <section class="settings-card"><div><h3>Sound</h3><p>Wind, water, birds, and quiet streets.</p></div><button class="secondary" id="sound-toggle" aria-pressed="${audio.enabled}" ${audio.available ? '' : 'disabled'}>${audio.enabled ? 'Mute' : 'Enable sound'}</button><label class="volume-setting" for="sound-volume">Volume <output id="sound-value">${Math.round(audio.volume * 100)}%</output><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(audio.volume * 100)}" ${audio.available ? '' : 'disabled'}/></label></section>
+    <section class="settings-card"><div><h3>Graphics</h3><p>Performance reduces shadows and rendering resolution.</p></div><button class="secondary" id="quality">${lowQuality ? 'Performance' : 'Balanced'}</button></section>
+    <section class="settings-card"><div><h3>Controls</h3><p>Movement, camera shortcuts, and photography basics.</p></div><button class="secondary" id="menu-help">View controls</button></section>
+    <section class="settings-card"><div><h3>Notebook</h3><p>Restart with a backup, or restore your previous progress.</p></div><button class="secondary" id="new-notebook">Manage notebook</button></section>
+  </div>`, 'menu');
+  $('quality').onclick = () => { toggleQuality(); openSettings(); };
+  $('menu-help').onclick = openHelp; $('new-notebook').onclick = openNewNotebook;
+  $('sound-toggle').onclick = () => { audio.enabled = !audio.enabled; if (audio.enabled) audio.unlock(); else audio.silence(); persist(); openSettings(); };
   $<HTMLInputElement>('sound-volume').oninput = e => { audio.volume = Number((e.target as HTMLInputElement).value) / 100; $('sound-value').textContent = `${Math.round(audio.volume * 100)}%`; persist(); };
 }
 function openGearShop() {
+  if (!atCameraStore(player.x, player.y, player.z)) {
+    showModal(cameraStore.name, 'CAMERA STORE · TOWN CENTRE', 'New equipment is sold at the storefront, just south of the running track.', `<div class="store-directions">${icon('shop')}<h3>A new reason to visit town.</h3><p>Visit the green-striped camera store and press <kbd>R</kbd> at the door to browse lenses, filters, flash, and cameras. Switch gear you already own from the camera bar.</p><button class="primary" id="locate-store">Find the camera store on the map ${icon('map')}</button></div>`);
+    $('locate-store').onclick = () => openPauseMenu('explore'); return;
+  }
   const cash = balance(save.economy, save.completed);
-  showModal('A little more possibility.', 'GEAR SHOP', 'Each assignment pays once. Spend your earnings on new ways to shoot.', `
+  showModal(cameraStore.name, 'CAMERA STORE', 'Each assignment pays once. Spend your earnings on new ways to shoot.', `
     <div class="shop-wallet"><div><small>AVAILABLE</small><strong id="shop-balance">${money(cash)}</strong></div><span>${money(earnedMoney(save.completed))} earned · ${money(earnedMoney(save.completed) - cash)} spent</span></div>
-    <div class="lens-picker"><span>Equipped lens</span>${(['prime', 'zoom', 'telephoto'] as const).filter(lens => lens === 'prime' || ownsGear(save.economy, lens)).map(lens => `<button class="secondary ${lens === equippedLens ? 'selected' : ''}" data-lens="${lens}">${lens === 'prime' ? '35 mm' : lens === 'zoom' ? '24–120 mm' : '200–600 mm'}${lens === equippedLens ? ' · Equipped' : ''}</button>`).join('')}</div>
     <div class="gear-grid">${gearCatalog.map(gear => {
       const owned = ownsGear(save.economy, gear.id), affordable = cash >= gear.price;
       return `<article class="gear-card" id="gear-${gear.id}"><div class="gear-icon">${icon(gear.icon)}</div><div><h3>${gear.name}</h3><p>${gear.description}</p><div class="gear-action">${owned ? `<span class="gear-owned">${icon('check')}${save.economy.gifted.includes(gear.id) ? 'Kept from your previous kit' : 'In your kit'}</span>${gear.id === 'burst' ? `<button class="secondary" id="shop-burst">${save.economy.burstEnabled ? 'Use single shots' : 'Use burst mode'}</button>` : isFilterGear(gear.id) ? `<button class="secondary" data-fit-filter="${settings.filter === gear.id ? 'none' : gear.id}">${settings.filter === gear.id ? 'Remove filter' : 'Fit filter'}</button>` : ''}` : `<strong>${money(gear.price)}</strong><button class="${affordable ? 'primary' : 'secondary'}" data-buy="${gear.id}" ${affordable ? '' : 'disabled'}>${affordable ? `Buy · ${money(gear.price)}` : `Need ${money(gear.price - cash)} more`}</button>`}</div></div></article>`;
@@ -299,13 +348,12 @@ function openGearShop() {
     syncSettings(); updateLensLabel(); if (id === 'gnd3') setCameraMode(true); if (lightingOpen) renderLightingPanel(); persist(); openGearShop();
     toast(`${gearCatalog.find(g => g.id === id)!.name} added to your kit.`);
   });
-  modal.querySelectorAll<HTMLButtonElement>('[data-lens]').forEach(button => button.onclick = () => { equipLens(button.dataset.lens as LensId); persist(); openGearShop(); });
   modal.querySelectorAll<HTMLButtonElement>('[data-fit-filter]').forEach(button => button.onclick = () => { fitFilter(button.dataset.fitFilter as FilterId); openGearShop(); });
   if ($('shop-burst')) $('shop-burst').onclick = () => { toggleBurst(); openGearShop(); };
 }
 function fitFilter(filter: FilterId) {
   if (isFilterGear(filter) && !ownsGear(save.economy, filter)) {
-    syncSettings(); openGearShop(); $(`gear-${filter}`).scrollIntoView({ block: 'center' });
+    syncSettings(); openGearShop(); $(`gear-${filter}`)?.scrollIntoView({ block: 'center' });
     toast(`Buy ${filterLabel(filter)} before fitting it.`); return;
   }
   settings.filter = filter; syncSettings(); if (filter === 'gnd3') setCameraMode(true); persist();
@@ -319,7 +367,7 @@ function gearHint(message: string) {
   lastGearHint = performance.now(); toast(message);
 }
 function updateClockCue() {
-  $('location-title').textContent = player.z > 84 ? 'Southern shore' : player.z >= 31 && player.z < 80 && player.x > -15 && player.x < 57 ? 'South neighborhood' : player.x < -35 && player.x > -53 && player.z > 7 && player.z < 39 ? 'Wedding chapel' : activeMission.location;
+  $('location-title').textContent = atCameraStore(player.x, player.y, player.z) ? cameraStore.name : player.z > 84 ? 'Southern shore' : player.z >= 31 && player.z < 80 && player.x > -15 && player.x < 57 ? 'South neighborhood' : player.x < -35 && player.x > -53 && player.z > 7 && player.z < 39 ? 'Wedding chapel' : activeMission.location;
   const time = formatTime(clock.hour), phase = sampleSky(clock.hour).night > 0.5 ? 'moon' : 'sun';
   if ($('clock-label').textContent !== time) $('clock-label').textContent = time;
   if ($('time-icon').dataset.phase !== phase) { $('time-icon').innerHTML = icon(phase); $('time-icon').dataset.phase = phase; }
@@ -366,18 +414,15 @@ function travelTo(m: Mission) {
 function selectMission(m: Mission) {
   if (!save.discovered.includes(m.id)) { toast('Explore and talk to the locals to discover this assignment.'); return false; }
   if (!missionGearReady(m, save.economy)) { openGearShop(); return false; }
-  activeMission = m; renderer.shadowMap.needsUpdate = true;
+  activeMission = m; missionSection = 'active'; renderer.shadowMap.needsUpdate = true;
   lightingMode = m.category === 'Studio' ? 'studio' : 'flash';
   applyStudioRig(); setCameraMode(false); renderMission(); updateExposure(); persist(); if (lightingOpen) renderLightingPanel();
   return true;
 }
 function syncSettings() {
   settings.filter = equippedFilter(settings.filter, save.economy);
-  for (const filter of filterCatalog) {
-    const option = $<HTMLSelectElement>('filter').querySelector<HTMLOptionElement>(`option[value="${filter.id}"]`)!;
-    const label = filter.id === 'gnd3' ? 'GND8' : filter.label;
-    option.textContent = ownsGear(save.economy, filter.id) ? label : `${label} · ${money(filter.price)}`;
-  }
+  $<HTMLSelectElement>('filter').innerHTML = `<option value="none">—</option>${filterCatalog.filter(filter => ownsGear(save.economy, filter.id)).map(filter => `<option value="${filter.id}">${filter.id === 'gnd3' ? 'GND8' : filter.label}</option>`).join('')}`;
+  updateLensLabel();
   $('gradient-control').hidden = settings.filter !== 'gnd3';
   $<HTMLInputElement>('gradient-position').value = String(Math.round(gradientPosition(settings.gradPosition) * 100));
   $('gradient-value').textContent = `${Math.round(gradientPosition(settings.gradPosition) * 100)}%`;
@@ -387,13 +432,13 @@ function syncSettings() {
   $('flash-toggle').classList.toggle('on', flashPower(settings) > 0); $('flash-toggle').setAttribute('aria-pressed', String(flashPower(settings) > 0));
   const flashOwned = ownsGear(save.economy, 'flash'), burstOwned = ownsGear(save.economy, 'burst');
   $('flash-toggle').classList.toggle('gear-locked', !flashOwned);
-  $('flash-toggle').setAttribute('aria-label', flashOwned ? 'Toggle camera flash (F)' : 'Unlock flash in gear shop ($180)');
-  $('flash-toggle').title = flashOwned ? 'Flash (F)' : 'Flash · $180 in gear shop';
+  $('flash-toggle').setAttribute('aria-label', flashOwned ? 'Toggle camera flash (F)' : 'Unlock flash in camera store ($180)');
+  $('flash-toggle').title = flashOwned ? 'Flash (F)' : 'Flash · $180 in camera store';
   $('burst-mode').classList.toggle('gear-locked', !burstOwned);
   $('burst-mode').classList.toggle('on', save.economy.burstEnabled);
   $('burst-mode').setAttribute('aria-pressed', String(save.economy.burstEnabled));
-  $('burst-mode').setAttribute('aria-label', burstOwned ? 'Toggle three-frame burst (B)' : 'Unlock burst camera in gear shop ($360)');
-  $('burst-mode').title = burstOwned ? `Shooting: ${save.economy.burstEnabled ? '3-frame burst' : 'single'} (B)` : 'Burst camera · $360 in gear shop';
+  $('burst-mode').setAttribute('aria-label', burstOwned ? 'Toggle three-frame burst (B)' : 'Unlock burst camera in camera store ($360)');
+  $('burst-mode').title = burstOwned ? `Shooting: ${save.economy.burstEnabled ? '3-frame burst' : 'single'} (B)` : 'Burst camera · $360 in camera store';
   renderer.shadowMap.needsUpdate = true;
   syncTripod(); syncFocusControls(); updateExposure();
 }
@@ -455,7 +500,7 @@ function renderLightingPanel() {
     <div class="lighting-mode-tabs"><button data-light-mode="flash" class="${lightingMode === 'flash' ? 'selected' : ''}">${icon('bolt')}Camera flash</button><button data-light-mode="studio" class="${lightingMode === 'studio' ? 'selected' : ''}">${icon('studio')}Studio lights</button></div>
     <div class="lighting-readings"><span>Ambient<strong id="lighting-ambient">—</strong></span><span>Subject<strong id="lighting-subject">—</strong></span></div>
     <div class="lighting-section" ${lightingMode === 'studio' ? 'hidden' : ''}><label class="light-select-label" for="flash-power">Manual flash power</label><select id="flash-power" ${flashOwned ? '' : 'disabled'}>${[0, 1 / 64, 1 / 32, 1 / 16, 1 / 8, 1 / 4, 1 / 2, 1].map(v => `<option value="${v}" ${v === power ? 'selected' : ''}>${v === 0 ? 'Off' : v === 1 ? 'Full power' : `1/${Math.round(1 / v)} power`}</option>`).join('')}</select>
-      ${flashOwned ? '' : '<button class="secondary" id="unlock-flash">Unlock flash in gear shop · $180</button>'}<p class="lighting-note">A brief pulse lights nearby subjects most. Double the distance and only a quarter of the flash light reaches them. Preview shows the pulse as a steady light.</p>
+      ${flashOwned ? '' : '<button class="secondary" id="unlock-flash">Unlock flash in camera store · $180</button>'}<p class="lighting-note">A brief pulse lights nearby subjects most. Double the distance and only a quarter of the flash light reaches them. Preview shows the pulse as a steady light.</p>
       <p class="lighting-note" id="flash-sync-note"></p>
     </div>
     <div class="lighting-section" ${lightingMode === 'flash' ? 'hidden' : ''}>${activeMission.category !== 'Studio' ? '<p class="lighting-note">The lights are set up in Daylight Studio. Visit the pottery maker to see your adjustments.</p><button class="primary" id="visit-studio">Visit the studio →</button>' : '<p class="lighting-note">Continuous lights: shutter, aperture, and ISO all affect their exposure. Move a light closer to make its falloff stronger.</p>'}
@@ -662,9 +707,9 @@ function makePhoto(s: CameraSettings, frame: Framing): string {
 
 function capture() {
   const now = performance.now();
-  if (modal.open || capturing || tripod.transitioning || meditation || now < shootReadyAt) return;
+  if (openingStep !== null || modal.open || capturing || tripod.transitioning || meditation || now < shootReadyAt) return;
   if (settings.filter !== equippedFilter(settings.filter, save.economy)) { syncSettings(); openGearShop(); toast('Buy the filter before taking a photograph with it.'); return; }
-  if (activeMission.requiredGear && (!missionGearReady(activeMission, save.economy) || equippedLens !== 'telephoto')) { toast('Equip the 200–600 mm wildlife lens in Esc → Gear shop.'); return; }
+  if (activeMission.requiredGear && (!missionGearReady(activeMission, save.economy) || equippedLens !== 'telephoto')) { toast('Choose the 200–600 mm wildlife lens in the LENS dropdown.'); return; }
   capturing = true; keys.clear(); shotPhotos = []; shotPayment = 0; shotId = crypto.randomUUID();
   shotSettings = { ...settings, focalLength, focusMode: focus.mode, focusDistance: focus.mode === 'manual' ? focus.distance : undefined };
   captureSequence.start(now, captureCount(save.economy)); syncTripod();
@@ -704,18 +749,39 @@ function finishShooting() {
   preview.onclick = () => { preview.hidden = true; openReview(best); };
   window.clearTimeout(previewTimer); previewTimer = window.setTimeout(() => preview.hidden = true, 6000);
   shotPhotos = []; shotSettings = null;
+  if (best.missionId === 'intro-deer' && best.result.passed && activeMission.id === 'intro-deer') {
+    selectMission(missions[0]); setCameraMode(false);
+    toast('A photograph, and the deer walks away. Your next story: the lighthouse at Willow Lake. Esc for directions.');
+  }
 }
 
 function showModal(title: string, eyebrow: string, subtitle: string, content: string, view: 'menu' | 'page' = 'page') {
   if (capturing) finishShooting();
   modalView = view; keys.clear(); drag = false; audio.silence();
-  modal.innerHTML = `<div class="modal-header"><div><div class="eyebrow">${esc(eyebrow)}</div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" id="close-modal" aria-label="${view === 'menu' ? 'Resume game' : 'Back to pause menu'}">${icon('close')}</button></div><div class="modal-body">${content}</div>`;
+  modal.innerHTML = `<div class="modal-header"><div><div class="eyebrow">${esc(eyebrow)}</div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" id="close-modal" aria-label="${view === 'menu' ? 'Resume game' : 'Back to pause menu'}">${icon('close')}</button></div>${view === 'menu' ? pauseNavigation() : ''}<div class="modal-body" ${view === 'menu' ? `id="pause-panel" role="tabpanel" aria-labelledby="tab-${pauseTab}"` : ''}>${content}</div>${view === 'menu' ? '<div class="pause-footer"><div><span id="menu-progress"></span><small id="save-status"></small></div><button class="primary" id="resume">Resume <kbd>Esc</kbd></button></div>' : ''}`;
   if (!modal.open) modal.showModal();
   $('close-modal').onclick = leaveModal;
+  if (view === 'menu') {
+    $('resume').onclick = () => modal.close(); updateProgress();
+    const tabs = [...modal.querySelectorAll<HTMLButtonElement>('[data-pause-tab]')];
+    tabs.forEach((button, index) => {
+      button.onclick = () => { openPauseMenu(button.dataset.pauseTab as PauseTab); $(`tab-${pauseTab}`).focus(); };
+      button.onkeydown = e => {
+        let next = index;
+        if (e.key === 'ArrowRight') next = (index + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        else return;
+        e.preventDefault(); tabs[next].click();
+      };
+    });
+    $(`tab-${pauseTab}`).focus({ preventScroll: true });
+  }
 }
 function missionCard(m: Mission) {
   const ready = missionGearReady(m, save.economy);
-  return `<button class="assignment-card ${ready ? '' : 'mission-locked'}" data-mission="${m.id}"><span class="eyebrow">${icon(categoryIcon[m.category])}${m.category} · ${esc(m.location)}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>${ready ? '' : '<p class="gear-requirement">Requires 200–600 mm lens · $480 · Open gear shop →</p>'}<span class="card-footer"><span>${save.completed.includes(m.id) ? '✓ Story told' : m.timeWindow ? esc(m.timeWindow.label) : 'Any time'}</span><span>${money(m.payment)} · ${m.reward} XP →</span></span></button>`;
+  return `<button class="assignment-card ${ready ? '' : 'mission-locked'}" data-mission="${m.id}"><span class="eyebrow">${icon(categoryIcon[m.category])}${m.category} · ${esc(m.location)}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>${ready ? '' : '<p class="gear-requirement">Requires 200–600 mm lens · $480 · Visit camera store →</p>'}<span class="card-footer"><span>${save.completed.includes(m.id) ? '✓ Story told' : m.timeWindow ? esc(m.timeWindow.label) : 'Any time'}</span><span>${save.completed.includes(m.id) ? 'Replay · no extra payment' : `${m.payment ? `${money(m.payment)} · ` : ''}${m.reward} XP →`}</span></span></button>`;
 }
 function wireMissionCards() {
   modal.querySelectorAll<HTMLButtonElement>('[data-mission]').forEach(b => b.onclick = () => {
@@ -723,13 +789,20 @@ function wireMissionCards() {
   });
 }
 function openBoard() {
-  const known = missions.filter(m => save.discovered.includes(m.id));
-  showModal('Your field notebook.', 'DISCOVERED ASSIGNMENTS', `${known.length} of ${missions.length} stories found. Walk the trails and press R near a local to hear about more.`, `<div class="discovery-note">Locals with a golden marker have stories to share. Look by the creek, track, square, garden, studio and northern ridge.</div><div class="category-tabs">${(['All', ...categories] as const).map(c => `<button data-category="${c}" class="${boardCategory === c ? 'active' : ''}">${c}</button>`).join('')}</div><div class="mission-grid">${known.filter(m => boardCategory === 'All' || m.category === boardCategory).map(missionCard).join('') || '<p class="discovery-note">No stories discovered here yet. Ask a local while exploring.</p>'}</div>`);
-  modal.querySelectorAll<HTMLButtonElement>('[data-category]').forEach(b => b.onclick = () => { boardCategory = b.dataset.category as typeof boardCategory; openBoard(); });
+  pauseTab = 'assignments';
+  const sections: [MissionSection, string][] = [['active', 'Active'], ['available', 'Available'], ['completed', 'Completed']];
+  const list = notebookMissions(save.discovered, save.completed, activeMission.id, missionSection);
+  const content = missionSection === 'active' ? activeMissionContent() : `<div class="mission-grid">${list.map(missionCard).join('')}</div>${list.length ? '' : `<div class="empty"><h3>${missionSection === 'completed' ? 'Your stories will live here.' : 'More stories are out there.'}</h3><p>${missionSection === 'completed' ? 'Finish an assignment to add it to your completed collection.' : 'Talk to locals with golden markers to discover your next assignment.'}</p></div>`}`;
+  showModal('Your field notebook.', 'PAUSED · ASSIGNMENTS', 'One active story at a time. Completed assignments stay here to revisit.', `<div class="mission-sections" role="group" aria-label="Assignment status">${sections.map(([id, label]) => `<button data-mission-section="${id}" aria-pressed="${missionSection === id}">${label}<span>${notebookMissions(save.discovered, save.completed, activeMission.id, id).length}</span></button>`).join('')}</div>${content}<p class="discovery-note notebook-hint">${save.discovered.length} of ${missions.length} stories discovered · Press R near a local to find more.</p>`, 'menu');
+  modal.querySelectorAll<HTMLButtonElement>('[data-mission-section]').forEach(b => b.onclick = () => { missionSection = b.dataset.missionSection as MissionSection; openBoard(); modal.querySelector<HTMLButtonElement>(`[data-mission-section="${missionSection}"]`)?.focus(); });
+  if ($('travel')) $('travel').onclick = () => { modal.close(); travelTo(activeMission); };
+  if ($('suggest')) $('suggest').onclick = suggestSettings;
+  if ($('choose-available')) $('choose-available').onclick = () => { missionSection = 'available'; openBoard(); };
   wireMissionCards();
 }
 function talkToNPC() {
   if (modal.open || capturing || meditation || tripod.transitioning) return;
+  if (atCameraStore(player.x, player.y, player.z)) { openGearShop(); return; }
   const npc = nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id));
   if (!npc) return;
   const before = save.discovered.length;
@@ -740,12 +813,15 @@ function talkToNPC() {
 function updateNPCPrompt() {
   const npc: NPC | undefined = nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id));
   const prompt = $('npc-prompt');
-  prompt.hidden = !npc || modal.open || capturing || tripod.transitioning || !!meditation;
+  const storeNearby = atCameraStore(player.x, player.y, player.z);
+  prompt.hidden = (!npc && !storeNearby) || modal.open || capturing || tripod.transitioning || !!meditation;
+  if (storeNearby) { prompt.dataset.npc = 'camera-store'; prompt.innerHTML = `<kbd>R</kbd> Browse the camera store <small>${cameraStore.name} · Lenses, filters & cameras</small>`; return; }
   const promptKey = npc ? `${npc.id}-${localActivity(npc.id, clock.hour)}` : '';
   if (npc && prompt.dataset.npc !== promptKey) { prompt.dataset.npc = promptKey; prompt.innerHTML = `<kbd>R</kbd> Talk to ${esc(npc.name)} <small>${esc(npc.role)} · ${esc(localActivity(npc.id, clock.hour))}</small>`; }
 }
-function openJournal() {
-  showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told. The latest 16 photos are kept on this device.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category} · ${p.result.passed ? '✓ Assignment complete' : 'A work in progress'} · ${p.result.score}/100${p.burst ? ` · Burst ${p.burst.index}/${p.burst.total}` : ''}</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press Space or C to make your first photograph.</p></div>`);
+function openJournal(topLevel = false) {
+  if (topLevel) pauseTab = 'journal';
+  showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told. The latest 16 photos are kept on this device.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category} · ${p.result.passed ? '✓ Assignment complete' : 'A work in progress'} · ${p.result.score}/100${p.burst ? ` · Burst ${p.burst.index}/${p.burst.total}` : ''}</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press Space or C to make your first photograph.</p></div>`, topLevel ? 'menu' : 'page');
   modal.querySelectorAll<HTMLButtonElement>('[data-photo]').forEach(b => b.onclick = () => openReview(save.photos.find(p => p.id === b.dataset.photo)!));
 }
 function openReview(photo: Photo) {
@@ -753,9 +829,9 @@ function openReview(photo: Photo) {
   const { result, settings: s } = photo;
   showModal(result.passed ? 'A story worth keeping.' : 'One frame closer.', 'IN THE DARKROOM', `${m.title} · ${m.location}`, `
     <div class="review-layout"><div><img class="review-photo" src="${esc(photo.image)}" alt="Your captured photograph"/><div class="photo-settings"><span>${shutterLabel(s.shutter)}${s.shutter < 0.25 ? ' s' : ''}</span><span>f/${s.aperture}</span><span>ISO ${s.iso}</span>${s.focalLength ? `<span>${Math.round(s.focalLength)} mm</span>` : ''}${s.focusDistance && Number.isFinite(s.focusDistance) ? `<span>${s.focusMode === 'manual' ? 'MF' : 'AF'} ${s.focusDistance >= 1e5 ? '∞' : `${s.focusDistance.toFixed(1)} m`}</span>` : ''}${photo.burst ? `<span>Burst ${photo.burst.index}/${photo.burst.total}</span>` : ''}${Number.isFinite(photo.environment?.hour) ? `<span>${formatTime(photo.environment!.hour)} · ${Math.round(photo.environment!.cloudCover * 100)}% cloud cover</span>` : ''}<span>${filterLabel(s.filter)}${s.filter === 'gnd3' ? ` · transition ${Math.round(gradientPosition(s.gradPosition) * 100)}%` : ''}</span>${s.tripod ? '<span>Tripod</span>' : ''}${s.panning ? '<span>Panning</span>' : ''}${flashPower(s) > 0 ? `<span>Flash ${flashPower(s) === 1 ? 'full' : `1/${Math.round(1 / flashPower(s))}`} ${flashCanFire(s) ? '' : '(not synced)'}</span>` : ''}${photo.studio ? `<span>Studio: ${lightNames.map(n => `${n} ${photo.studio![n].enabled ? Math.round(photo.studio![n].power * 100) : 0}%`).join(' · ')}</span>` : ''}</div><p style="font-size:9px;color:#8b927b;line-height:1.6;margin-top:14px">Exposure and lighting falloff are calculated. Depth of field uses scene depth and lens settings; motion accumulates over the shutter interval. Optics and noise remain simplified.</p></div>
-    <div><div class="review-score">${result.score}<small> / 100</small></div><p class="review-verdict">${result.passed ? `Assignment complete · ${photo.payment ? `${money(photo.payment)} paid` : 'Payment already earned'} · ${m.reward} XP` : 'Keep exploring. Every attempt teaches you something.'}</p>${result.feedback.map(f => `<div class="feedback-row ${f.passed ? '' : 'missed'}"><span class="feedback-icon">${icon(f.passed ? 'check' : 'info')}</span><div><strong>${esc(f.label)}</strong><p>${esc(f.text)}</p></div></div>`).join('')}</div></div>
+    <div><div class="review-score">${result.score}<small> / 100</small></div><p class="review-verdict">${result.passed ? `Assignment complete · ${m.payment === 0 ? 'First photograph' : photo.payment ? `${money(photo.payment)} paid` : 'Payment already earned'} · ${m.reward} XP` : 'Keep exploring. Every attempt teaches you something.'}</p>${result.feedback.map(f => `<div class="feedback-row ${f.passed ? '' : 'missed'}"><span class="feedback-icon">${icon(f.passed ? 'check' : 'info')}</span><div><strong>${esc(f.label)}</strong><p>${esc(f.text)}</p></div></div>`).join('')}</div></div>
     <div class="review-actions"><a class="secondary" id="download-photo" style="text-decoration:none;color:inherit" href="${esc(photo.image)}" download="willowbrook-${m.id}-${photo.date}.jpg">${icon('download')}Keep a copy</a><button class="primary" id="review-next">${result.passed ? 'Find another story' : 'Try another frame'}${icon('arrow')}</button></div>`);
-  $('review-next').onclick = () => { if (result.passed) { boardCategory = 'All'; openBoard(); } else { modal.close(); setCameraMode(true); } };
+  $('review-next').onclick = () => { if (result.passed) { missionSection = 'available'; openPauseMenu('assignments'); } else { modal.close(); setCameraMode(true); } };
 }
 
 function drawMap(canvas: HTMLCanvasElement) {
@@ -783,18 +859,23 @@ function drawMap(canvas: HTMLCanvasElement) {
     if (!npc.missions.some(id => save.discovered.includes(id))) continue;
     const [x,,z] = world.npcPosition(npc.id); ctx.beginPath(); ctx.arc(mx(x), mz(z), 4, 0, Math.PI * 2); ctx.fillStyle = '#b08b46'; ctx.fill(); ctx.fillText(npc.name, mx(x), mz(z) - 9);
   }
+  ctx.fillStyle = '#3b7e87'; ctx.fillRect(mx(cameraStore.x) - 4, mz(cameraStore.z) - 4, 8, 8); ctx.fillText('Camera store', mx(cameraStore.x), mz(cameraStore.z) - 10);
   const target = subjectPosition(world, activeMission); ctx.beginPath(); ctx.arc(mx(target.x),mz(target.z),5,0,Math.PI * 2);ctx.fillStyle='#dab955';ctx.fill();
   ctx.save(); ctx.translate(mx(player.x),mz(player.z));ctx.rotate(-yaw);
   ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fillStyle='#314e40';ctx.fill();ctx.restore();
 }
 const landmarks = [
+  { id: 'camera-store', name: cameraStore.name, x: cameraStore.entrance[0], z: cameraStore.entrance[1], target: [cameraStore.x, 2, cameraStore.z] },
   { id: 'chapel', name: 'Wedding chapel', x: -38, z: 35, target: [-43, 5, 16] },
   { id: 'streets', name: 'South neighborhood', x: 19, z: 32, target: [26, 1.3, 48] },
   { id: 'beach', name: 'Beach overlook', x: 57, z: 90, target: [60, 0.6, 110] },
 ];
-function openMap() {
+function openMap(topLevel = false) {
+  if (topLevel) pauseTab = 'explore';
   const known = missions.filter(m => save.discovered.includes(m.id) && missionGearReady(m, save.economy));
-  showModal('Beyond the town.', 'EXPLORE WILLOWBROOK', '260 m across · Follow the pale trails into the hills, wetland and southern beach. Roads loop through the south neighborhood; the chapel sits beside the wedding garden. Green: you. Gold: current subject and locals you have met.', `<canvas id="large-map" class="map-large" width="680" height="560"></canvas><p class="discovery-note">Travel shortcuts appear for stories you have discovered. Explore on foot to meet new locals.</p><div class="map-legend">${landmarks.map(p => `<button data-landmark="${p.id}">${icon('pin')}${p.name}<span style="margin-left:auto">→</span></button>`).join('')}${known.map(m => `<button data-place="${m.id}">${icon(categoryIcon[m.category])}${esc(m.title)}<span style="margin-left:auto">→</span></button>`).join('')}</div>`);
+  showModal('Beyond the town.', 'EXPLORE WILLOWBROOK', '260 m across · Follow the pale trails into the hills, wetland and southern beach. Roads loop through the south neighborhood; the chapel sits beside the wedding garden. Green: you. Gold: current subject and locals you have met. Blue: camera store.', `<div class="explore-tools"><span>${formatTime(clock.hour)} in Willowbrook</span><button class="secondary" id="menu-meditate">${icon('moon')}Meditate</button><button class="secondary" id="menu-lighting">${icon('studio')}Lighting kit</button></div><canvas id="large-map" class="map-large" width="680" height="560"></canvas><p class="discovery-note">Travel shortcuts appear for stories you have discovered. Explore on foot to meet new locals.</p><div class="map-legend">${landmarks.map(p => `<button data-landmark="${p.id}">${icon('pin')}${p.name}<span style="margin-left:auto">→</span></button>`).join('')}${known.map(m => `<button data-place="${m.id}">${icon(categoryIcon[m.category])}${esc(m.title)}<span style="margin-left:auto">→</span></button>`).join('')}</div>`, topLevel ? 'menu' : 'page');
+  $('menu-meditate').onclick = openMeditation;
+  $('menu-lighting').onclick = () => { modal.close(); if (!lightingOpen) toggleLightingKit(); };
   drawMap($<HTMLCanvasElement>('large-map'));
   modal.querySelectorAll<HTMLButtonElement>('[data-landmark]').forEach(button => button.onclick = () => {
     const place = landmarks.find(p => p.id === button.dataset.landmark)!;
@@ -808,15 +889,15 @@ function openMap() {
 }
 function openHelp() {
   showModal('Take your time. Look around.', 'WELCOME TO WILLOWBROOK', 'An early prototype about learning the craft, one photograph at a time.', `<div class="help-grid">
-    <div class="help-card"><strong>Wander and frame</strong><kbd>W A S D</kbd> walk · <kbd>Shift</kbd> move faster.<br/>Drag the world to look around. Arrow keys also aim. The starter lens is fixed at 35 mm. Buy and equip a zoom or wildlife lens in the gear shop to use the scroll wheel or <kbd>− / +</kbd>. <kbd>E</kbd> raises the viewfinder.</div>
+    <div class="help-card"><strong>Wander and frame</strong><kbd>W A S D</kbd> walk · <kbd>Shift</kbd> move faster.<br/>Drag the world to look around. Arrow keys also aim. The starter lens is fixed at 35 mm. Buy a zoom or wildlife lens at the camera store, then choose it in the LENS dropdown to use the scroll wheel or <kbd>− / +</kbd>. <kbd>E</kbd> raises the viewfinder.</div>
     <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>Space</kbd> or <kbd>C</kbd> takes a photo. With the burst camera, <kbd>B</kbd> toggles three-frame bursts at 5 fps. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
     <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, map and field notes. Press it again to resume. From a submenu, Esc returns to the pause menu.<br/>You start with one lighthouse assignment. Find locals with golden markers and press <kbd>R</kbd> to talk. Their stories are added to your notebook. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments.</div>
     <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Click the brief thumbnail or open the journal to read feedback and try again. Slow shutters record moving subjects as streaks; fast shutters freeze them. A tripod steadies the scenery, while Panning follows the runner and streaks the background. Higher ISO is often the right choice when a moment moves fast.</div>
     <div class="help-card"><strong>Choose your depth of field</strong>The viewfinder previews focus. Autofocus follows an unobstructed assignment subject inside the frame; otherwise it focuses on the center surface. Press <kbd>M</kbd> to lock the current distance and enter manual focus. Use the focus slider or <kbd>[ / ]</kbd> to focus nearer or farther; <kbd>Q</kbd> focuses once without releasing the lock. Press M again for autofocus. The distance and focus mode save with your notebook, and the reticle turns amber when the subject is out of focus. A wider aperture, longer lens, or closer subject softens the foreground and background. Stop down to bring more depth into focus. Shutter motion appears in the saved photograph.</div>
     <div class="help-card"><strong>Shape the light</strong><kbd>L</kbd> opens the Lighting kit; <kbd>F</kbd> toggles purchased flash. Adjust manual flash power or visit the studio to move and tune key, fill, and rim lights. A brief flash favours close subjects; shutter speed controls the ambient within the 1/250 s sync limit.</div>
-    <div class="help-card"><strong>Wait for the light</strong>The sun, clouds, exposure and stars change through a 30-minute day. Some assignments need a particular time. Open <kbd>Esc</kbd> → Meditate to skip ahead to dawn, daylight, golden hour, night or the assignment’s preferred time. Time pauses while menus are open.</div>
-    <div class="help-card"><strong>A living town</strong>Locals walk familiar routes by day; Ida watches the ridge at night. Gold markers and the map follow them. Residents and their dog wander the south neighborhood; cars slow the streets, ducks settle at dusk, deer graze in the meadow, and a fox emerges at night. Visit the wedding chapel or follow the southern path to the ocean. <kbd>Esc</kbd> → Sound controls ambient audio and volume.</div>
-    <div class="help-card"><strong>Your little collection</strong>Assignments pay once. Open <kbd>Esc</kbd> → Gear shop for a zoom lens, camera flash, or burst camera. Buy ND16/ND32/ND64, CPL, or a soft graduated ND8 filter separately. The graduated filter darkens the top of the frame; its transition slider aligns the soft edge with your horizon. Only one filter is fitted at a time. The 200–600 mm wildlife lens unlocks bird close-ups. Equip lenses in the shop; bird suggested settings also equip that lens.<br/>Progress and the latest 16 photographs save in this browser on this device. Download favourites from the darkroom. This prototype is designed for a desktop keyboard and mouse.</div>
+    <div class="help-card"><strong>Wait for the light</strong>The sun, clouds, exposure and stars change through a 30-minute day. Some assignments need a particular time. Open <kbd>Esc</kbd> → Explore → Meditate to skip ahead to dawn, daylight, golden hour, night or the assignment’s preferred time. Time pauses while menus are open.</div>
+    <div class="help-card"><strong>A living town</strong>Locals walk familiar routes by day; Ida watches the ridge at night. Gold markers and the map follow them. Residents and their dog wander the south neighborhood; cars slow the streets, ducks settle at dusk, deer graze in the meadow, and a fox emerges at night. Visit the wedding chapel or follow the southern path to the ocean. <kbd>Esc</kbd> → Settings controls ambient audio and volume.</div>
+    <div class="help-card"><strong>Your little collection</strong>Assignments pay once. Visit Willowbrook Camera Co. south of the track and press <kbd>R</kbd> at the door for a zoom lens, camera flash, or burst camera. Find the store in <kbd>Esc</kbd> → Explore. Buy ND16/ND32/ND64, CPL, or a soft graduated ND8 filter separately. The graduated filter darkens the top of the frame; its transition slider aligns the soft edge with your horizon. Only one filter is fitted at a time. The 200–600 mm wildlife lens unlocks bird close-ups. Switch owned lenses and filters directly from the camera bar; bird suggested settings also equip that lens.<br/>Progress and the latest 16 photographs save in this browser on this device. Download favourites from the darkroom. This prototype is designed for a desktop keyboard and mouse.</div>
   </div><div class="review-actions"><button class="secondary" id="new-notebook">Start a fresh notebook</button><button class="primary" id="begin-explore">Let’s find the light ${icon('arrow')}</button></div>`);
   $('begin-explore').onclick = () => modal.close();
   $('new-notebook').onclick = openNewNotebook;
@@ -834,15 +915,19 @@ function openNewNotebook() {
   $('confirm-new-notebook').onclick = () => {
     try { localStorage.setItem(`${storageKey}-backup`, JSON.stringify(save)); }
     catch { toast('The backup could not be saved. Your current notebook has been kept.'); return; }
+    save.openingSeen = false;
     save.completed = []; save.discovered = normalizeDiscovered(undefined); save.photos = []; equippedLens = 'prime'; save.economy = normalizeEconomy(undefined, []); focalLength = 35; activeMission = missions[0];
     settings = { shutter: 1 / 125, aperture: 5.6, iso: 100, filter: 'none', tripod: false, panning: false, flashPower: 0 }; studioRig = defaultStudioRig();
     focus.mode = 'auto'; focus.acquire(10);
     clock.skipTo(17); world.setTime(clock.hour); requestTripod(false, true); selectMission(activeMission); player.set(...activeMission.viewpoint); camera.fov = fovForFocal(focalLength, camera.aspect); camera.updateProjectionMatrix(); faceSubject(activeMission); syncSettings(); updateLensLabel(); modal.close();
-    toast('A fresh notebook. Your previous photographs are safely backed up on this device.');
+    persist(); startOpening();
   };
 }
 
 function updateLensLabel() {
+  const lensSelect = $<HTMLSelectElement>('lens');
+  lensSelect.innerHTML = (['prime', 'zoom', 'telephoto'] as const).filter(lens => lens === 'prime' || ownsGear(save.economy, lens)).map(lens => `<option value="${lens}">${lens === 'prime' ? '35 mm' : lens === 'zoom' ? '24–120 mm' : '200–600 mm'}</option>`).join('');
+  lensSelect.value = equippedLens;
   $('lens-label').textContent = String(Math.round(focalLength));
   $('lens-type').textContent = equippedLens === 'telephoto' ? 'WILDLIFE' : equippedLens === 'zoom' ? 'ZOOM' : 'PRIME';
 }
@@ -856,12 +941,13 @@ function equipLens(lens: LensId) {
   updateLensProjection();
 }
 function zoomCamera(delta: number) {
-  if (equippedLens === 'prime') { gearHint('Equip a zoom or wildlife lens in Esc → Gear shop.'); return; }
+  if (equippedLens === 'prime') { gearHint('Choose an owned zoom or wildlife lens in the LENS dropdown. Buy new lenses at the camera store.'); return; }
   focalLength = zoomFocal(save.economy, focalLength, delta, equippedLens);
   updateLensProjection();
 }
 
 for (const key of ['shutter', 'aperture', 'iso'] as const) $<HTMLSelectElement>(key).addEventListener('change', e => { settings[key] = Number((e.target as HTMLSelectElement).value); updateExposure(); });
+$<HTMLSelectElement>('lens').addEventListener('change', e => { equipLens((e.target as HTMLSelectElement).value as LensId); updateFocus(); persist(); });
 $<HTMLSelectElement>('filter').addEventListener('change', e => fitFilter((e.target as HTMLSelectElement).value as FilterId));
 $<HTMLInputElement>('gradient-position').addEventListener('input', e => {
   settings.gradPosition = gradientPosition(Number((e.target as HTMLInputElement).value) / 100);
@@ -885,13 +971,14 @@ $<HTMLInputElement>('focus-distance').addEventListener('input', e => {
   updateFocus();
 });
 $('focus-distance').addEventListener('change', persist);
-$('menu-button').onclick = openPauseMenu;
+$('menu-button').onclick = () => openPauseMenu();
 modal.addEventListener('cancel', e => { e.preventDefault(); leaveModal(); });
 modal.addEventListener('click', e => { if (e.target === modal) { const r = modal.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) leaveModal(); } });
 modal.addEventListener('close', () => { keys.clear(); drag = false; renderer.domElement.focus({ preventScroll: true }); });
 document.addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const key = e.key.toLowerCase();
+  if (openingStep !== null) { if (key === 'escape') { e.preventDefault(); finishOpening(true); } return; }
   if (key === 'escape') { e.preventDefault(); if (meditation) finishMeditation(); if (!e.repeat) { if (modal.open) leaveModal(); else openPauseMenu(); } return; }
   if ((e.target as HTMLElement).matches('select,input,textarea') || modal.open || meditation) return;
   if (key === ' ' && (e.target as HTMLElement).closest('button,a,[contenteditable]')) return;
@@ -918,11 +1005,11 @@ window.addEventListener('blur', () => { keys.clear(); drag = false; audio.silenc
 document.addEventListener('visibilitychange', () => { keys.clear(); drag = false; previousTime = performance.now(); if (document.hidden) { audio.silence(); if (capturing) finishShooting(); persist(); } });
 window.addEventListener('pagehide', () => { audio.silence(); if (capturing) finishShooting(); persist(); });
 renderer.domElement.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || modal.open || tripod.transitioning || meditation) return;
+  if (e.button !== 0 || modal.open || tripod.transitioning || meditation || openingStep !== null) return;
   drag = true; lastPointerX = e.clientX; lastPointerY = e.clientY; renderer.domElement.setPointerCapture(e.pointerId);
 });
 renderer.domElement.addEventListener('pointermove', e => {
-  if (!drag || modal.open || tripod.transitioning || meditation) return;
+  if (!drag || modal.open || tripod.transitioning || meditation || openingStep !== null) return;
   const sensitivity = Math.min(1, 35 / focalLength);
   yaw -= (e.clientX - lastPointerX) * 0.004 * sensitivity;
   pitch = THREE.MathUtils.clamp(pitch - (e.clientY - lastPointerY) * 0.003 * sensitivity, -1.3, 1.3);
@@ -931,7 +1018,7 @@ renderer.domElement.addEventListener('pointermove', e => {
 renderer.domElement.addEventListener('pointerup', () => { drag = false; });
 renderer.domElement.addEventListener('pointercancel', () => { drag = false; });
 renderer.domElement.addEventListener('wheel', e => {
-  e.preventDefault(); if (modal.open || capturing || meditation) return;
+  e.preventDefault(); if (modal.open || capturing || meditation || openingStep !== null) return;
   zoomCamera(e.deltaY);
 }, { passive: false });
 renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); keys.clear(); toast('Graphics were interrupted. Reload to return to your saved journal.'); });
@@ -939,11 +1026,16 @@ renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault
 world.setTime(clock.hour); applyStudioRig(); world.update(0, settings); world.scene.updateMatrixWorld(true);
 faceSubject(activeMission); renderMission(); syncSettings(); updateProgress(); resize(); updateLensLabel();
 renderer.shadowMap.needsUpdate = true;
+if (activeMission.id === 'intro-deer') { settings = { ...activeMission.recommended, flashPower: 0 }; syncSettings(); setCameraMode(true); }
+if (save.openingSeen === false) startOpening();
 let previousTime = performance.now(), lastMeterTime = 0;
 function animate(now: number) {
   const realDt = document.hidden ? 0 : Math.max(0, (now - previousTime) / 1000);
   const dt = Math.min(realDt, 0.05); previousTime = now;
-  if (meditation) {
+  if (openingStep !== null) {
+    if (!document.hidden && document.hasFocus()) openingSeconds += dt;
+    world.update(elapsed, settings);
+  } else if (meditation) {
     meditation.elapsed += realDt;
     const progress = Math.min(1, meditation.elapsed / 1.5);
     clock.skipTo(meditation.start + meditation.distance * (progress * progress * (3 - 2 * progress)));
@@ -972,7 +1064,9 @@ function animate(now: number) {
   }
   const walking = !modal.open && !meditation && !tripod.movementLocked && !capturing && ['w','a','s','d'].some(key => keys.has(key));
   audio.update(clock.hour, player, yaw, world.traffic, !modal.open && !meditation && !document.hidden && document.hasFocus(), walking, keys.has('shift'));
-  updateCamera(); updateNPCPrompt(); world.scene.updateMatrixWorld(true);
+  if (openingStep !== null) world.opening.update(camera, openingStep, openingSeconds, reducedMotion.matches);
+  else updateCamera();
+  updateNPCPrompt(); world.scene.updateMatrixWorld(true);
   if (capturing && !modal.open && !meditation) captureFrame(now);
   if (shootReadyAt && now >= shootReadyAt) { shootReadyAt = 0; syncTripod(); }
   const p = subjectPosition(world, activeMission); const distance = p.distanceTo(player); p.project(camera);
@@ -984,13 +1078,13 @@ function animate(now: number) {
   if (now - lastMeterTime > 150) {
     updateClockCue(); updateExposure(); if (cameraMode) updateFocus(); renderer.shadowMap.needsUpdate = true; lastMeterTime = now;
   }
-  if (cameraMode) viewfinderRenderer.render(renderer, world.scene, camera, { aperture: settings.aperture, focalLength, focusDistance, filter: settings.filter, gradPosition: settings.gradPosition });
+  if (cameraMode && openingStep === null) viewfinderRenderer.render(renderer, world.scene, camera, { aperture: settings.aperture, focalLength, focusDistance, filter: settings.filter, gradPosition: settings.gradPosition });
   else renderer.render(world.scene, camera);
   if (!reducedMotion.matches && (tripod.transitioning || tripodSettle > 0)) {
     tripodView.update(tripod.progress, tripod.transitioning ? 1 : tripodSettle / 0.18, camera.aspect);
     renderer.autoClear = false; renderer.clearDepth(); renderer.render(tripodView.scene, tripodView.camera); renderer.autoClear = true;
   }
-  if (!modal.open && now - lastClockSave > 60000) { persist(); lastClockSave = now; }
+  if (!modal.open && openingStep === null && now - lastClockSave > 60000) { persist(); lastClockSave = now; }
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);

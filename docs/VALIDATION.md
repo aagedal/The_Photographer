@@ -151,3 +151,12 @@ No native application or Linux browser run yet. Performance targets require prof
 - A three-frame manual burst retained the locked distance and saved three 100/100 frames. Only one $150 mission payment was awarded, and focus controls were disabled during capture and released afterward.
 - All 26 browser GPU checks pass, including refocusing foreground/background, live/capture agreement, motion accumulation, portrait sensor cropping, reflections, water, and renderer restoration after failure. No browser console warnings or errors were reported.
 - The preview is saved in `docs/manual-focus.png`. Sharpness checks use the assignment’s central subject plane and the rendered sky’s far depth; checking every group member or the whole landscape remains outside this approximation.
+
+## Notebook, camera store, and arrival prototype — September 30, 2026
+
+- 102 Node tests pass, including disjoint mission lists, completed-active separation, store collision/proximity, deer distance and unobstructed framing through the arrival hour, introductory technique feedback, reduced-motion camera paths, opening cleanup, and walkable arrival dock. Strict TypeScript checking and production build pass; the pre-existing bundle-size warning remains.
+- Browser playtesting used isolated `arrival-final` and `filter-checks` saves, leaving the player's notebook untouched. The opening's boat arrival, ranger dialogue, camera handover, and playable deer photograph were inspected. Esc skips to the lighthouse, and reloading the skipped notebook bypasses the opening. A 100/100 deer shot saves in Journal and advances to the lighthouse with 40 XP and no cash.
+- Active, Available, and Completed views were inspected against a funded fixture. Paid assignments appear only in Completed and their cards say replay earns no extra payment. Settings has sound, graphics, controls, and notebook management; Explore has map, lighting, and meditation.
+- The store map shortcut lands at a reachable storefront with an R prompt. Buying the $120 zoom lens and $75 ND64 from $460 leaves $265. LENS and FILTER change gear directly during play. The new lens selector and owned-filter selector were inspected.
+- The Settings layout was inspected at 1280 × 720 and 480 × 740. The narrow view has no horizontal overflow (document and scroll widths both 480 px), with the main tabs and Resume visible. No browser warnings or errors were observed.
+- A screenshot of the new Assignments menu is saved as `docs/field-notebook.jpg`.

@@ -35,8 +35,11 @@ export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing,
     feedback.push({ label: 'Time of day', passed: ready, text: ready ? `You caught the right light at ${formatTime(lighting.hour)}. ${mission.timeWindow.label}.` : `Taken at ${formatTime(lighting.hour)}. This assignment needs ${mission.timeWindow.label.toLowerCase()}. Meditate from the Esc menu to wait for its preferred time.` });
   }
   const add = (label: string, passed: boolean, yes: string, no: string) => feedback.push({ label, passed, text: passed ? yes : no });
-  if (mission.requiredGear) add('Required gear', lighting?.gearReady === true, 'The wildlife lens gives you the reach this assignment needs.', 'Buy the 200–600 mm wildlife lens in the gear shop before taking this assignment.');
+  if (mission.requiredGear) add('Required gear', lighting?.gearReady === true, 'The wildlife lens gives you the reach this assignment needs.', 'Buy the 200–600 mm wildlife lens at the camera store before taking this assignment.');
   switch (mission.technique) {
+    case 'wildlife':
+      add('A gentle distance', frame.distance >= 6, 'You kept your distance and brought back a photograph.', 'Give the deer at least six metres of space. Stay on the trail and frame it from there.');
+      add('Your first moment', s.shutter <= 1 / 250, 'A quick shutter keeps the deer clear.', 'Use 1/250 second or faster to keep your first wildlife photograph sharp.'); break;
     case 'bird':
       add('Close-up', (s.focalLength ?? 35) >= 400 && (s.focalLength ?? 35) <= 600 && (s.focalLength ?? 35) / frame.distance >= 15, 'Your long lens brings the kingfisher’s plumage into the frame.', 'Equip the wildlife lens and zoom to 400–600 mm. Aim from the wetland trail, about 20–35 m from the perch.');
       add('Wildlife craft', s.shutter <= 1 / 1000 && s.aperture >= 5.6 && frame.distance >= 18, 'A fast shutter catches the detail while you give the bird space.', 'Use 1/1000 s or faster, f/5.6 or smaller, and keep at least 18 m away. Raise ISO to balance the exposure.'); break;

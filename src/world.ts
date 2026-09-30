@@ -10,11 +10,14 @@ import { localPose } from './life.ts';
 import { createTownLife } from './world-life.ts';
 import { createChurch } from './church.ts';
 import { createCoast } from './coast.ts';
+import { createOpening } from './opening.ts';
+import { createCameraStore } from './camera-store.ts';
 import { sampleSky } from './environment.ts';
 import type { Mission } from './missions.ts';
 import { defaultStudioRig, lightNames, lightPosition, type StudioRig } from './lighting.ts';
 
 export interface World {
+  opening: ReturnType<typeof createOpening>;
   scene: THREE.Scene; subjects: Map<string, THREE.Object3D>; solids: THREE.Object3D[];
   update: (time: number, settings: { filter: string; shutter: number }, activityHour?: number) => void;
   setTime: (hour: number) => void;
@@ -387,6 +390,10 @@ export function createWorld(): World {
   const church = createChurch(scene, box, solids, blockers);
   const coast = createCoast(scene);
   const townLife = createTownLife({ scene, solids, box, sphere, person, house, batchMeshes });
+  const store = createCameraStore(scene, solids);
+  const opening = createOpening(scene);
+  const deer = scene.getObjectByName('meadow-deer-0')!;
+  const deerFocus = new THREE.Object3D(); deerFocus.position.set(0, 1, 0); deer.add(deerFocus); subjects.set('Meadow deer', deerFocus);
   // Direction signs and park lamp posts.
   for (const [x, z] of [[-4, 15], [17, 14], [-16, 25], [-4, -26]]) {
     box(x, 1.2, z, 0.16, 2.4, 0.16, '#766246'); box(x + 0.5, 2.1, z, 1.8, 0.55, 0.15, '#eee0bb');
@@ -507,9 +514,9 @@ export function createWorld(): World {
   batchMeshes(scene, new Set(solids));
   const staticSolidCount = solids.length;
   return {
-    scene, subjects, solids, traffic: townLife.traffic,
+    opening, scene, subjects, solids, traffic: townLife.traffic,
     npcPosition(id) { const p = locals.get(id)!.group.position; return [p.x, p.y, p.z]; },
-    groundHeight: terrainHeight,
+    groundHeight: opening.dockHeight,
     setTime(hour) { sky = sampleSky(hour); applyEnvironment(); },
     setStudioRig,
     setFlash(position, direction, intensity) {
@@ -545,9 +552,9 @@ export function createWorld(): World {
     },
     canWalk(x, z) {
       if (Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4) return false;
-      if (z > coastline(x) - 1.2) return false;
+      if (z > coastline(x) - 1.2 && !opening.onDock(x, z)) return false;
       if (Math.hypot((x - 76) / 14, (z + 54) / 11) < 1) return false;
-      if (creekDistance(x, z) < 1.08 || townLife.blocksWalking(x, z)) return false;
+      if (creekDistance(x, z) < 1.08 || townLife.blocksWalking(x, z) || store.blocksWalking(x, z)) return false;
       // The jetty is a narrow walkable exception inside the lake boundary.
       return !blockers.some(b => Math.abs(x - b.x) < b.w / 2 + 0.25 && Math.abs(z - b.z) < b.d / 2 + 0.25 && !(b.w === 28 && Math.abs(x) < 1.25 && z > 3.5));
     },

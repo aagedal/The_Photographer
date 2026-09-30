@@ -90,10 +90,6 @@ h1,h2,h3,p { margin:0; }
 .pause-assignment details { margin-top:13px; font-size:11px; color:#66775a; }
 .pause-assignment summary { cursor:pointer; }
 .pause-actions { display:flex; gap:8px; margin-top:17px; flex-wrap:wrap; }
-.pause-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:20px; }
-.pause-grid button { display:flex; align-items:center; gap:10px; padding:15px; background:#e9edde; border-radius:6px; font-size:12px; text-align:left; }
-.pause-grid button:hover { background:#dce6c8; }
-.pause-grid svg { width:17px; height:17px; }
 .pause-footer { display:flex; justify-content:space-between; align-items:center; margin-top:24px; gap:15px; font-size:10px; color:var(--muted); }
 .pause-footer small { display:block; margin-top:5px; }
 .pause-footer kbd { opacity:.6; font-size:9px; }
@@ -122,13 +118,11 @@ dialog{border:1px solid #d9deca;border-radius:13px;padding:0;background:var(--pa
   .equipment { width:238px; justify-content:space-between; }
   .journal-grid,.mission-grid,.map-legend { grid-template-columns:1fr; }
   .pause-assignment { padding:15px; } .pause-assignment h3 { font-size:26px; }
-  .pause-grid button { padding:12px; font-size:11px; }
   .modal-header h2 { font-size:29px; }
 }
 @media(prefers-reduced-motion:reduce) { * { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
 
 #clock-label { font-size:10px; opacity:.65; margin-left:10px; font-variant-numeric:tabular-nums; }
-.pause-grid #menu-meditate { grid-column:1 / -1; }
 .mission-time { font-size:10px!important; padding:7px 10px; background:#e9edde; border-radius:4px; }
 .mission-time.waiting { background:#eee3cf; color:#887048; }
 .meditation-note { font-size:12px; line-height:1.7; color:var(--muted); }
@@ -185,7 +179,63 @@ dialog{border:1px solid #d9deca;border-radius:13px;padding:0;background:var(--pa
 .mission-locked { background:#eeeade; }
 .assignment-card .eyebrow svg { width:14px; height:14px; }
 .assignment-card .gear-requirement { color:#8e7142; background:#e9dfc8; padding:7px 9px; border-radius:4px; }
-.lens-picker { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 18px; }
 .lens-picker>span { font-size:10px; color:var(--muted); }
-.lens-picker .selected { background:#e0e9ce; border-color:#899f6a; }
 @media(max-width:800px) { .npc-prompt { bottom:155px; } }
+
+/* A compact notebook shell, with game content separate from preferences. */
+dialog { display:flex; flex-direction:column; } dialog:not([open]) { display:none; }
+.modal-header { padding-bottom:17px; }
+.modal-body { max-height:none; min-height:0; flex:1; overscroll-behavior:contain; }
+.pause-tabs { display:flex; gap:5px; padding:0 30px; border-bottom:1px solid var(--line); flex-shrink:0; }
+.pause-tabs button { flex:1; padding:15px 8px; font-size:12px; color:var(--muted); border-bottom:3px solid transparent; }
+.pause-tabs button[aria-selected=true] { color:var(--ink); border-color:#6d8559; font-weight:600; }
+.pause-tabs button:hover { background:#edf0e3; }
+.pause-footer { margin:0; padding:16px 30px; border-top:1px solid var(--line); flex-shrink:0; }
+.pause-footer>div { line-height:1.6; max-width:75%; }
+.mission-sections { display:flex; gap:5px; background:#eaeddf; padding:5px; border-radius:8px; margin-bottom:20px; }
+.mission-sections button { flex:1; padding:10px 8px; border-radius:5px; font-size:11px; color:#748267; }
+.mission-sections button[aria-pressed=true] { background:var(--paper); color:var(--ink); box-shadow:0 1px 5px #203b2914; }
+.mission-sections span { display:inline-block; font-size:9px; padding:2px 6px; margin-left:7px; border-radius:10px; background:#dce4cc; }
+.mission-badge { display:inline-flex; gap:5px; align-items:center; background:#dde8ca; padding:6px 9px; border-radius:5px; font-size:9px; color:#506c3d; margin-bottom:12px; }
+.mission-badge.complete { background:#e8e8df; color:#6e7965; }
+.mission-badge svg { width:13px; height:13px; }
+.notebook-hint { padding:20px 0 0; }
+.empty .secondary { margin-top:18px; }
+.explore-tools { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+.explore-tools>span { margin-right:auto; font-size:11px; color:var(--muted); }
+.settings-stack { display:grid; gap:12px; }
+.settings-card { display:grid; grid-template-columns:1fr auto; align-items:center; gap:14px; border:1px solid var(--line); border-radius:8px; padding:18px; }
+.settings-card h3 { font-size:13px; font-weight:500; }
+.settings-card p { color:var(--muted); font-size:11px; line-height:1.6; margin-top:6px; }
+.volume-setting { grid-column:1 / -1; font-size:10px; color:var(--muted); }
+.volume-setting output { float:right; }
+.volume-setting input { width:100%; display:block; accent-color:#718448; margin-top:10px; }
+.store-directions { padding:20px; text-align:center; }
+.store-directions>svg { width:40px; height:40px; color:#7b9367; margin-bottom:20px; }
+.store-directions h3 { font:28px Georgia,serif; }
+.store-directions p { font-size:12px; line-height:1.8; color:var(--muted); max-width:450px; margin:18px auto; }
+.store-directions .primary { margin:auto; }
+.setting.lens-setting { width:109px; }
+.setting.lens-setting select { font-size:13px; }
+@media (max-width:1000px) { .camera-bar { max-width:calc(100% - 24px); flex-wrap:wrap; justify-content:center; gap:10px 13px; } }
+@media (max-width:520px) {
+  .pause-tabs { padding:0 12px; gap:0; } .pause-tabs button { font-size:11px; }
+  .pause-footer { padding:14px 20px; } .pause-footer>div { max-width:65%; font-size:9px; }
+  .mission-sections button { padding:10px 4px; } .mission-sections span { margin-left:3px; }
+  .settings-card { padding:13px; gap:10px; }
+  .camera-bar { width:calc(100% - 24px); }
+  .setting.lens-setting { width:100px; }
+  .setting.filter-setting { width:75px; }
+}
+
+.opening-overlay { position:absolute; inset:0; z-index:10; background:linear-gradient(transparent 30%,#142d2470 63%,#142d24ed); color:#f5f0de; display:flex; align-items:flex-end; justify-content:center; padding:36px; }
+.opening-skip { position:absolute; right:24px; top:24px; color:#f5f0de; background:#203b29b0; padding:11px 14px; border:1px solid #e5e2c64d; border-radius:6px; font-size:11px; }
+.opening-skip kbd { opacity:.65; margin-left:12px; }
+.opening-caption { width:600px; max-width:100%; text-align:center; }
+.opening-caption .eyebrow { justify-content:center; color:#cfcdac; }
+.opening-caption h1 { font:48px 'Libre Caslon Display',Georgia,serif; font-weight:400; margin:15px 0; }
+.opening-speaker { font-size:10px; color:#d8d7b8; margin-bottom:12px; }
+.opening-line { font:18px/1.65 Georgia,serif; text-wrap:balance; }
+.opening-caption .primary { margin:22px auto 0; background:#e4e6cd; color:#2e4439; min-width:190px; }
+.opening .camera-bar,.opening .scene-location,.opening .menu-button,.opening .target-marker,.opening .npc-prompt { visibility:hidden; }
+@media(max-width:520px) { .opening-overlay { padding:24px 20px; } .opening-caption h1 { font-size:36px; } .opening-line { font-size:16px; } }

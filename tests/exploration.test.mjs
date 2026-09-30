@@ -18,7 +18,7 @@ test('fresh notebooks have exactly one assignment and cannot accept unknown stor
 });
 test('talking reveals only that local’s stories and discovery survives a round trip', () => {
   const known = discoverNPC(normalizeDiscovered(undefined), npcCatalog[0]);
-  assert.deepEqual(known, ['nature-1', 'nature-2', 'nature-birds']);
+  assert.deepEqual(known, ['nature-1', 'nature-2', 'nature-birds', 'intro-deer']);
   assert.deepEqual(discoverNPC(known, npcCatalog[0]), known);
   assert.deepEqual(normalizeDiscovered(JSON.parse(JSON.stringify(known))), known);
   assert.equal(canAcceptMission(missions[1], known, empty), true);

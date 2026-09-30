@@ -4,7 +4,7 @@ import { terrainHeight } from './terrain.ts';
 
 export const starterMission = 'nature-1';
 export const npcCatalog = [
-  { id: 'ranger', name: 'Mara', role: 'Creek ranger', x: -29, z: 4, shirt: '#738b57', dialogue: 'Follow the creek for soft water. The eastern woodland trail leads to our kingfisher wetland. Give the birds space: a long lens brings the detail to you.', missions: ['nature-2', 'nature-birds'] },
+  { id: 'ranger', name: 'Mara', role: 'Creek ranger', x: -29, z: 4, shirt: '#738b57', dialogue: 'Follow the creek for soft water. The eastern woodland trail leads to our kingfisher wetland. Give the birds space: a long lens brings the detail to you.', missions: ['nature-2', 'nature-birds', 'intro-deer'] },
   { id: 'coach', name: 'Theo', role: 'Running coach', x: 39, z: 17, shirt: '#c98259', dialogue: 'Our club could use a race poster. Try freezing a stride, then follow the runner for a frame that feels fast.', missions: ['sports-1', 'sports-2'] },
   { id: 'editor', name: 'June', role: 'Local editor', x: 18, z: -6, shirt: '#68898d', dialogue: 'The morning baker and our evening reporter each have a story. Come back in their light and tell it with a photograph.', missions: ['news-1', 'news-2'] },
   { id: 'planner', name: 'Alma', role: 'Garden host', x: -33, z: 32, shirt: '#b9828d', dialogue: 'The couple have a quiet moment by the arch. Later, bring everyone into focus for the family photograph.', missions: ['wedding-1', 'wedding-2'] },
