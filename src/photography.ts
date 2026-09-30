@@ -1,9 +1,10 @@
 import { formatTime, isMissionTime } from './environment.ts';
 import type { Mission } from './missions.ts';
 import { filterStops, graduatedStops, type FilterId } from './filters.ts';
+import { subjectInFocus, type FocusMode } from './focus.ts';
 export { filterStops } from './filters.ts';
-export interface CameraSettings { shutter: number; aperture: number; iso: number; filter: FilterId; gradPosition?: number; tripod: boolean; panning: boolean; flashPower?: number; focalLength?: number; focusDistance?: number }
-export interface Framing { visible: boolean; distance: number; centerOffset: number; occluded: boolean }
+export interface CameraSettings { shutter: number; aperture: number; iso: number; filter: FilterId; gradPosition?: number; tripod: boolean; panning: boolean; flashPower?: number; focalLength?: number; focusDistance?: number; focusMode?: FocusMode }
+export interface Framing { visible: boolean; distance: number; centerOffset: number; occluded: boolean; subjectDepth?: number }
 export interface Feedback { label: string; passed: boolean; text: string }
 export interface Assessment { score: number; passed: boolean; exposureStops: number; feedback: Feedback[] }
 export const cameraEV = (s: CameraSettings, imageY = 0.5) => Math.log2(s.aperture ** 2 / s.shutter) - Math.log2(s.iso / 100) + filterStops(s.filter) + graduatedStops(s.filter, imageY, s.gradPosition);
@@ -16,6 +17,11 @@ export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing,
     { label: 'Composition', passed: framingOK, text: framingOK ? `You framed ${mission.subject.toLowerCase()} clearly. You found the story.` : frame.occluded ? 'Something is blocking the subject. Move until you have a clear view.' : `Find ${mission.subject.toLowerCase()}, move within 65 m, and bring it inside the viewfinder.` },
     { label: 'Exposure', passed: exposureOK, text: exposureOK ? 'You kept a useful balance of light and shadow.' : stops > 0 ? `The subject is about ${stops.toFixed(1)} stops too bright. Lower flash or studio power, stop down, lower ISO, or reduce ambient exposure.` : `The subject is about ${Math.abs(stops).toFixed(1)} stops too dark. Add light, slow the shutter, open the aperture, raise ISO, or remove a filter.` },
   ];
+  if (s.focusDistance !== undefined) {
+    const depth = mission.category === 'Astro' ? 450 : frame.subjectDepth ?? frame.distance;
+    const sharp = subjectInFocus(depth, s.focalLength ?? 35, s.aperture, s.focusDistance);
+    feedback.push({ label: 'Focus', passed: sharp, text: sharp ? 'The subject sits within your lens’s depth of field.' : mission.category === 'Astro' ? 'The sky is out of focus. Set manual focus to infinity, or press Q to focus once on the sky.' : 'The subject is out of focus. Adjust the focus distance, press Q to focus once, or press M to return to autofocus. Stopping down gives you more room.' });
+  }
   if ((s.flashPower ?? 0) > 0) {
     const synced = s.shutter >= 1 / 250;
     feedback.push({ label: 'Flash sync', passed: synced, text: synced ? 'Within 1/250 s sync. Shutter speed changes the ambient; flash power, aperture, ISO, and distance change the brief flash exposure.' : 'The flash cannot fire above 1/250 s in this prototype. Slow the shutter to 1/250 s or below; high-speed sync is not simulated.' });

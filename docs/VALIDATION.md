@@ -142,3 +142,12 @@ No native application or Linux browser run yet. Performance targets require prof
 - Playtested only `/?playtest=living-town`: map shortcuts reach the neighborhood, chapel and ocean; the chapel door shows its central aisle, pews and altar; the beach shows surf and circling gulls. Meditation to 23:00 darkens the sky, lights the streets and leaves quieter traffic.
 - Sound controls render correctly; mute and a changed 35% volume survive reload. Audio unlock, mute, menus and tab/window silence are wired through the Web Audio master gain. Synthesized sound quality has not been assessed by listening; automated checks validate the ambient level model, not perceptual audio fidelity.
 - The existing Vite bundle-size advisory remains. Animation uses scheduled routes and activity windows; this is not a full traffic, animal-needs or interior-NPC simulation.
+
+## Manual focus and sharpness feedback
+
+- Six new tests cover logarithmic focus control and infinity, locked-plane persistence, legacy/malformed save defaults, one-shot acquisition, keyboard bounds, aperture-dependent sharpness, axial subject depth, defocused portrait rejection, and sky focus guidance. All 97 Node tests pass; strict TypeScript checking and the production build pass. The existing Vite bundle-size advisory remains.
+- Browser testing used only the isolated `rendering-checks` notebook. At 120 mm and f/2.8, manual focus at 0.7 m visibly softened the newlyweds, turned the reticle amber, and produced a 75/100 photograph with a failed Focus check and MF metadata. Pressing Q reacquired 9.01 m while retaining manual mode.
+- The nearer-focus keyboard shortcut changed the locked distance to 8.37 m. Reloading preserved both MF mode and that distance. Suggested settings restored autofocus and disabled the manual slider.
+- A three-frame manual burst retained the locked distance and saved three 100/100 frames. Only one $150 mission payment was awarded, and focus controls were disabled during capture and released afterward.
+- All 26 browser GPU checks pass, including refocusing foreground/background, live/capture agreement, motion accumulation, portrait sensor cropping, reflections, water, and renderer restoration after failure. No browser console warnings or errors were reported.
+- The preview is saved in `docs/manual-focus.png`. Sharpness checks use the assignment’s central subject plane and the rendered sky’s far depth; checking every group member or the whole landscape remains outside this approximation.

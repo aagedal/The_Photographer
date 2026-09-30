@@ -8,6 +8,7 @@ import { createTripodView } from './tripod.ts';
 import { exposureSamples, cameraShake, handheldWobble } from './motion.ts';
 import { createPhotoRenderer } from './photo-renderer.ts';
 import { createViewfinderRenderer } from './depth-of-field.ts';
+import { FocusState, focusDistanceAt, focusPosition, focusLabel, subjectInFocus } from './focus.ts';
 import { filterCatalog, filterLabel, isFilterGear, gradientPosition, type FilterId } from './filters.ts';
 import { DAY_SECONDS, WorldClock, sampleSky, formatTime, missionAmbientEV, missionReferenceHour, isMissionTime, wrapHour } from './environment.ts';
 import { gearCatalog, money, normalizeCompleted, normalizeEconomy, ownsGear, equippedFilter, balance, earnedMoney, purchaseGear, completeMission, captureCount, focalRange, zoomFocal, fovForFocal, CaptureSequence, normalizeLens, type LensId, type Economy, type GearId } from './economy.ts';
@@ -45,6 +46,7 @@ const paths: Record<string, string> = {
   shop: '<path d="M3 9h18l-2-6H5L3 9ZM5 9v12h14V9M9 21v-7h6v7"/>',
   sound: '<path d="M3 9h4l5-4v14l-5-4H3zM16 8c3 2 3 6 0 8M19 5c5 4 5 10 0 14"/>',
   bolt: '<path d="m13 2-9 12h7l-1 8 10-12h-7l0-8Z"/>',
+  focus: '<path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/><circle cx="12" cy="12" r="3"/>',
 };
 const icon = (name: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] ?? paths.camera}</svg>`;
 const categoryIcon: Record<Category, string> = { Nature: 'mountain', Sports: 'sports', News: 'book', Wedding: 'heart', Studio: 'studio', Astro: 'moon' };
@@ -52,7 +54,7 @@ const esc = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 interface Photo { payment?: number; burst?: { id: string; index: number; total: number }; id: string; missionId: string; image: string; settings: CameraSettings; result: Assessment; date: number; studio?: StudioRig; environment?: { hour: number; cloudCover: number } }
-interface Save { sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
+interface Save { focus?: { mode: 'auto' | 'manual'; distance: number }; sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
 const playtest = new URLSearchParams(location.search).get('playtest');
 const storageKey = playtest === null ? 'the-photographer-save-v1' : `the-photographer-playtest${playtest && playtest !== '1' ? `-${playtest.slice(0,32)}` : ''}-v1`;
 let storageAvailable = true;
@@ -63,6 +65,7 @@ function loadSave(): Save {
       const completed = normalizeCompleted(raw.completed);
       return {
       version: 1,
+      focus: new FocusState(raw.focus),
       sound: { enabled: raw.sound?.enabled !== false, volume: Number.isFinite(raw.sound?.volume) ? Math.max(0, Math.min(1, raw.sound.volume)) : 0.6 },
       filterShopVersion: 1, filter: raw.filter, gradPosition: gradientPosition(raw.gradPosition),
       completed,
@@ -80,6 +83,7 @@ function loadSave(): Save {
   return { version: 1, filterShopVersion: 1, discovered: normalizeDiscovered(undefined), completed: [], photos: [], active: missions[0].id, economy: normalizeEconomy(undefined, []) };
 }
 const save = loadSave();
+const focus = new FocusState(save.focus);
 const audio = new WorldAudio(save.sound?.enabled ?? true, save.sound?.volume ?? 0.6);
 // These listeners execute within the browser’s user-gesture window.
 document.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
@@ -122,6 +126,14 @@ $('app').innerHTML = `
       <aside id="lighting-panel" class="lighting-panel" aria-label="Lighting kit" hidden></aside>
       <div class="target-marker" id="target-marker"><span></span><small id="target-label"></small></div>
       <div class="viewfinder" id="viewfinder"><span class="finder-meta"><span id="lens-label">35</span> MM · <span id="lens-type">PRIME</span> · 3:2</span><span class="focus-point" id="focus-point"></span><span class="finder-focus" id="focus-label"></span></div>
+      <aside class="focus-control" id="focus-control" aria-label="Lens focus" hidden>
+        <div class="focus-heading"><strong>Lens focus</strong><button id="focus-mode" title="Switch autofocus / manual focus (M)">AF · Autofocus</button></div>
+        <label for="focus-distance">Focus distance <output id="focus-distance-value" aria-live="off"></output></label>
+        <input id="focus-distance" type="range" min="0" max="100" step="0.1" aria-label="Manual focus distance"/>
+        <div class="focus-scale"><span>0.7 m · [ nearer</span><span>] farther · ∞</span></div>
+        <button id="focus-acquire">Focus once <kbd>Q</kbd></button>
+        <p id="focus-status"></p>
+      </aside>
       <label class="gradient-control" id="gradient-control" hidden>GND transition <output id="gradient-value">50%</output><input id="gradient-position" type="range" min="10" max="90" step="5" value="50" aria-label="Graduated ND transition height"/><small>Dark above · clear below</small></label>
       <div class="meditation-overlay" id="meditation-overlay" hidden><div>${icon('moon')}<p>Meditating…</p><strong id="meditation-time"></strong><small>Esc to return</small></div></div>
       <button class="npc-prompt" id="npc-prompt" hidden></button>
@@ -134,6 +146,7 @@ $('app').innerHTML = `
         <div class="setting filter-setting"><label for="filter">FILTER</label><select id="filter"><option value="none">—</option>${filterCatalog.map(filter => `<option value="${filter.id}">${filter.id === 'gnd3' ? 'GND8' : filter.label}</option>`).join('')}</select></div>
         <div class="equipment">
           <button id="camera-mode" aria-label="Toggle viewfinder (E)" aria-pressed="false" title="Viewfinder (E)">${icon('camera')}</button>
+          <button id="focus-toggle" aria-label="Switch to manual focus (M)" aria-pressed="false" title="Manual focus (M)">${icon('focus')}</button>
           <button id="tripod" aria-label="Deploy tripod (T)" aria-pressed="false" title="Deploy tripod (T)">${icon('tripod')}</button>
           <button id="panning" aria-label="Toggle panning" aria-pressed="false" title="Panning">${icon('move')}</button>
           <button id="flash-toggle" aria-label="Toggle camera flash (F)" aria-pressed="false" title="Flash (F)">${icon('bolt')}</button>
@@ -178,7 +191,7 @@ const targetVector = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const projected = new THREE.Vector3();
 let elapsed = 0;
-let focusDistance = 10;
+let focusDistance = focus.distance;
 let drag = false;
 let lastPointerX = 0, lastPointerY = 0;
 
@@ -187,6 +200,7 @@ function toast(message: string) {
   window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => $('toast').classList.remove('show'), 3600);
 }
 function persist() {
+  save.focus = { mode: focus.mode, distance: focus.distance };
   save.sound = { enabled: audio.enabled, volume: audio.volume };
   save.active = activeMission.id; save.hour = clock.hour; save.focalLength = focalLength; save.lens = equippedLens;
   save.filterShopVersion = 1; save.filter = settings.filter; save.gradPosition = gradientPosition(settings.gradPosition);
@@ -223,7 +237,8 @@ function syncTripod() {
   const label = tripod.transitioning ? (tripod.target ? 'Setting up tripod' : 'Packing tripod') : (tripod.deployed ? 'Pack tripod' : 'Deploy tripod');
   button.setAttribute('aria-label', `${label} (T)`); button.title = `${label} (T)`;
   $<HTMLButtonElement>('capture').disabled = tripod.transitioning || capturing || !!meditation || performance.now() < shootReadyAt;
-  for (const id of ['shutter', 'aperture', 'iso', 'filter', 'gradient-position', 'tripod', 'panning', 'flash-toggle', 'burst-mode', 'lighting-kit']) ($<HTMLButtonElement | HTMLSelectElement | HTMLInputElement>(id)).disabled = capturing;
+  for (const id of ['shutter', 'aperture', 'iso', 'filter', 'gradient-position', 'tripod', 'panning', 'flash-toggle', 'burst-mode', 'lighting-kit', 'focus-toggle', 'focus-mode', 'focus-acquire']) ($<HTMLButtonElement | HTMLSelectElement | HTMLInputElement>(id)).disabled = capturing;
+  $<HTMLInputElement>('focus-distance').disabled = capturing || focus.mode === 'auto';
 }
 function suggestSettings() {
   if (activeMission.requiredGear && !missionGearReady(activeMission, save.economy)) { openGearShop(); return; }
@@ -237,6 +252,7 @@ function suggestSettings() {
   }
   if (activeMission.recommended.focalLength) { equipLens('telephoto'); focalLength = activeMission.recommended.focalLength; updateLensProjection(); }
   settings = { ...suggested, gradPosition: gradientPosition(settings.gradPosition), flashPower: 0 };
+  focus.mode = 'auto';
   requestTripod(settings.tripod);
   if (activeMission.category === 'Studio') { studioRig = defaultStudioRig(); applyStudioRig(); }
   syncSettings(); if (lightingOpen) renderLightingPanel(); persist();
@@ -379,7 +395,7 @@ function syncSettings() {
   $('burst-mode').setAttribute('aria-label', burstOwned ? 'Toggle three-frame burst (B)' : 'Unlock burst camera in gear shop ($360)');
   $('burst-mode').title = burstOwned ? `Shooting: ${save.economy.burstEnabled ? '3-frame burst' : 'single'} (B)` : 'Burst camera · $360 in gear shop';
   renderer.shadowMap.needsUpdate = true;
-  syncTripod(); updateExposure();
+  syncTripod(); syncFocusControls(); updateExposure();
 }
 function sceneEV() {
   return missionAmbientEV(activeMission, clock.hour) + (activeMission.category === 'Studio' ? studioExposureOffset(studioRig, subjectPosition(world, activeMission).y) : 0);
@@ -394,6 +410,7 @@ function updateExposure() {
 }
 function setCameraMode(value: boolean) {
   cameraMode = value; stage.classList.toggle('camera-mode', value);
+  $('focus-control').hidden = !value;
   $('camera-mode').classList.toggle('selected', value); $('camera-mode').setAttribute('aria-pressed', String(value)); updateExposure();
   if (value) updateFocus();
 }
@@ -520,7 +537,8 @@ function getFraming(): Framing {
   const visible = projected.z > -1 && projected.z < 1 && Math.abs(nx) < 0.96 && Math.abs(ny) < 0.96;
   raycaster.set(camera.position, direction.normalize()); raycaster.far = Math.max(0, distance - 0.7);
   const occluded = activeMission.category !== 'Astro' && raycaster.intersectObjects(world.solids, false).length > 0;
-  return { visible, distance, centerOffset: Math.max(Math.abs(nx), Math.abs(ny)), occluded };
+  const subjectDepth = -targetVector.clone().applyMatrix4(camera.matrixWorldInverse).z;
+  return { visible, distance, centerOffset: Math.max(Math.abs(nx), Math.abs(ny)), occluded, subjectDepth };
 }
 function subjectImageY(): number {
   const p = subjectPosition(world, activeMission).project(camera);
@@ -537,19 +555,58 @@ function autofocus(frame: Framing): number {
   raycaster.setFromCamera(new THREE.Vector2(), camera); raycaster.far = camera.far;
   const hit = raycaster.intersectObjects(world.scene.children, true).find(hit => {
     if (!(hit.object instanceof THREE.Mesh)) return false;
+    for (let object: THREE.Object3D | null = hit.object; object; object = object.parent) if (!object.visible) return false;
     const materials = Array.isArray(hit.object.material) ? hit.object.material : [hit.object.material];
     return materials.some(material => material.depthWrite && material.opacity >= 0.9);
   });
   return hit ? Math.max(0.2, -hit.point.clone().applyMatrix4(camera.matrixWorldInverse).z) : 1e6;
 }
 
+function syncFocusControls() {
+  const manual = focus.mode === 'manual';
+  $('focus-toggle').classList.toggle('on', manual);
+  $('focus-toggle').setAttribute('aria-pressed', String(manual));
+  $('focus-toggle').setAttribute('aria-label', `${manual ? 'Return to autofocus' : 'Switch to manual focus'} (M)`);
+  $('focus-toggle').title = `${manual ? 'Autofocus' : 'Manual focus'} (M)`;
+  $('focus-mode').textContent = manual ? 'MF · Manual' : 'AF · Autofocus';
+  $('focus-mode').setAttribute('aria-pressed', String(manual));
+  $<HTMLInputElement>('focus-distance').disabled = !manual || capturing;
+  $<HTMLInputElement>('focus-distance').value = String(focusPosition(focus.distance));
+  $('focus-distance-value').textContent = focusLabel(focus.distance);
+  $('focus-distance').setAttribute('aria-valuetext', focusLabel(focus.distance));
+}
+function toggleFocus() {
+  if (capturing || meditation || modal.open) return;
+  updateCamera(); world.scene.updateMatrixWorld(true);
+  focus.toggle(autofocus(getFraming()));
+  setCameraMode(true); updateFocus(); persist();
+}
+function acquireFocus() {
+  if (capturing || meditation || modal.open) return;
+  updateCamera(); world.scene.updateMatrixWorld(true);
+  focus.acquire(autofocus(getFraming()));
+  setCameraMode(true); updateFocus(); persist();
+  toast(focus.mode === 'manual' ? `Focus locked at ${focusLabel(focus.distance)}. Recompose freely.` : 'Autofocus follows the subject. Press M to lock the distance.');
+}
+function adjustFocus(steps: number) {
+  if (focus.mode === 'auto') acquireFocus();
+  focus.adjust(steps); setCameraMode(true); updateFocus(); persist();
+}
 function updateFocus() {
-  const frame = getFraming(); focusDistance = autofocus(frame);
-  const subjectFocused = frame.visible && !frame.occluded;
+  const frame = getFraming();
+  if (focus.mode === 'auto') focus.acquire(autofocus(frame));
+  focusDistance = focus.distance;
+  const subjectVisible = frame.visible && !frame.occluded;
+  const sharp = subjectInFocus(activeMission.category === 'Astro' ? 450 : frame.subjectDepth!, focalLength, settings.aperture, focusDistance);
   const cropX = Math.min(1, 1.5 / camera.aspect), cropY = Math.min(1, camera.aspect / 1.5);
-  $('focus-point').style.left = `${subjectFocused ? (projected.x / cropX * 0.5 + 0.5) * 100 : 50}%`;
-  $('focus-point').style.top = `${subjectFocused ? (-projected.y / cropY * 0.5 + 0.5) * 100 : 50}%`;
-  $('focus-label').textContent = `AF · ${focusDistance >= 1e5 ? '∞' : `${focusDistance.toFixed(1)} m`} · ${subjectFocused ? activeMission.subject : 'Center surface'}`;
+  $('focus-point').style.left = `${subjectVisible ? (projected.x / cropX * 0.5 + 0.5) * 100 : 50}%`;
+  $('focus-point').style.top = `${subjectVisible ? (-projected.y / cropY * 0.5 + 0.5) * 100 : 50}%`;
+  $('focus-point').classList.toggle('defocused', subjectVisible && !sharp);
+  const status = subjectVisible ? `${activeMission.subject} · ${sharp ? 'In focus' : 'Out of focus'}` : focus.mode === 'manual' ? 'Distance locked · recompose freely' : 'Center surface';
+  $('focus-label').textContent = `${focus.mode === 'manual' ? 'MF' : 'AF'} · ${focusLabel(focusDistance)} · ${status}`;
+  $('focus-status').textContent = status;
+  $('focus-status').classList.toggle('defocused', subjectVisible && !sharp);
+  syncFocusControls();
 }
 
 function makePhoto(s: CameraSettings, frame: Framing): string {
@@ -609,7 +666,7 @@ function capture() {
   if (settings.filter !== equippedFilter(settings.filter, save.economy)) { syncSettings(); openGearShop(); toast('Buy the filter before taking a photograph with it.'); return; }
   if (activeMission.requiredGear && (!missionGearReady(activeMission, save.economy) || equippedLens !== 'telephoto')) { toast('Equip the 200–600 mm wildlife lens in Esc → Gear shop.'); return; }
   capturing = true; keys.clear(); shotPhotos = []; shotPayment = 0; shotId = crypto.randomUUID();
-  shotSettings = { ...settings, focalLength };
+  shotSettings = { ...settings, focalLength, focusMode: focus.mode, focusDistance: focus.mode === 'manual' ? focus.distance : undefined };
   captureSequence.start(now, captureCount(save.economy)); syncTripod();
   captureFrame(now);
 }
@@ -619,7 +676,7 @@ function captureFrame(now: number) {
   const captureSettings = { ...shotSettings! };
   updateCamera(); world.update(elapsed, captureSettings); world.scene.updateMatrixWorld(true);
   const frame = getFraming(), ambientEV = sceneEV();
-  captureSettings.focusDistance = autofocus(frame);
+  captureSettings.focusDistance = captureSettings.focusMode === 'manual' ? captureSettings.focusDistance : autofocus(frame);
   const result = assessPhoto(activeMission, captureSettings, frame, { hour: clock.hour, ambientEV, gearReady: missionGearReady(activeMission, save.economy) && (!activeMission.requiredGear || equippedLens === 'telephoto'), subjectStops: subjectExposureStops(captureSettings, ambientEV, frame.distance, activeMission.category !== 'Astro' && frame.visible && !frame.occluded, subjectImageY()) });
   let image: string;
   try { image = makePhoto(captureSettings, frame); }
@@ -695,7 +752,7 @@ function openReview(photo: Photo) {
   const m = missions.find(m => m.id === photo.missionId)!;
   const { result, settings: s } = photo;
   showModal(result.passed ? 'A story worth keeping.' : 'One frame closer.', 'IN THE DARKROOM', `${m.title} · ${m.location}`, `
-    <div class="review-layout"><div><img class="review-photo" src="${esc(photo.image)}" alt="Your captured photograph"/><div class="photo-settings"><span>${shutterLabel(s.shutter)}${s.shutter < 0.25 ? ' s' : ''}</span><span>f/${s.aperture}</span><span>ISO ${s.iso}</span>${s.focalLength ? `<span>${Math.round(s.focalLength)} mm</span>` : ''}${s.focusDistance && Number.isFinite(s.focusDistance) ? `<span>AF ${s.focusDistance >= 1e5 ? '∞' : `${s.focusDistance.toFixed(1)} m`}</span>` : ''}${photo.burst ? `<span>Burst ${photo.burst.index}/${photo.burst.total}</span>` : ''}${Number.isFinite(photo.environment?.hour) ? `<span>${formatTime(photo.environment!.hour)} · ${Math.round(photo.environment!.cloudCover * 100)}% cloud cover</span>` : ''}<span>${filterLabel(s.filter)}${s.filter === 'gnd3' ? ` · transition ${Math.round(gradientPosition(s.gradPosition) * 100)}%` : ''}</span>${s.tripod ? '<span>Tripod</span>' : ''}${s.panning ? '<span>Panning</span>' : ''}${flashPower(s) > 0 ? `<span>Flash ${flashPower(s) === 1 ? 'full' : `1/${Math.round(1 / flashPower(s))}`} ${flashCanFire(s) ? '' : '(not synced)'}</span>` : ''}${photo.studio ? `<span>Studio: ${lightNames.map(n => `${n} ${photo.studio![n].enabled ? Math.round(photo.studio![n].power * 100) : 0}%`).join(' · ')}</span>` : ''}</div><p style="font-size:9px;color:#8b927b;line-height:1.6;margin-top:14px">Exposure and lighting falloff are calculated. Depth of field uses scene depth and lens settings; motion accumulates over the shutter interval. Optics and noise remain simplified.</p></div>
+    <div class="review-layout"><div><img class="review-photo" src="${esc(photo.image)}" alt="Your captured photograph"/><div class="photo-settings"><span>${shutterLabel(s.shutter)}${s.shutter < 0.25 ? ' s' : ''}</span><span>f/${s.aperture}</span><span>ISO ${s.iso}</span>${s.focalLength ? `<span>${Math.round(s.focalLength)} mm</span>` : ''}${s.focusDistance && Number.isFinite(s.focusDistance) ? `<span>${s.focusMode === 'manual' ? 'MF' : 'AF'} ${s.focusDistance >= 1e5 ? '∞' : `${s.focusDistance.toFixed(1)} m`}</span>` : ''}${photo.burst ? `<span>Burst ${photo.burst.index}/${photo.burst.total}</span>` : ''}${Number.isFinite(photo.environment?.hour) ? `<span>${formatTime(photo.environment!.hour)} · ${Math.round(photo.environment!.cloudCover * 100)}% cloud cover</span>` : ''}<span>${filterLabel(s.filter)}${s.filter === 'gnd3' ? ` · transition ${Math.round(gradientPosition(s.gradPosition) * 100)}%` : ''}</span>${s.tripod ? '<span>Tripod</span>' : ''}${s.panning ? '<span>Panning</span>' : ''}${flashPower(s) > 0 ? `<span>Flash ${flashPower(s) === 1 ? 'full' : `1/${Math.round(1 / flashPower(s))}`} ${flashCanFire(s) ? '' : '(not synced)'}</span>` : ''}${photo.studio ? `<span>Studio: ${lightNames.map(n => `${n} ${photo.studio![n].enabled ? Math.round(photo.studio![n].power * 100) : 0}%`).join(' · ')}</span>` : ''}</div><p style="font-size:9px;color:#8b927b;line-height:1.6;margin-top:14px">Exposure and lighting falloff are calculated. Depth of field uses scene depth and lens settings; motion accumulates over the shutter interval. Optics and noise remain simplified.</p></div>
     <div><div class="review-score">${result.score}<small> / 100</small></div><p class="review-verdict">${result.passed ? `Assignment complete · ${photo.payment ? `${money(photo.payment)} paid` : 'Payment already earned'} · ${m.reward} XP` : 'Keep exploring. Every attempt teaches you something.'}</p>${result.feedback.map(f => `<div class="feedback-row ${f.passed ? '' : 'missed'}"><span class="feedback-icon">${icon(f.passed ? 'check' : 'info')}</span><div><strong>${esc(f.label)}</strong><p>${esc(f.text)}</p></div></div>`).join('')}</div></div>
     <div class="review-actions"><a class="secondary" id="download-photo" style="text-decoration:none;color:inherit" href="${esc(photo.image)}" download="willowbrook-${m.id}-${photo.date}.jpg">${icon('download')}Keep a copy</a><button class="primary" id="review-next">${result.passed ? 'Find another story' : 'Try another frame'}${icon('arrow')}</button></div>`);
   $('review-next').onclick = () => { if (result.passed) { boardCategory = 'All'; openBoard(); } else { modal.close(); setCameraMode(true); } };
@@ -755,7 +812,7 @@ function openHelp() {
     <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>Space</kbd> or <kbd>C</kbd> takes a photo. With the burst camera, <kbd>B</kbd> toggles three-frame bursts at 5 fps. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
     <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, map and field notes. Press it again to resume. From a submenu, Esc returns to the pause menu.<br/>You start with one lighthouse assignment. Find locals with golden markers and press <kbd>R</kbd> to talk. Their stories are added to your notebook. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments.</div>
     <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Click the brief thumbnail or open the journal to read feedback and try again. Slow shutters record moving subjects as streaks; fast shutters freeze them. A tripod steadies the scenery, while Panning follows the runner and streaks the background. Higher ISO is often the right choice when a moment moves fast.</div>
-    <div class="help-card"><strong>Choose your depth of field</strong>The viewfinder previews focus. Autofocus follows an unobstructed assignment subject inside the frame; otherwise it focuses on the center surface. The AF readout shows the focus distance. A wider aperture, longer lens, or closer subject softens the foreground and background. Stop down to bring more depth into focus. Shutter motion appears in the saved photograph.</div>
+    <div class="help-card"><strong>Choose your depth of field</strong>The viewfinder previews focus. Autofocus follows an unobstructed assignment subject inside the frame; otherwise it focuses on the center surface. Press <kbd>M</kbd> to lock the current distance and enter manual focus. Use the focus slider or <kbd>[ / ]</kbd> to focus nearer or farther; <kbd>Q</kbd> focuses once without releasing the lock. Press M again for autofocus. The distance and focus mode save with your notebook, and the reticle turns amber when the subject is out of focus. A wider aperture, longer lens, or closer subject softens the foreground and background. Stop down to bring more depth into focus. Shutter motion appears in the saved photograph.</div>
     <div class="help-card"><strong>Shape the light</strong><kbd>L</kbd> opens the Lighting kit; <kbd>F</kbd> toggles purchased flash. Adjust manual flash power or visit the studio to move and tune key, fill, and rim lights. A brief flash favours close subjects; shutter speed controls the ambient within the 1/250 s sync limit.</div>
     <div class="help-card"><strong>Wait for the light</strong>The sun, clouds, exposure and stars change through a 30-minute day. Some assignments need a particular time. Open <kbd>Esc</kbd> → Meditate to skip ahead to dawn, daylight, golden hour, night or the assignment’s preferred time. Time pauses while menus are open.</div>
     <div class="help-card"><strong>A living town</strong>Locals walk familiar routes by day; Ida watches the ridge at night. Gold markers and the map follow them. Residents and their dog wander the south neighborhood; cars slow the streets, ducks settle at dusk, deer graze in the meadow, and a fox emerges at night. Visit the wedding chapel or follow the southern path to the ocean. <kbd>Esc</kbd> → Sound controls ambient audio and volume.</div>
@@ -779,6 +836,7 @@ function openNewNotebook() {
     catch { toast('The backup could not be saved. Your current notebook has been kept.'); return; }
     save.completed = []; save.discovered = normalizeDiscovered(undefined); save.photos = []; equippedLens = 'prime'; save.economy = normalizeEconomy(undefined, []); focalLength = 35; activeMission = missions[0];
     settings = { shutter: 1 / 125, aperture: 5.6, iso: 100, filter: 'none', tripod: false, panning: false, flashPower: 0 }; studioRig = defaultStudioRig();
+    focus.mode = 'auto'; focus.acquire(10);
     clock.skipTo(17); world.setTime(clock.hour); requestTripod(false, true); selectMission(activeMission); player.set(...activeMission.viewpoint); camera.fov = fovForFocal(focalLength, camera.aspect); camera.updateProjectionMatrix(); faceSubject(activeMission); syncSettings(); updateLensLabel(); modal.close();
     toast('A fresh notebook. Your previous photographs are safely backed up on this device.');
   };
@@ -818,6 +876,15 @@ $('lighting-kit').onclick = toggleLightingKit;
 $('flash-toggle').onclick = () => { if (!ownsGear(save.economy, 'flash')) { openGearShop(); return; } settings.flashPower = flashPower(settings) > 0 ? 0 : 0.25; syncSettings(); if (lightingOpen) renderLightingPanel(); persist(); };
 $('burst-mode').onclick = toggleBurst;
 $('camera-mode').onclick = () => setCameraMode(!cameraMode);
+$('focus-toggle').onclick = toggleFocus;
+$('focus-mode').onclick = toggleFocus;
+$('focus-acquire').onclick = acquireFocus;
+$<HTMLInputElement>('focus-distance').addEventListener('input', e => {
+  if (capturing || meditation || modal.open) return;
+  focus.mode = 'manual'; focus.acquire(focusDistanceAt(Number((e.target as HTMLInputElement).value)));
+  updateFocus();
+});
+$('focus-distance').addEventListener('change', persist);
 $('menu-button').onclick = openPauseMenu;
 modal.addEventListener('cancel', e => { e.preventDefault(); leaveModal(); });
 modal.addEventListener('click', e => { if (e.target === modal) { const r = modal.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) leaveModal(); } });
@@ -829,6 +896,7 @@ document.addEventListener('keydown', e => {
   if ((e.target as HTMLElement).matches('select,input,textarea') || modal.open || meditation) return;
   if (key === ' ' && (e.target as HTMLElement).closest('button,a,[contenteditable]')) return;
   if (capturing) { if (key === ' ') e.preventDefault(); if (e.key.startsWith('Arrow')) { e.preventDefault(); keys.add(key); } return; }
+  if (e.code === 'BracketLeft' || e.code === 'BracketRight') { e.preventDefault(); adjustFocus(e.code === 'BracketLeft' ? -1 : 1); return; }
   if (['-', '=', '+'].includes(key)) { e.preventDefault(); zoomCamera(key === '-' ? 100 : -100); return; }
   const adjustment = adjustCameraSetting(settings, e.code.startsWith('Digit') ? e.code.slice(5) : key);
   if (adjustment) { e.preventDefault(); settings = adjustment.settings; syncSettings(); return; }
@@ -838,6 +906,8 @@ document.addEventListener('keydown', e => {
   if (key === 'r') { e.preventDefault(); talkToNPC(); }
   if (key === 'c' || key === ' ') { e.preventDefault(); capture(); }
   if (key === 'e') { e.preventDefault(); setCameraMode(!cameraMode); }
+  if (key === 'm') { e.preventDefault(); toggleFocus(); }
+  if (key === 'q') { e.preventDefault(); acquireFocus(); }
   if (key === 't') { e.preventDefault(); $('tripod').click(); }
   if (key === 'b') { e.preventDefault(); toggleBurst(); }
   if (key === 'f') $('flash-toggle').click();

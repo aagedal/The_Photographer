@@ -28,6 +28,9 @@ npm run preview
 | Look | Drag the world, or arrow keys |
 | Zoom (equipped purchased lens) | Scroll over the world, or − / + |
 | Raise/lower viewfinder | E |
+| Autofocus / manual focus (lock distance) | M or focus icon |
+| Focus nearer / farther | [ / ] or viewfinder focus slider |
+| Focus once (preserves manual lock) | Q or Focus once button |
 | Talk to a nearby local | R or the on-screen prompt |
 | Make a photograph | Space, C, or shutter button |
 | Slower / faster shutter | 1 / 2 |
@@ -45,6 +48,8 @@ A fresh notebook starts with **Chasing the golden hour**, the lighthouse assignm
 Saved photographs accumulate scene motion over the selected shutter interval: fast shutters freeze subjects, slow shutters soften flowing water and smear the runner. A tripod removes simulated handheld shake; Panning tracks the runner and lets the background streak. Motion blur appears in the photograph, while the live view remains responsive.
 
 **E** previews depth of field through the viewfinder. Autofocus follows the unobstructed assignment subject inside the 3:2 frame; when you aim away, it focuses on the center surface. The AF box and distance readout show the focus plane. Aperture, focal length, and focus distance affect foreground and background softness in every assignment. For obvious separation, try a longer lens and a closer subject at f/1.8–f/2.8; stop down for more depth. The journal retains the captured focus distance.
+
+Press **M** to lock the current focus distance and switch to manual focus. The viewfinder’s **Lens focus** panel has a logarithmic distance slider from **0.7 m to infinity**, with finer control near the camera. Use **[ / ]** to focus nearer/farther, or **Q** to autofocus once while keeping manual mode. Recompose or move and the locked plane stays at the same distance from the camera; press M again to resume continuous autofocus. An amber dashed reticle and **Out of focus** cue warn when the assignment subject is too soft. Captures assess focus using the same thin-lens blur as the renderer, with guidance for missed focus. Manual burst frames share the locked distance; autofocus reacquires each frame. Focus mode and distance survive reloads, and the journal records AF/MF with each photograph. Suggested settings restore autofocus.
 
 The HUD contains only compact camera settings, equipment icons, an ambient meter, and a small subject cue. Shortcuts work while playing; focused dropdowns keep their normal keyboard behavior. Without a tripod, the camera has a tiny handheld wobble, softened at long focal lengths for precise aiming. **T** unfolds the tripod in 0.42 seconds and packs it in 0.28 seconds; the wobble smoothly settles during setup and returns during packing. Movement and capture are blocked during the transition, and movement remains locked while deployed. Reduced-motion preferences disable the wobble and skip the animation.
 
@@ -141,7 +146,7 @@ These are lightweight procedural routines. Residents and wildlife use clock-base
 - Actual 3:2 image captures, simplified visual effects, photo review, downloads, and a persistent journal.
 - A map, travel shortcuts, keyboard aiming, and a performance setting.
 
-This is a foundation, not the finished game. Motion blur accumulates up to 33 scene samples over the selected shutter interval, with simulated handheld shake, runner tracking, flowing water, and a brief flash pulse. Long exposures render immediately rather than waiting for the shutter duration. Depth of field uses scene depth and a thin-lens blur radius, with a bounded disk kernel; transparent surfaces and blur around silhouettes remain approximations. Panning uses a switch, window reflections render the surrounding scene with simplified polarizer suppression, and star motion follows a simplified sky rotation. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, variable flash duration, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. Deeper NPC stories, staged events, manual focus controls, fuller collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
+This is a foundation, not the finished game. Motion blur accumulates up to 33 scene samples over the selected shutter interval, with simulated handheld shake, runner tracking, flowing water, and a brief flash pulse. Long exposures render immediately rather than waiting for the shutter duration. Depth of field uses scene depth and a thin-lens blur radius, with a bounded disk kernel; transparent surfaces and blur around silhouettes remain approximations. Panning uses a switch, window reflections render the surrounding scene with simplified polarizer suppression, and star motion follows a simplified sky rotation. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, variable flash duration, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. Focus assessment checks the assignment’s central subject plane; it does not measure every face or the whole landscape. Deeper NPC stories, staged events, fuller collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
 
 See [the development plan](docs/PLAN.md) for the full curriculum, milestones, technical direction, and validation approach.
 
@@ -154,6 +159,7 @@ See [the development plan](docs/PLAN.md) for the full curriculum, milestones, te
 - `src/missions.ts` — assignment curriculum and suggested settings.
 - `src/photography.ts` — pure exposure and assessment model.
 - `src/optics.ts` / `src/depth-of-field.ts` — thin-lens math and shared scene-depth blur for the live viewfinder and saved photographs.
+- `src/focus.ts` — persistent AF/MF state, logarithmic focus ring, and subject sharpness assessment.
 - `tests/rendering.html` — development-only GPU checks; run the dev server and visit `/tests/rendering.html`. The optional notebook fixture uses a separate playtest save.
 - `src/filters.ts` — filter catalog, strengths, labels, and graduated attenuation.
 - `src/lighting.ts` — flash exposure/sync, studio settings, and continuous-light metering.
