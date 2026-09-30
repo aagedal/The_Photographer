@@ -1,6 +1,6 @@
 # The Photographer
 
-A small open-world photography game prototype. Explore a warm, low-poly town, accept assignments, choose manual camera settings, and learn from the photographs you make.
+A small open-world photography game prototype. Explore a warm, low-poly town and its surrounding hills, meet locals for assignments, choose manual camera settings, and learn from the photographs you make.
 
 ## Play locally
 
@@ -26,8 +26,9 @@ npm run preview
 | Walk | W A S D |
 | Walk faster | Shift |
 | Look | Drag the world, or arrow keys |
-| Zoom (purchased lens) | Scroll over the world, or − / + |
+| Zoom (equipped purchased lens) | Scroll over the world, or − / + |
 | Raise/lower viewfinder | E |
+| Talk to a nearby local | R or the on-screen prompt |
 | Make a photograph | C or shutter button |
 | Slower / faster shutter | 1 / 2 |
 | Wider / narrower aperture | 3 / 4 |
@@ -39,7 +40,7 @@ npm run preview
 | Pause menu: assignments, journal, gear shop, map, controls | Escape or Esc button |
 | Back to pause menu / resume | Escape |
 
-Open **Esc → Assignments** to select an assignment, then explore or use **Esc → Find the spot**, and frame the marked subject. Adjust shutter, aperture, ISO, filters, and tripod. **Try suggested settings** provides a starting point for experimentation. Feedback evaluates the subject, exposure, and the lesson; try again freely. Assignment XP and payment are earned only once. Photographs and progress save locally in this browser, with the latest 16 frames retained. Taking a photo shows a brief clickable preview without interrupting play. Open the preview or **Esc → Photo journal** for feedback and downloads.
+A fresh notebook starts with **Chasing the golden hour**, the lighthouse assignment. Walk to locals with golden markers and press **R** (or click the talk prompt) to hear their stories. Their briefs are added to **Esc → Assignments**, where you can accept them later. Explore by the creek, track, square, garden, studio, and northern ridge. Travel shortcuts in **Esc → Find the spot** and the map are available for discovered, gear-ready assignments. Frame the marked subject. Adjust shutter, aperture, ISO, filters, and tripod. **Try suggested settings** provides a starting point for experimentation. Feedback evaluates the subject, exposure, and the lesson; try again freely. Assignment XP and payment are earned only once. Photographs and progress save locally in this browser, with the latest 16 frames retained. Taking a photo shows a brief clickable preview without interrupting play. Open the preview or **Esc → Photo journal** for feedback and downloads.
 
 The HUD contains only compact camera settings, equipment icons, an ambient meter, and a small subject cue. Shortcuts work while playing; focused dropdowns keep their normal keyboard behavior. **T** unfolds the tripod in 0.42 seconds and packs it in 0.28 seconds. Movement and capture are blocked during the transition, and movement remains locked while deployed. Reduced-motion preferences skip the animation.
 
@@ -47,17 +48,26 @@ To restart, open **Esc → Controls → Start a fresh notebook**. The current no
 
 ## Mission payments and gear
 
-Successful assignments pay **$120–$220**, once per brief. Failed attempts cost nothing; repeating a completed brief still saves the photo but earns no extra cash. Open **Esc → Gear shop** to spend your earnings:
+Successful assignments pay **$120–$260**, once per brief. Failed attempts cost nothing; repeating a completed brief still saves the photo but earns no extra cash. Open **Esc → Gear shop** to spend your earnings:
 
 | Upgrade | Price | Ability |
 | --- | --- | --- |
 | 24–120 mm zoom lens | $120 | Change the actual camera framing with scroll or −/+ |
 | Camera flash | $180 | Light nearby subjects; F toggles, L adjusts power |
 | Burst camera | $360 | Three frames at 5 fps; B toggles single/burst, C shoots |
+| 200–600 mm wildlife lens | $480 | Equip it for distant bird close-ups; unlocks the kingfisher brief |
 
-The starter kit includes a fixed 35 mm lens, tripod, ND/CPL filters, and studio lights. Every brief is achievable with it. The first five assignments fund all three upgrades with $120 left over, without repeat payments. Purchases take effect immediately and save with the notebook.
+The starter kit includes a fixed 35 mm lens, tripod, ND/CPL filters, and studio lights. The original twelve briefs are achievable with it. The new bird brief requires the wildlife lens. Four starter-kit briefs (lighthouse, creek, freezing the runner, and the morning baker) pay $600, enough to buy it without repeating a mission. The first five original briefs still fund the zoom, flash, and burst camera with $120 left over. Purchases take effect immediately and save with the notebook. Choose your equipped lens at the top of the gear shop; each has its own focal range, and the equipped lens and focal length persist.
 
 A burst samples the moving world between frames, keeps every frame in the journal, and previews the highest-scoring frame. Camera settings stay fixed during the sequence; you can keep aiming. Completed missions from older notebooks receive back pay, and a flash already used in those notebooks is kept for free. Starting a fresh notebook also resets money and purchases; its backup preserves them.
+
+## Trails, locals, and bird photography
+
+The world is **260 m across**, up from 110 m, with over five times the area. Walk the rolling woodland and meadow trails, climb the northern ridge, or visit the eastern wetland. Player height follows the ground. The town remains level for its existing studio, track and garden scenarios. Characters now have shaped bodies, facial features, hands, clothing details and varied skin tones; locals carry field bags and distinctive accessories. Trees and ground cover are instanced and static detail is batched to limit draw calls.
+
+Mara, the creek ranger, introduces **A flash of blue** alongside the waterfall story. Buy the **$480 wildlife lens** and accept the bird assignment from your notebook. Photograph the kingfisher on its wetland perch from the trail or hide, about 20–35 m away. Use **400–600 mm**, **1/1000 s or faster**, **f/5.6 or smaller**, and stay at least **18 m away**. Suggested settings equip the wildlife lens at 600 mm and set ISO 800. The photograph must show a close-up as well as meet the exposure and technique checks; it pays **$260** once. Aim sensitivity slows at long focal lengths for finer framing.
+
+Mission discovery saves with the notebook. Existing saves retain completed, photographed, and previously active briefs; other stories are found through locals. To experience the one-mission introduction, use **Esc → Controls → Start a fresh notebook**, which backs up the current notebook first.
 
 ## Sky, time, and meditation
 
@@ -86,15 +96,15 @@ Switch to **Studio lights**, visit the studio, and tune the key, fill, and rim l
 
 ## First milestone
 
-- A small connected world with six photography locations, stylized lighting, shadows, animated water and a runner, a moving sun and moon, drifting clouds, and a 30-minute day/night cycle.
-- Twelve playable prototype briefs: two each for nature, sports, news, wedding, studio, and astrophotography.
+- A connected town with six original photography locations, rolling hills, woodland and meadow trails, and a bird wetland, stylized lighting, shadows, animated water and a runner, a moving sun and moon, drifting clouds, and a 30-minute day/night cycle.
+- Thirteen playable prototype briefs: the original twelve across six disciplines, plus gear-gated bird photography. Six locals reveal new briefs through dialogue.
 - Calculated exposure, filter attenuation, composition/distance/obstruction checks, and lesson-specific feedback.
 - Manual flash with distance falloff and sync checking; adjustable continuous key, fill, and rim studio lights.
-- Mission payments, a gear shop, an unlockable zoom/flash/burst camera, and three-frame sports bursts.
+- Mission payments, a gear shop, unlockable zoom and wildlife lenses, a flash and burst camera, and three-frame sports bursts.
 - Actual 3:2 image captures, simplified visual effects, photo review, downloads, and a persistent journal.
 - A map, travel shortcuts, keyboard aiming, and a performance setting.
 
-This is a foundation, not the finished game. Blur and background separation use image-space approximations, panning uses a switch, glass reflections are simulated, exposure durations resolve instantly, and star trails are illustrative. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, flash duration/motion freezing, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. NPC dialogue, staged events, focus simulation, audio, full collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
+This is a foundation, not the finished game. Blur and background separation use image-space approximations, panning uses a switch, glass reflections are simulated, exposure durations resolve instantly, and star trails are illustrative. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, flash duration/motion freezing, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. Deeper NPC stories, staged events, focus simulation, audio, full collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
 
 See [the development plan](docs/PLAN.md) for the full curriculum, milestones, technical direction, and validation approach.
 
@@ -105,6 +115,8 @@ See [the development plan](docs/PLAN.md) for the full curriculum, milestones, te
 - `src/photography.ts` — pure exposure and assessment model.
 - `src/lighting.ts` — flash exposure/sync, studio settings, and continuous-light metering.
 - `src/environment.ts` — world clock, sky/weather sampling, assignment time windows, and outdoor metering.
+- `src/exploration.ts` — locals, mission discovery, proximity, and equipment gates.
+- `src/terrain.ts` — world bounds, rolling elevation, and trail routes.
 - `src/economy.ts` — mission payments, gear ownership, save migration, focal range, and burst timing.
 - `src/controls.ts` — camera shortcuts and tripod transition state.
 - `src/tripod.ts` — lightweight first-person tripod animation, excluded from captures.

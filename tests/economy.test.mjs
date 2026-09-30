@@ -26,12 +26,12 @@ test('starter purchases cannot overdraw the wallet or charge twice', () => {
   assert.equal(purchaseGear(bought.economy,completed,'zoom').reason,'owned');
   assert.deepEqual(state,empty());
 });
-test('first five briefs fund every upgrade without repeating a mission', () => {
+test('first five briefs fund the original three upgrades without repeating a mission', () => {
   const completed = []; let state=empty();
   for (const mission of missions.slice(0,5)) completed.push(mission.id);
-  for (const gear of gearCatalog) { const bought=purchaseGear(state,completed,gear.id); assert.equal(bought.ok,true); state=bought.economy; }
+  for (const gear of gearCatalog.filter(g => g.id !== 'telephoto')) { const bought=purchaseGear(state,completed,gear.id); assert.equal(bought.ok,true); state=bought.economy; }
   assert.equal(balance(state,completed),120);
-  assert.ok(gearCatalog.every(gear=>ownsGear(state,gear.id)));
+  assert.ok(gearCatalog.filter(g => g.id !== 'telephoto').every(gear=>ownsGear(state,gear.id)));
 });
 test('old notebooks receive back pay and keep a flash already in use', () => {
   const state=normalizeEconomy(undefined,['nature-1','studio-1'],true);

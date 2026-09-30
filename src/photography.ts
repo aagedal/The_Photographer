@@ -7,7 +7,7 @@ export interface Assessment { score: number; passed: boolean; exposureStops: num
 export const filterStops = (filter: CameraSettings['filter']) => filter === 'nd6' ? 6 : filter === 'cpl' ? 1 : 0;
 export const cameraEV = (s: CameraSettings) => Math.log2(s.aperture ** 2 / s.shutter) - Math.log2(s.iso / 100) + filterStops(s.filter);
 export const exposureStops = (s: CameraSettings, sceneEV: number) => sceneEV - cameraEV(s);
-export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing, lighting?: { subjectStops: number; ambientEV: number; hour?: number }): Assessment {
+export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing, lighting?: { subjectStops: number; ambientEV: number; hour?: number; gearReady?: boolean }): Assessment {
   const stops = lighting?.subjectStops ?? exposureStops(s, mission.ev);
   const exposureOK = Math.abs(stops) <= 1.6;
   const framingOK = frame.visible && !frame.occluded && frame.distance < 65 && frame.distance > 2 && frame.centerOffset < 0.9;
@@ -28,7 +28,11 @@ export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing,
     feedback.push({ label: 'Time of day', passed: ready, text: ready ? `You caught the right light at ${formatTime(lighting.hour)}. ${mission.timeWindow.label}.` : `Taken at ${formatTime(lighting.hour)}. This assignment needs ${mission.timeWindow.label.toLowerCase()}. Meditate from the Esc menu to wait for its preferred time.` });
   }
   const add = (label: string, passed: boolean, yes: string, no: string) => feedback.push({ label, passed, text: passed ? yes : no });
+  if (mission.requiredGear) add('Required gear', lighting?.gearReady === true, 'The wildlife lens gives you the reach this assignment needs.', 'Buy the 200–600 mm wildlife lens in the gear shop before taking this assignment.');
   switch (mission.technique) {
+    case 'bird':
+      add('Close-up', (s.focalLength ?? 35) >= 400 && (s.focalLength ?? 35) <= 600 && (s.focalLength ?? 35) / frame.distance >= 15, 'Your long lens brings the kingfisher’s plumage into the frame.', 'Equip the wildlife lens and zoom to 400–600 mm. Aim from the wetland trail, about 20–35 m from the perch.');
+      add('Wildlife craft', s.shutter <= 1 / 1000 && s.aperture >= 5.6 && frame.distance >= 18, 'A fast shutter catches the detail while you give the bird space.', 'Use 1/1000 s or faster, f/5.6 or smaller, and keep at least 18 m away. Raise ISO to balance the exposure.'); break;
     case 'landscape': add('Depth', s.aperture >= 8, 'Stopping down helps the landscape stay in focus.', 'Try f/8 or smaller (a larger f-number) to keep more of the landscape in focus.'); break;
     case 'water':
       add('Movement', s.shutter >= 0.25, 'The long exposure lets flowing water soften.', 'Try 1/4 second or longer to let the water move through the frame.');

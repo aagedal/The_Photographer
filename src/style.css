@@ -154,3 +154,16 @@ dialog{border:1px solid #d9deca;border-radius:13px;padding:0;background:var(--pa
   .gear-owned { font-size:10px; text-align:center; }
   .shop-wallet { padding-bottom:14px; } .shop-wallet strong { font-size:28px; }
 }
+
+.npc-prompt { position:absolute; bottom:115px; left:50%; transform:translateX(-50%); border:1px solid #f4d49488; background:#283e33ed; color:#f6ecd0; border-radius:9px; padding:12px 20px; font-size:13px; box-shadow:0 4px 22px #1e302d33; }
+.npc-prompt kbd { padding:3px 7px; border:1px solid #d5c49c; border-radius:4px; margin-right:7px; font:11px 'DM Sans',sans-serif; }
+.npc-prompt small { display:block; font-size:10px; color:#d3cfb3; margin-top:6px; }
+.npc-dialogue { font:20px/1.7 Georgia,serif; margin:0 0 24px; color:#53664c; }
+.discovery-note { font-size:11px; line-height:1.7; color:#77816b; padding:0 0 18px; }
+.mission-locked { background:#eeeade; }
+.assignment-card .eyebrow svg { width:14px; height:14px; }
+.assignment-card .gear-requirement { color:#8e7142; background:#e9dfc8; padding:7px 9px; border-radius:4px; }
+.lens-picker { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 18px; }
+.lens-picker>span { font-size:10px; color:var(--muted); }
+.lens-picker .selected { background:#e0e9ce; border-color:#899f6a; }
+@media(max-width:800px) { .npc-prompt { bottom:155px; } }

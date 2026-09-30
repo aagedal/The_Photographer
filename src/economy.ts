@@ -4,6 +4,7 @@ export const gearCatalog = [
   { id: 'zoom', name: '24–120 mm zoom lens', price: 120, icon: 'aperture', description: 'Frame distant subjects or go wide. Scroll or use −/+ to zoom.' },
   { id: 'flash', name: 'Camera flash', price: 180, icon: 'bolt', description: 'Light a close subject against a darker background. F toggles flash; L adjusts power.' },
   { id: 'burst', name: 'Burst camera', price: 360, icon: 'burst', description: 'Catch changing moments with three frames at 5 fps. B switches single / burst; C shoots.' },
+  { id: 'telephoto', name: '200–600 mm wildlife lens', price: 480, icon: 'aperture', description: 'Unlock bird close-ups from a respectful distance. Equip in the shop, then scroll or use −/+ to zoom.' },
 ] as const;
 export type GearId = typeof gearCatalog[number]['id'];
 export interface Economy { purchased: GearId[]; gifted: GearId[]; burstEnabled: boolean }
@@ -43,9 +44,15 @@ export function completeMission(completed: string[], missionId: string, passed: 
 }
 
 export const captureCount = (economy: Economy) => ownsGear(economy, 'burst') && economy.burstEnabled ? 3 : 1;
-export const focalRange = (economy: Economy): [number, number] => ownsGear(economy, 'zoom') ? [24, 120] : [35, 35];
-export function zoomFocal(economy: Economy, focal: number, wheelDelta: number) {
-  const [min, max] = focalRange(economy);
+export type LensId = 'prime' | 'zoom' | 'telephoto';
+export function normalizeLens(raw: unknown, economy: Economy): LensId {
+  if (raw === 'prime') return 'prime';
+  if ((raw === 'zoom' || raw === 'telephoto') && ownsGear(economy, raw)) return raw;
+  return ownsGear(economy, 'zoom') ? 'zoom' : 'prime';
+}
+export const focalRange = (economy: Economy, lens: LensId = normalizeLens(undefined, economy)): [number, number] => lens === 'telephoto' && ownsGear(economy, lens) ? [200, 600] : lens === 'zoom' && ownsGear(economy, lens) ? [24, 120] : [35, 35];
+export function zoomFocal(economy: Economy, focal: number, wheelDelta: number, lens?: LensId) {
+  const [min, max] = focalRange(economy, lens);
   return Math.max(min, Math.min(max, focal * Math.exp(-wheelDelta * 0.0015)));
 }
 export const fovForFocal = (focal: number, aspect: number) => 2 * Math.atan(24 / (2 * focal * Math.min(1, aspect / 1.5))) * 180 / Math.PI;

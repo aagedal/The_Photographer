@@ -14,7 +14,7 @@ Target eventual 60 fps at 1080p on Apple Silicon and a modest integrated Linux G
 
 ## Milestones
 
-1. **Playable foundation (this implementation):** a procedurally built town; walking and mouse aiming; selectable mission board; manual camera controls; actual rendered photo capture; exposure and subject assessment; feedback; local journal and completion saving. All twelve assignment briefs have basic playable scoring. They are prototype scenarios, not twelve finished bespoke missions.
+1. **Playable foundation (this implementation):** a procedurally built town; walking and mouse aiming; selectable mission board; manual camera controls; actual rendered photo capture; exposure and subject assessment; feedback; local journal and completion saving. All thirteen assignment briefs have basic playable scoring. They remain prototype scenarios rather than finished bespoke missions.
 2. **Photography vertical slice:** deepen nature and sports missions first. Add optical depth of field, accumulated motion blur from world samples, focus distance, tripod placement, persistent time/weather, and more responsive subjects. Verify learning by comparing intentionally good and bad captures.
 3. **Six disciplines:** bespoke story beats, NPC interactions, sequenced wedding moments, news events and glass/reflection shaders, studio-light placement challenges, sports timing, water accumulation, and a real star field/exposure system. Each mission introduces one concept, then reinforces it in another context.
 4. **Progression and finish:** small narrative, deeper equipment progression, accessibility and rebinding, gamepad, audio, save export/import, better collisions and terrain, final art pass, playtesting, performance profiling, packaging for macOS/Linux if useful.
@@ -54,6 +54,14 @@ The world now turns through a 30-minute day, paused in menus and hidden tabs. Su
 
 ## Mission economy and gear extension
 
-Implemented one-time payments of $120–$220 per completed assignment and an Esc gear shop. The starter kit has a fixed 35 mm lens, tripod, filters, and studio lights; it can complete every brief. Players choose a $120 zoom lens (24–120 mm), $180 manual flash, or $360 burst camera. The first five briefs pay $780 against $660 for the full kit, so progression needs no repeat grind.
+Implemented one-time payments of $120–$260 per completed assignment and an Esc gear shop. The starter kit has a fixed 35 mm lens, tripod, filters, and studio lights; it can complete the original twelve briefs. Bird photography requires the wildlife lens. Players choose a $120 zoom lens (24–120 mm), $180 manual flash, or $360 burst camera. The first five briefs pay $780 against $660 for those three upgrades, so progression needs no repeat grind.
 
 Zoom changes the camera projection while maintaining a consistent 3:2 capture across viewport shapes. Burst mode captures three world samples 200 ms apart, holds exposure settings, allows aiming, retains every frame, previews the highest score, and pays a brief once across the sequence. All purchases, burst preference, and focal length persist. Old completions receive back pay; previously used flash is preserved as a free legacy item. Pure tests cover payments, affordability, save normalization, optics, and burst sequencing.
+
+## Expanded world and discovered missions
+
+Implemented a 260 m terrain mesh around the original level town, with rolling meadow and woodland paths, a northern astronomy ridge, and an eastern wetland. Player height follows terrain; every trail and photography viewpoint is covered by movement and visibility checks. The expanded world uses 520 instanced trees, instanced flowers/stones, and batched static scenery. Characters have shaped bodies, faces, clothing, hands, varied skin tones, and accessories.
+
+A fresh notebook has only the lighthouse assignment. Six named locals reveal the other briefs when approached and spoken to with R or the talk prompt. Discovered stories persist, and the assignment board and map expose only known stories. Gear-ready discovered briefs have travel shortcuts; the lighting practice controls also respect discovery. Legacy notebooks retain previously active, completed and photographed briefs. No completion prerequisite prevents exploring another discipline.
+
+The thirteenth brief is a wetland kingfisher close-up, offered by the creek ranger and gated by a $480 200–600 mm lens. The lens has a separate equipped state and real camera projection. Suggested settings equip it at 600 mm; assessment requires owned/equipped gear, adequate subject scale at 400–600 mm, at least 18 m distance, 1/1000 s or faster, f/5.6 or smaller, framing and exposure. Four starter-kit briefs can fund the purchase. Detailed terrain collision, deeper dialogue branches, more wildlife behavior, and optical depth of field remain future work.

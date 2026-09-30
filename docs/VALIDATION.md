@@ -4,17 +4,17 @@ Validated on 30 September 2026.
 
 ## Automated
 
-- 58 tests pass using Node's test runner.
+- 66 tests pass using Node's test runner.
 - Exposure math: doubling ISO, exposure time, or aperture area changes exposure by the expected stop.
 - Filters: ND64 attenuates six stops; prototype CPL attenuates one stop.
-- All twelve suggested camera setups pass their assignment's lesson assessment with valid framing.
+- All thirteen suggested camera setups pass their assignment's lesson assessment with valid framing.
 - Missing filters, inappropriate motion settings, absent tripod, poor framing, obstruction, and unusable exposure prevent completion.
 - World integration: every assignment viewpoint is walkable, its subject exists, and its subject is unobstructed from that viewpoint.
 - Lake and boundary restrictions work while the pier stays walkable.
 - Flash tests cover inverse-square distance falloff, power/aperture/ISO/filter response, shutter-independent pulse exposure within sync, suppression beyond sync, and a lit close portrait with dark ambient exposure.
 - Studio tests cover continuous-light metering, moving and aiming the actual lights, colour and power, disabling lights, and migration of old/malformed lighting saves.
 - Controls tests cover both shortcut directions, exposure effects, clamped limits, tripod stability/locking, reversal during setup, and instant setup/packing.
-- Strict TypeScript check and Vite production build pass. The renderer makes the main bundle larger than Vite's default 500 kB warning threshold (about 159 kB compressed); no build error.
+- Strict TypeScript check and Vite production build pass. The renderer makes the main bundle larger than Vite's default 500 kB warning threshold (about 165 kB compressed); no build error.
 
 ## Browser playtesting
 
@@ -47,7 +47,7 @@ Validated on 30 September 2026.
 - Clock tests verify a full 24-hour cycle in 1,800 seconds, midnight wrapping, normalization of saved time and meditation targets, and safe handling of invalid frame times.
 - Sky tests verify east-to-west sun movement, twilight warmth, bounded cloud cover, continuous light/weather across midnight and twilight, and brighter outdoor metering during the day.
 - Time-window tests include both interval endpoints and windows crossing midnight. A correctly framed, exposed, technically valid photograph fails a timed brief outside its required window.
-- All twelve suggested camera setups pass at their preferred time with the runtime time context supplied.
+- All thirteen suggested camera setups pass at their preferred time with the runtime time context supplied.
 - World integration tests inspect actual sun/moon positions and intensities, sky colour, fading stars, and changes to the 60 cloud instance matrices.
 - Browser: meditation transitions to 23:00, blocks capture during the transition, and resumes without a modal. Stars and dark cloud silhouettes appear over the lake.
 - Browser: selecting an astro assignment preserves the current clock; its night capture passes at 100/100 and records the time and cloud cover. Skipping to daylight produces exposure and time-window failures with meditation guidance.
@@ -65,6 +65,17 @@ Validated on 30 September 2026.
 - Reload restored all purchases, burst preference, wallet, focal length, and nine journal frames. The older playtest notebook received $460 in back pay and preserved its previously used flash for free.
 - Shop inspected at 1280 × 720 and 480 × 740. The narrow dialog scrolls vertically without horizontal overflow. No browser console errors observed. Temporary test tabs were closed and the viewport override reset.
 - Verified preview: `docs/gear-shop.png`.
+
+## Terrain, mission discovery and wildlife
+
+- Fresh notebooks expose exactly one mission. Discovery is limited to the stories offered by a local, is idempotent, and survives serialization. Legacy evidence retains previous briefs without revealing the entire board.
+- All six locals are on walkable ground and are detected within interaction range, with elevation included. Their combined offers cover every nonstarter brief.
+- Sampled points along each trail are walkable and have gradual height changes. The original town is level, the ridge rises over 18 m, and both lake and wetland prevent walking through water. One eastern trail originally clipped the pond and was rerouted onto dry ground.
+- Every mission viewpoint is tested at actual terrain height; terrain is included in photo obstruction raycasts.
+- Wildlife progression tests cover affordability, purchase persistence, separate equipped-lens ranges, invalid/unowned lens requests, gear/discovery acceptance rules, and good versus insufficient zoom, slow shutter, too-close/too-distant and obscured bird frames.
+- Browser: an isolated fresh notebook showed one lighthouse brief and $0. Approaching Mara showed the talk prompt; talking revealed the creek and bird briefs. Selecting the gear-blocked bird story opened the shop, with the $480 wildlife lens disabled until affordable.
+- Browser: a separate funded test notebook bought the wildlife lens, reducing $600 to $120 and displaying it as equipped. Accepting the bird story, travelling to the wetland, and applying suggested settings produced a 600 mm, 1/1000 s, f/5.6, ISO 800 close-up at 26 m. Its review showed 100/100, all five checks passed, and a $260 payment. The rendered bird and expanded scenery were visually inspected. Reloading after fixture removal preserved the completed bird brief, photograph, equipped lens, and $380 balance. The final fresh build had no browser console errors or warnings.
+- Temporary browser-testing spawn/funding fixtures were removed from the source after verification. Production uses the normal saved progression and mission spawn.
 
 ## Remaining validation
 

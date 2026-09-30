@@ -20,14 +20,14 @@ test('ND64 removes six stops; polarizer removes approximately one', () => {
   assert.equal(filterStops('cpl'), 1);
   assert.equal(cameraEV({ ...standard, filter: 'nd6' }), cameraEV(standard) + 6);
 });
-test('the curriculum contains two distinct missions per discipline', () => {
-  assert.equal(new Set(missions.map(m => m.id)).size, 12);
-  for (const c of categories) assert.equal(missions.filter(m => m.category === c).length, 2);
+test('the curriculum retains each discipline and adds a wildlife assignment', () => {
+  assert.equal(new Set(missions.map(m => m.id)).size, 13);
+  for (const c of categories) assert.equal(missions.filter(m => m.category === c).length, c === 'Nature' ? 3 : 2);
 });
 for (const m of missions) {
   test(`suggested settings complete ${m.id} when properly framed`, () => {
     const hour = missionReferenceHour(m), ambientEV = missionAmbientEV(m, hour);
-    const result = assessPhoto(m, m.recommended, frame, { hour, ambientEV, subjectStops: exposureStops(m.recommended, ambientEV) });
+    const result = assessPhoto(m, m.recommended, frame, { hour, ambientEV, gearReady: true, subjectStops: exposureStops(m.recommended, ambientEV) });
     assert.equal(result.passed, true, JSON.stringify(result.feedback));
     assert.equal(result.score, 100);
   });

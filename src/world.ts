@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { WORLD_HALF, terrainHeight, trails, distanceToTrail } from './terrain.ts';
+import { npcCatalog, npcPosition } from './exploration.ts';
 import { sampleSky } from './environment.ts';
 import type { Mission } from './missions.ts';
 import { defaultStudioRig, lightNames, lightPosition, type StudioRig } from './lighting.ts';
@@ -10,12 +13,13 @@ export interface World {
   setStudioRig: (rig: StudioRig, focus: [number, number, number], controlled: boolean) => void;
   setFlash: (position: [number, number, number], direction: [number, number, number], intensity: number) => void;
   canWalk: (x: number, z: number) => boolean;
+  groundHeight: (x: number, z: number) => number;
 }
 
 export function createWorld(): World {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#d6ddca');
-  scene.fog = new THREE.Fog('#d6ddca', 55, 150);
+  scene.fog = new THREE.Fog('#d6ddca', 85, 300);
   const subjects = new Map<string, THREE.Object3D>();
   const solids: THREE.Object3D[] = [];
   const blockers: { x: number; z: number; w: number; d: number }[] = [];
@@ -35,11 +39,30 @@ export function createWorld(): World {
     mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
   };
   const seed = (n: number) => { const a = Math.sin(n * 127.1 + 311.7) * 43758.5453; return a - Math.floor(a); };
+  // Preserve facial detail without paying one draw call for every eye and seam.
+  const batchMeshes = (parent: THREE.Object3D, exclude: Set<THREE.Object3D> = new Set()) => {
+    const batches = new Map<string, THREE.Mesh[]>();
+    for (const child of parent.children) {
+      if (!(child instanceof THREE.Mesh) || child instanceof THREE.InstancedMesh || exclude.has(child) || child.name === 'rolling-terrain' || !(child.material instanceof THREE.MeshStandardMaterial) || child.material instanceof THREE.MeshPhysicalMaterial) continue;
+      const key = `${child.material.uuid}-${child.castShadow}-${child.receiveShadow}`;
+      if (!batches.has(key)) batches.set(key, []);
+      batches.get(key)!.push(child);
+    }
+    for (const meshes of batches.values()) {
+      if (meshes.length < 2) continue;
+      const geometries = meshes.map(mesh => { mesh.updateMatrix(); const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone(); return geometry.applyMatrix4(mesh.matrix); });
+      const geometry = mergeGeometries(geometries);
+      geometries.forEach(g => g.dispose());
+      if (!geometry) continue;
+      const merged = new THREE.Mesh(geometry, meshes[0].material); merged.castShadow = meshes[0].castShadow; merged.receiveShadow = meshes[0].receiveShadow;
+      meshes.forEach(mesh => parent.remove(mesh)); parent.add(merged);
+    }
+  };
   const hemi = new THREE.HemisphereLight('#e6edd4', '#647c56', 2.3); scene.add(hemi);
   const sun = new THREE.DirectionalLight('#ffe4ad', 3.5);
   sun.name = 'sun-light'; sun.position.set(-32, 45, 24); sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, near: 1, far: 130 });
+  Object.assign(sun.shadow.camera, { left: -145, right: 145, top: 145, bottom: -145, near: 1, far: 350 });
   sun.shadow.bias = -0.001; sun.shadow.normalBias = 0.035;
   scene.add(sun, sun.target);
   const moon = new THREE.DirectionalLight('#a5badd', 0); moon.name = 'moon-light'; scene.add(moon, moon.target);
@@ -56,8 +79,23 @@ export function createWorld(): World {
   const skyLightColour = new THREE.Color('#e6edd4'), sunWarmColour = new THREE.Color('#ffad71');
   const darkCloud = new THREE.Color('#293b50'), whiteCloud = new THREE.Color('#eef3e3'), sunsetCloud = new THREE.Color('#edc4a0');
   // Shared primitive geometry keeps the scenery inexpensive and deliberately chunky.
-  box(0, -0.65, 0, 110, 1.2, 110, '#88a86c');
-  box(0, -2.2, 0, 111, 2.2, 111, '#a99778');
+  const terrain = new THREE.PlaneGeometry(WORLD_HALF * 2, WORLD_HALF * 2, 130, 130);
+  terrain.rotateX(-Math.PI / 2);
+  const positions = terrain.getAttribute('position');
+  const colours: number[] = [];
+  const grass = new THREE.Color('#88a86c'), highland = new THREE.Color('#929678'), pathColour = new THREE.Color('#c3b694');
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i), z = positions.getZ(i), height = terrainHeight(x, z);
+    positions.setY(i, height - 0.055);
+    const colour = grass.clone().lerp(highland, Math.min(1, height / 20));
+    colour.multiplyScalar(0.94 + seed(i + 308) * 0.12);
+    if (distanceToTrail(x, z) < 1.6) colour.copy(pathColour);
+    colours.push(colour.r, colour.g, colour.b);
+  }
+  terrain.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3)); terrain.computeVertexNormals();
+  const land = new THREE.Mesh(terrain, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 }));
+  land.name = 'rolling-terrain'; land.receiveShadow = true; scene.add(land); solids.push(land);
+  box(0, -3, 0, WORLD_HALF * 2, 4, WORLD_HALF * 2, '#a99778');
   box(0, -0.01, 16, 90, 0.08, 3.2, '#c3b694');
   box(15, 0, -11, 3.6, 0.08, 56, '#c3b694');
   box(-22, 0, 25, 29, 0.09, 3, '#c3b694');
@@ -80,14 +118,14 @@ export function createWorld(): World {
   }
   // Low-poly mountains create a layered skyline without texture maps.
   for (let i = 0; i < 14; i++) {
-    const x = -100 + i * 15;
+    const x = -170 + i * 26;
     const h = 20 + seed(i + 24) * 27;
-    const mountain = cone(x, h / 2 - 2, -80 - seed(i) * 14, 21, h, i % 2 ? '#93aaa0' : '#829d91', 5);
+    const mountain = cone(x, h / 2 - 2, -175 - seed(i) * 30, 21, h, i % 2 ? '#93aaa0' : '#829d91', 5);
     mountain.castShadow = false;
     const cap = cone(x, h - 5, mountain.position.z, 5.4, 10, '#d2d9c7', 5); cap.castShadow = false;
   }
   // Trees are instanced: hundreds of silhouettes, only three draw calls.
-  const treeCount = 150;
+  const treeCount = 520;
   const trunks = new THREE.InstancedMesh(cube, material('#766345'), treeCount);
   const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), material('#456950'), treeCount);
   const tips = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), material('#5c8057'), treeCount);
@@ -95,11 +133,18 @@ export function createWorld(): World {
   for (let i = 0; i < treeCount; i++) {
     let x: number, z: number;
     if (i < 100) { x = -50 + seed(i + 900) * 100; z = -35 - seed(i + 102) * 25; }
-    else { x = i % 2 ? -37 - seed(i) * 14 : 42 + seed(i) * 10; z = -25 + seed(i + 92) * 72; }
+    else if (i < 150) { x = i % 2 ? -37 - seed(i) * 14 : 42 + seed(i) * 10; z = -25 + seed(i + 92) * 72; }
+    else {
+      x = -125 + seed(i + 1900) * 250; z = -125 + seed(i + 1920) * 250;
+      if (Math.max(Math.abs(x), Math.abs(z)) < 52) x += x < 0 ? -55 : 55;
+    }
+    // Clear the trails, ridge viewpoint, and bird sightline.
+    if (distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 115 + seed(i) * 9; z = -120 + seed(i + 9) * 240; }
+    const ground = terrainHeight(x, z);
     const size = 0.8 + seed(i + 13) * 1.3;
-    dummy.position.set(x, size * 1.5, z); dummy.scale.set(0.35 * size, 3 * size, 0.35 * size); dummy.rotation.y = 0; dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
-    dummy.position.y = size * 3.5; dummy.scale.set(1.7 * size, 4.3 * size, 1.7 * size); dummy.rotation.y = seed(i) * 6; dummy.updateMatrix(); crowns.setMatrixAt(i, dummy.matrix);
-    dummy.position.y = size * 5.2; dummy.scale.set(1.2 * size, 3 * size, 1.2 * size); dummy.updateMatrix(); tips.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(x, ground + size * 1.5, z); dummy.scale.set(0.35 * size, 3 * size, 0.35 * size); dummy.rotation.y = 0; dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
+    dummy.position.y = ground + size * 3.5; dummy.scale.set(1.7 * size, 4.3 * size, 1.7 * size); dummy.rotation.y = seed(i) * 6; dummy.updateMatrix(); crowns.setMatrixAt(i, dummy.matrix);
+    dummy.position.y = ground + size * 5.2; dummy.scale.set(1.2 * size, 3 * size, 1.2 * size); dummy.updateMatrix(); tips.setMatrixAt(i, dummy.matrix);
   }
   for (const m of [trunks, crowns, tips]) { m.castShadow = true; m.receiveShadow = true; scene.add(m); }
   // Broadleaf trees by the lake and in the wedding garden.
@@ -157,17 +202,54 @@ export function createWorld(): World {
     box(x, 0.3, z, 0.05, 0.6, 0.05, '#687e48'); box(x, 0.65, z, 0.12, 0.3, 0.12, '#ad9763');
   }
   for (let i = 0; i < 10; i++) rock(-35 + seed(i + 700) * 70, 0.25, 40 + seed(i + 96) * 8, 0.45 + seed(i) * 0.7);
-  const person = (x: number, z: number, shirt: string, parent: THREE.Object3D = scene) => {
-    const g = new THREE.Group(); g.position.set(x, 0, z); parent.add(g);
-    box(0, 1.05, 0, 0.55, 0.7, 0.35, shirt, g);
-    box(0, 1.65, 0, 0.38, 0.43, 0.37, '#dbb693', g);
-    box(0, 1.86, -0.02, 0.42, 0.1, 0.38, '#675344', g);
-    const legs = [-0.16, 0.16].map(a => box(a, 0.35, 0, 0.19, 0.7, 0.23, '#465659', g));
-    for (const a of [-0.39, 0.39]) box(a, 1.02, 0, 0.18, 0.65, 0.23, shirt, g);
-    for (const a of [-0.16, 0.16]) box(a, 0.07, 0.1, 0.23, 0.14, 0.36, '#eddec6', g);
+  const sphereGeo = new THREE.IcosahedronGeometry(1, 1);
+  const sphere = (x: number, y: number, z: number, sx: number, sy: number, sz: number, color: string, parent: THREE.Object3D) => {
+    const mesh = new THREE.Mesh(sphereGeo, material(color)); mesh.position.set(x, y, z); mesh.scale.set(sx, sy, sz); mesh.castShadow = true; parent.add(mesh); return mesh;
+  };
+  const people: THREE.Group[] = [];
+  const person = (x: number, z: number, shirt: string, parent: THREE.Object3D = scene, variant = 0) => {
+    const g = new THREE.Group(); g.position.set(x, terrainHeight(x, z), z); parent.add(g); people.push(g);
+    const skin = ['#dbb693', '#a57453', '#d6a17d', '#795641'][variant % 4];
+    sphere(0, 1.1, 0, 0.31, 0.39, 0.21, shirt, g);
+    box(0, 0.78, 0, 0.49, 0.13, 0.3, '#425657', g);
+    box(0, 1.46, 0, 0.15, 0.18, 0.15, skin, g);
+    sphere(0, 1.69, 0, 0.22, 0.27, 0.21, skin, g);
+    sphere(0, 1.88, -0.035, 0.235, 0.12, 0.215, variant % 2 ? '#493c34' : '#675344', g);
+    box(-0.185, 1.73, -0.02, 0.08, 0.24, 0.22, '#675344', g);
+    for (const a of [-0.08, 0.08]) {
+      box(a, 1.73, 0.194, 0.055, 0.035, 0.018, '#273c39', g);
+      box(a, 1.8, 0.184, 0.07, 0.026, 0.025, '#675344', g);
+    }
+    sphere(0, 1.67, 0.224, 0.043, 0.06, 0.06, skin, g);
+    box(0, 1.58, 0.198, 0.07, 0.017, 0.018, '#955e50', g);
+    for (const a of [-0.07, 0.07]) box(a, 1.37, 0.19, 0.1, 0.14, 0.035, '#e6d7b7', g);
+    box(0.14, 1.14, 0.206, 0.12, 0.13, 0.03, shirt, g);
+    const legs = [-0.14, 0.14].map(a => {
+      const limb = new THREE.Group(); limb.position.set(a, 0.77, 0); g.add(limb);
+      sphere(0, -0.32, 0, 0.105, 0.37, 0.12, '#465659', limb);
+      sphere(0, -0.68, 0.065, 0.13, 0.085, 0.21, '#e1d5b9', limb); return limb;
+    });
+    for (const a of [-0.34, 0.34]) {
+      sphere(a, 1.17, 0, 0.12, 0.21, 0.13, shirt, g);
+      sphere(a, 0.94, 0.015, 0.08, 0.16, 0.085, skin, g);
+      sphere(a, 0.78, 0.035, 0.085, 0.1, 0.075, skin, g);
+    }
     const focus = new THREE.Object3D(); focus.position.y = 1.35; g.add(focus);
+    batchMeshes(g);
     return { group: g, focus, legs };
   };
+  for (const [index, npc] of npcCatalog.entries()) {
+    const character = person(npc.x, npc.z, npc.shirt, scene, index); character.group.name = `npc-${npc.id}`;
+    const [x, y, z] = npcPosition(npc);
+    // Field bag, strap and a distinctive ranger hat / astronomer's beanie.
+    box(-0.27, 1.03, -0.15, 0.19, 0.3, 0.18, '#746447', character.group);
+    box(-0.18, 1.24, -0.19, 0.045, 0.46, 0.035, '#d6c19a', character.group);
+    if (index === 0 || index === 5) {
+      sphere(0, 1.91, 0, 0.25, 0.13, 0.24, index === 0 ? '#b6ac78' : '#d3a46c', character.group);
+      if (index === 0) box(0, 1.86, 0.06, 0.64, 0.045, 0.47, '#b6ac78', character.group);
+    }
+    const marker = cone(x, y + 2.7, z, 0.12, 0.26, '#f0cd76', 4); marker.rotation.z = Math.PI; marker.name = `npc-marker-${npc.id}`;
+  }
   // Sports: a moving subject on a visible terracotta running track.
   box(29, 0.04, 5, 20, 0.13, 17, '#be8865'); box(29, 0.13, 5, 13, 0.04, 10, '#92a26c');
   for (const x of [20.5, 21.2, 36.8, 37.5]) box(x, 0.15, 5, 0.07, 0.02, 16, '#e1c9a4');
@@ -192,7 +274,7 @@ export function createWorld(): World {
   for (let i = 0; i < 12; i++) box(-27 + i * 0.36, 4.55 + Math.sin(i) * 0.13, 25, 0.25, 0.25, 0.35, i % 2 ? '#cfab95' : '#eee2c7');
   const coupleA = person(-25.55, 25, '#eee7d7'); person(-24.65, 25, '#526e69');
   const coupleFocus = new THREE.Object3D(); coupleFocus.position.set(-25, 1.35, 25); scene.add(coupleFocus); subjects.set('Newlyweds', coupleFocus); coupleA.group.rotation.y = 0.2;
-  for (let i = 0; i < 5; i++) person(-22 + i, 25 + (i % 2) * 0.8, ['#b99d85', '#818e70', '#d5c4a3', '#8c9d9a', '#c88c72'][i]);
+  for (let i = 0; i < 5; i++) person(-22 + i, 25 + (i % 2) * 0.8, ['#b99d85', '#818e70', '#d5c4a3', '#8c9d9a', '#c88c72'][i], scene, i);
   const guests = new THREE.Object3D(); guests.position.set(-20, 1.3, 25.4); scene.add(guests); subjects.set('Wedding guests', guests);
   for (let i = 0; i < 18; i++) {
     const x = -32 + seed(i + 4) * 4, z = 22 + seed(i + 203) * 10;
@@ -232,12 +314,66 @@ export function createWorld(): World {
     box(x, 1.6, z, 0.1, 3.2, 0.1, '#566958'); box(x, 3.3, z, 0.5, 0.5, 0.5, '#e8d6a4');
     const lamp = new THREE.PointLight('#ffce81', 3, 10); lamp.position.set(x, 3.2, z); scene.add(lamp);
   }
+  // A wetland, bird perch and raised hide make the long-lens assignment a real place.
+  const pond = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.12, 32), waterMat);
+  pond.position.set(76, 1.22, -54); pond.scale.set(14, 1, 11); scene.add(pond);
+  const bird = new THREE.Group(); bird.name = 'kingfisher'; bird.position.set(76, 3.6, -54); scene.add(bird);
+  box(76, 2.35, -54, 0.18, 2.25, 0.18, '#80684d'); box(76, 3.39, -54, 1.6, 0.12, 0.17, '#80684d');
+  sphere(0, 0, 0, 0.15, 0.23, 0.29, '#397f96', bird);
+  sphere(0, -0.04, 0.18, 0.12, 0.16, 0.13, '#d79d57', bird);
+  const birdHead = new THREE.Group(); birdHead.position.set(0, 0.24, 0.14); bird.add(birdHead);
+  sphere(0, 0, 0, 0.16, 0.15, 0.16, '#4b96a6', birdHead);
+  for (const x of [-0.135, 0.135]) sphere(x, 0.025, 0.05, 0.028, 0.03, 0.035, '#1c3038', birdHead);
+  const beak = cone(0, -0.02, 0.25, 0.045, 0.24, '#384448', 5, birdHead); beak.rotation.x = Math.PI / 2;
+  const tail = box(0, -0.05, -0.3, 0.1, 0.06, 0.27, '#356d85', bird); tail.rotation.x = -0.35;
+  for (const x of [-0.13, 0.13]) sphere(x, -0.02, -0.035, 0.055, 0.17, 0.23, '#326d86', bird);
+  for (const x of [-0.07, 0.07]) box(x, -0.23, 0.05, 0.028, 0.1, 0.06, '#a46e42', bird);
+  const birdFocus = new THREE.Object3D(); birdFocus.position.y = 0.08; bird.add(birdFocus); subjects.set('Kingfisher', birdFocus);
+  const hideY = terrainHeight(63, -32);
+  for (const x of [60, 66]) box(x, hideY + 1.25, -35, 0.18, 2.5, 0.18, '#827150');
+  box(63, hideY + 2.6, -35, 7, 0.18, 2.4, '#9c8b62');
+  box(63, hideY + 0.45, -35.2, 6, 0.9, 0.12, '#a2916c');
+  for (let i = 0; i < 55; i++) {
+    const angle = i / 55 * Math.PI * 2, x = 76 + Math.cos(angle) * 14.8, z = -54 + Math.sin(angle) * 11.8;
+    box(x, 1.8, z, 0.055, 1.2, 0.055, '#7d9059'); box(x, 2.4, z, 0.11, 0.25, 0.11, '#a18a54');
+  }
+  for (const trail of trails) for (let i = 1; i < trail.length; i++) {
+    const [x, z] = trail[i], y = terrainHeight(x, z);
+    box(x + 2.4, y + 1.1, z, 0.12, 2.2, 0.12, '#80694b');
+    box(x + 2.4, y + 1.85, z, 1.35, 0.36, 0.13, '#e0cd99');
+    box(x + 2.8, y + 1.85, z + 0.075, 0.24, 0.06, 0.03, '#647754');
+  }
+  // Ridge camp and a telescope, with a clear view to the northern skyline.
+  const ridgeY = terrainHeight(-53, -68);
+  box(-58, ridgeY + 0.5, -67, 2.8, 1, 0.7, '#917654');
+  const telescope = box(-51, ridgeY + 2, -68, 0.34, 0.34, 1.3, '#d4cfb2'); telescope.rotation.x = -0.4;
+  for (const x of [-51.3, -50.7]) box(x, ridgeY + 0.9, -68, 0.09, 1.8, 0.09, '#596a61');
+  // Details around town: shutters, sills, chimney pots and planted borders.
+  for (const [x, z, w, h, d] of [[4, -22, 6, 4.5, 5], [-19, -25, 5, 3.5, 5], [22, -36, 6, 5, 5], [40, -14, 6, 4, 6]]) {
+    box(x + w * 0.28, h + 1.1, z, 0.6, 1.4, 0.6, '#aa8c72');
+    for (const side of [-1, 1]) {
+      box(x + side * w * 0.22, h * 0.45, z + d / 2 + 0.12, w * 0.3, 0.09, 0.3, '#f0dfb9');
+      box(x + side * w * 0.37, h * 0.6, z + d / 2 + 0.09, 0.24, h * 0.29, 0.1, '#7a8c76');
+    }
+  }
+  const flowers = new THREE.InstancedMesh(sphereGeo, material('#d7bc8e'), 300);
+  const stones = new THREE.InstancedMesh(sphereGeo, material('#919582'), 120);
+  for (const [mesh, count] of [[flowers, 300], [stones, 120]] as const) {
+    for (let i = 0; i < count; i++) {
+      const x = -120 + seed(i + count * 7) * 240, z = -120 + seed(i + count * 9) * 240;
+      const inTown = Math.max(Math.abs(x), Math.abs(z)) < 45;
+      dummy.position.set(x, terrainHeight(x, z) + (mesh === flowers ? 0.16 : 0.22), z);
+      const scale = inTown || Math.hypot(x - 76, z + 54) < 20 ? 0 : (mesh === flowers ? 0.15 : 0.35 + seed(i) * 0.7);
+      dummy.scale.set(scale, scale * 0.6, scale); dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
+    }
+    mesh.receiveShadow = true; scene.add(mesh);
+  }
   // Stars fade in with the night everywhere in town.
   const vertices: number[] = [];
-  for (let i = 0; i < 700; i++) { const a = seed(i + 3) * Math.PI * 2, b = seed(i + 97) * Math.PI * 0.43; vertices.push(Math.cos(a) * Math.cos(b) * 120, Math.sin(b) * 120 + 10, Math.sin(a) * Math.cos(b) * 120); }
+  for (let i = 0; i < 700; i++) { const a = seed(i + 3) * Math.PI * 2, b = seed(i + 97) * Math.PI * 0.43; vertices.push(Math.cos(a) * Math.cos(b) * 280, Math.sin(b) * 280 + 10, Math.sin(a) * Math.cos(b) * 280); }
   const starsGeo = new THREE.BufferGeometry(); starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   const stars = new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: '#fff4d9', size: 0.35, sizeAttenuation: true, fog: false, transparent: true, depthWrite: false })); stars.name = 'night-stars'; stars.visible = false; scene.add(stars);
-  const nightFocus = new THREE.Object3D(); nightFocus.position.set(-4, 22, -42); scene.add(nightFocus); subjects.set('Night sky', nightFocus);
+  const nightFocus = new THREE.Object3D(); nightFocus.position.set(-53, 42, -100); scene.add(nightFocus); subjects.set('Night sky', nightFocus);
   let sky = sampleSky(17);
   let studioMode = false;
   const applyEnvironment = () => {
@@ -251,7 +387,7 @@ export function createWorld(): World {
     sunDisc.visible = sky.elevation > -0.03; moonDisc.visible = sky.elevation < 0.03;
     skyColour.copy(nightColour).lerp(dayColour, sky.daylight).lerp(sunsetColour, sky.warmth * 0.65);
     (scene.background as THREE.Color).copy(skyColour);
-    (scene.fog as THREE.Fog).color.copy(skyColour); (scene.fog as THREE.Fog).near = 38 + sky.daylight * 17;
+    (scene.fog as THREE.Fog).color.copy(skyColour); (scene.fog as THREE.Fog).near = 65 + sky.daylight * 25;
     stars.rotation.y = sky.hour / 24 * Math.PI * 2; stars.visible = sky.night > 0.01; (stars.material as THREE.PointsMaterial).opacity = sky.night * (1 - sky.cloudCover * 0.45);
     cloudColour.copy(darkCloud).lerp(whiteCloud, sky.daylight).lerp(sunsetCloud, sky.warmth * 0.6);
     cloudMaterial.color.copy(cloudColour);
@@ -281,8 +417,10 @@ export function createWorld(): World {
     }
   };
   setStudioRig(defaultStudioRig(), [28, 1.35, -26], false);
+  batchMeshes(scene, new Set([...solids, ...streaks]));
   return {
     scene, subjects, solids,
+    groundHeight: terrainHeight,
     setTime(hour) { sky = sampleSky(hour); applyEnvironment(); },
     setStudioRig,
     setFlash(position, direction, intensity) {
@@ -294,12 +432,15 @@ export function createWorld(): World {
       runner.group.position.set(29 + Math.sin(time * 0.9) * 6, 0, 5 + Math.cos(time * 0.9) * 5);
       runner.group.rotation.y = time * 0.9 + Math.PI / 2;
       runner.legs[0].rotation.x = Math.sin(time * 9) * 0.5; runner.legs[1].rotation.x = -Math.sin(time * 9) * 0.5;
+      people.forEach((g, i) => { if (g !== runner.group) g.rotation.y = Math.sin(time * 0.45 + i) * 0.12; });
+      bird.rotation.y = Math.sin(time * 0.9) * 0.32; birdHead.rotation.y = Math.sin(time * 1.7) * 0.25;
       ripples.children.forEach((m, i) => { m.position.x += Math.sin(time + i) * 0.0008; m.scale.z = 0.03 + Math.sin(time * 1.5 + i) * 0.01; });
       streaks.forEach((s, i) => { s.position.y = 3.8 - ((time * 2 + i * 0.5) % 3.8); s.scale.y = settings.shutter >= 0.25 ? 2.5 : 0.6; });
       glassMat.opacity = settings.filter === 'cpl' ? 0.08 : 0.42;
     },
     canWalk(x, z) {
-      if (Math.abs(x) > 51 || Math.abs(z) > 51) return false;
+      if (Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4) return false;
+      if (Math.hypot((x - 76) / 14, (z + 54) / 11) < 1) return false;
       // The jetty is a narrow walkable exception inside the lake boundary.
       return !blockers.some(b => Math.abs(x - b.x) < b.w / 2 + 0.25 && Math.abs(z - b.z) < b.d / 2 + 0.25 && !(b.w === 28 && Math.abs(x) < 1.25 && z > 3.5));
     },

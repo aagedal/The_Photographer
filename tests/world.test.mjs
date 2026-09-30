@@ -9,7 +9,7 @@ test('every travel viewpoint is walkable and provides a clear view of its subjec
   world.update(0, { filter: 'none', shutter: 1 / 125 });
   world.scene.updateMatrixWorld(true);
   for (const m of missions) {
-    const player = new THREE.Vector3(...m.viewpoint);
+    const player = new THREE.Vector3(m.viewpoint[0], world.groundHeight(m.viewpoint[0], m.viewpoint[2]) + 1.7, m.viewpoint[2]);
     assert.equal(world.canWalk(player.x, player.z), true, `${m.id} viewpoint is blocked`);
     assert.equal(world.subjects.has(m.subject), true, `${m.id} subject is missing`);
     const target = subjectPosition(world, m);
@@ -24,7 +24,7 @@ test('every travel viewpoint is walkable and provides a clear view of its subjec
 });
 test('world boundaries and lake restrict movement while the jetty stays walkable', () => {
   const world = createWorld();
-  assert.equal(world.canWalk(60, 0), false);
+  assert.equal(world.canWalk(130, 0), false);
   assert.equal(world.canWalk(-7, -3), false);
   assert.equal(world.canWalk(0, 5), true);
   assert.equal(world.canWalk(8, 16), true);
