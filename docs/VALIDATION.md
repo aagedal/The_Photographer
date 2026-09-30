@@ -4,7 +4,7 @@ Validated on 30 September 2026.
 
 ## Automated
 
-- 66 tests pass using Node's test runner.
+- 70 tests pass using Node's test runner.
 - Exposure math: doubling ISO, exposure time, or aperture area changes exposure by the expected stop.
 - Filters: ND64 attenuates six stops; prototype CPL attenuates one stop.
 - All thirteen suggested camera setups pass their assignment's lesson assessment with valid framing.
@@ -76,6 +76,18 @@ Validated on 30 September 2026.
 - Browser: an isolated fresh notebook showed one lighthouse brief and $0. Approaching Mara showed the talk prompt; talking revealed the creek and bird briefs. Selecting the gear-blocked bird story opened the shop, with the $480 wildlife lens disabled until affordable.
 - Browser: a separate funded test notebook bought the wildlife lens, reducing $600 to $120 and displaying it as equipped. Accepting the bird story, travelling to the wetland, and applying suggested settings produced a 600 mm, 1/1000 s, f/5.6, ISO 800 close-up at 26 m. Its review showed 100/100, all five checks passed, and a $260 payment. The rendered bird and expanded scenery were visually inspected. Reloading after fixture removal preserved the completed bird brief, photograph, equipped lens, and $380 balance. The final fresh build had no browser console errors or warnings.
 - Temporary browser-testing spawn/funding fixtures were removed from the source after verification. Production uses the normal saved progression and mission spawn.
+
+## Motion blur and Space shutter
+
+- Handheld view tests verify subtle time-varying camera angles, bounded amplitude, smooth settling on the tripod, reduced-motion suppression and gentler long-lens aiming. The view offset is applied without changing the player's stored aim.
+- Three new automated tests cover shutter sample duration and bounds, tripod/panning/telephoto shake, and exact restoration of animated world transforms after sampling. Water geometry no longer changes when the shutter setting changes; its apparent smoothing comes from the exposure.
+- Browser captures at matched exposure: 1/1000 s freezes the runner; 1/15 s on a tripod smears the runner against sharp scenery; enabling Panning at 1/15 s keeps the runner clear while streaking the background and completes the assignment at 100/100.
+- A 0.5 s, f/8, ISO 100, ND64 tripod capture softens waterfall streaks while preserving rock edges and completes the creek assignment at 100/100.
+- Space captures and saves a photograph from the game canvas. Space in a pause dialog or focused shutter dropdown leaves the photo count unchanged. C remains supported by the same capture path. Capture still respects tripod transitions and cooldowns.
+- After fixture removal, C produced a three-frame burst, restored the camera controls and showed the best-frame preview; no console warnings or errors were reported.
+- The GPU capture shaders produced no warnings or errors during the initial Space capture. Images retain the centered 3:2 framing and correct orientation. Long exposures are computed immediately with a maximum of 33 samples.
+- Testing used isolated named playtest notebooks. Temporary mission discovery, gear, and fixed-time fixtures were removed afterward.
+- Preview: `docs/motion-panning.jpg`.
 
 ## Remaining validation
 

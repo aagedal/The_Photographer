@@ -5,6 +5,8 @@ import { createWorld, subjectPosition } from './world.ts';
 import { defaultStudioRig, normalizeStudioRig, lightNames, studioExposureOffset, flashCanFire, flashPower, flashRenderIntensity, subjectExposureStops, type StudioRig } from './lighting.ts';
 import { adjustCameraSetting, shutterValues, apertureValues, isoValues, TripodState } from './controls.ts';
 import { createTripodView } from './tripod.ts';
+import { exposureSamples, cameraShake, handheldWobble } from './motion.ts';
+import { createPhotoRenderer } from './photo-renderer.ts';
 import { WorldClock, sampleSky, formatTime, missionAmbientEV, missionReferenceHour, isMissionTime, wrapHour } from './environment.ts';
 import { gearCatalog, money, normalizeCompleted, normalizeEconomy, ownsGear, balance, earnedMoney, purchaseGear, completeMission, captureCount, focalRange, zoomFocal, fovForFocal, CaptureSequence, normalizeLens, type LensId, type Economy, type GearId } from './economy.ts';
 import { WORLD_HALF, terrainHeight, trails } from './terrain.ts';
@@ -127,7 +129,7 @@ $('app').innerHTML = `
           <button id="lighting-kit" aria-label="Open lighting kit (L)" aria-expanded="false" title="Lighting kit (L)">${icon('studio')}</button>
         </div>
         <div class="exposure" title="Ambient exposure meter"><strong id="ev-label"></strong><div class="meter">${Array.from({ length: 11 }, () => '<i></i>').join('')}<span class="needle" id="meter-needle"></span></div></div>
-        <button id="capture" class="shutter-button" aria-label="Take a photograph (C)" title="Take a photograph (C)"><span></span></button>
+        <button id="capture" class="shutter-button" aria-label="Take a photograph (Space / C)" title="Take a photograph (Space / C)"><span></span></button>
       </section>
     </section>
   </main>
@@ -149,9 +151,10 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 renderer.domElement.classList.add('world'); renderer.domElement.tabIndex = 0;
-renderer.domElement.setAttribute('aria-label', 'Game world. WASD to walk, drag to look, C to photograph.');
+renderer.domElement.setAttribute('aria-label', 'Game world. WASD to walk, drag to look, Space or C to photograph.');
 stage.prepend(renderer.domElement);
 const world = createWorld();
+const photoRenderer = createPhotoRenderer();
 const tripodView = createTripodView();
 const camera = new THREE.PerspectiveCamera(fovForFocal(focalLength, 1), 1, 0.1, 450);
 camera.rotation.order = 'YXZ';
@@ -348,7 +351,9 @@ function updateCamera() {
   player.y = world.groundHeight(player.x, player.z) + 1.7;
   camera.position.copy(player);
   const dip = !reducedMotion.matches && tripod.transitioning ? Math.sin(tripod.progress * Math.PI) : 0;
-  camera.position.y -= dip * 0.07; camera.rotation.set(pitch - dip * 0.025, yaw, 0); camera.updateMatrixWorld();
+  const wobble = handheldWobble(elapsed, focalLength, tripod.progress, reducedMotion.matches);
+  camera.position.y -= dip * 0.07;
+  camera.rotation.set(pitch - dip * 0.025 + wobble.pitch, yaw + wobble.yaw, 0); camera.updateMatrixWorld();
 }
 function applyStudioRig() {
   const target = activeMission.category === 'Studio' ? subjectPosition(world, activeMission) : new THREE.Vector3(28, 1.35, -26);
@@ -467,40 +472,52 @@ function getFraming(): Framing {
 }
 
 function makePhoto(s: CameraSettings, frame: Framing): string {
-  applyCameraLight(s, true); renderer.shadowMap.needsUpdate = true;
-  renderer.render(world.scene, camera);
-  const source = renderer.domElement;
-  const canvas = document.createElement('canvas'); canvas.width = 900; canvas.height = 600;
-  const ctx = canvas.getContext('2d')!;
-  const sourceAspect = source.width / source.height;
-  const sw = sourceAspect > 1.5 ? source.height * 1.5 : source.width;
-  const sh = sw / 1.5;
-  const sx = (source.width - sw) / 2, sy = (source.height - sh) / 2;
-  const base = document.createElement('canvas'); base.width = 900; base.height = 600;
-  const baseCtx = base.getContext('2d')!;
-  baseCtx.drawImage(source, sx, sy, sw, sh, 0, 0, 900, 600);
+  const samples = exposureSamples(s.shutter);
+  const photoCamera = camera.clone();
+  photoCamera.aspect = 1.5; photoCamera.fov = fovForFocal(s.focalLength ?? focalLength, 1.5); photoCamera.updateProjectionMatrix();
+  const originalRotation = photoCamera.quaternion.clone();
+  const pan = s.panning && activeMission.subject === 'Runner';
+  const trackingCamera = photoCamera.clone();
+  trackingCamera.lookAt(subjectPosition(world, activeMission));
+  const trackingOffset = trackingCamera.quaternion.clone().invert().multiply(originalRotation);
   const croppedX = projected.x / Math.min(1, 1.5 / camera.aspect), croppedY = projected.y / Math.min(1, camera.aspect / 1.5);
   const fx = (croppedX * 0.5 + 0.5) * 900, fy = (-croppedY * 0.5 + 0.5) * 600;
-  const shake = !s.tripod && s.shutter > 1 / 30 && !s.panning;
+  let base: HTMLCanvasElement;
+  try {
+    base = photoRenderer.render(renderer, samples.length, i => {
+      const offset = samples[i];
+      world.update(elapsed + offset, s);
+      // Sky motion uses exposure seconds rather than the accelerated game clock.
+      world.setTime(clock.hour + offset / 3600);
+      world.scene.updateMatrixWorld(true);
+      photoCamera.quaternion.copy(originalRotation);
+      if (pan) {
+        trackingCamera.lookAt(subjectPosition(world, activeMission));
+        photoCamera.quaternion.copy(trackingCamera.quaternion).multiply(trackingOffset);
+      }
+      const shake = cameraShake(s, offset, elapsed);
+      photoCamera.rotateY(shake.yaw); photoCamera.rotateX(shake.pitch); photoCamera.updateMatrixWorld();
+      applyCameraLight(s, true);
+      // A single brief pulse freezes the middle sample; its energy remains
+      // constant when averaging more ambient samples over a longer shutter.
+      const direction = photoCamera.getWorldDirection(new THREE.Vector3());
+      const pulse = i === Math.floor(samples.length / 2) ? samples.length : 0;
+      world.setFlash([player.x, player.y, player.z], [direction.x, direction.y, direction.z], flashRenderIntensity(s) * pulse / (renderer.toneMappingExposure / 1.05));
+      renderer.shadowMap.needsUpdate = true;
+      renderer.render(world.scene, photoCamera);
+    });
+  } finally {
+    world.update(elapsed, settings); world.setTime(clock.hour); world.scene.updateMatrixWorld(true);
+    applyCameraLight(settings); renderer.shadowMap.needsUpdate = true;
+  }
+  const canvas = document.createElement('canvas'); canvas.width = 900; canvas.height = 600;
+  const ctx = canvas.getContext('2d')!;
   const portrait = ['couple', 'portrait'].includes(activeMission.technique) && s.aperture <= 4;
-  const pan = activeMission.category === 'Sports' && s.panning && s.shutter >= 1 / 125;
-  const blur = shake ? Math.min(s.shutter * 4, 7) : pan ? 3 : portrait ? 1.8 : 0;
-  ctx.filter = blur ? `blur(${blur}px)` : 'none'; ctx.drawImage(base, 0, 0); ctx.filter = 'none';
-  if ((portrait || pan) && !shake && frame.visible) {
-    // A simple subject mask is a teaching cue, pending depth-buffer optics.
+  ctx.filter = portrait ? 'blur(1.8px)' : 'none'; ctx.drawImage(base, 0, 0); ctx.filter = 'none';
+  if (portrait && frame.visible) {
+    // Depth of field remains an image-space cue; subject motion is already in base.
     const radius = THREE.MathUtils.clamp(1100 / frame.distance, 20, 140);
     ctx.save(); ctx.beginPath(); ctx.ellipse(fx, fy + radius * 0.15, radius, radius * 1.5, 0, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(base, 0, 0); ctx.restore();
-  }
-  if (activeMission.category === 'Sports' && !pan && s.shutter > 1 / 500 && frame.visible) {
-    const r = Math.min(100, 1800 / frame.distance), offset = Math.min(35, s.shutter * 450);
-    ctx.save(); ctx.globalAlpha = 0.3;
-    for (let i = 1; i <= 3; i++) ctx.drawImage(base, fx - r, fy - r, r * 2, r * 2, fx - r + offset * i, fy - r, r * 2, r * 2);
-    ctx.restore();
-  }
-  if (activeMission.technique === 'trails' && s.shutter >= 30) {
-    ctx.save(); ctx.strokeStyle = '#e5e7cf'; ctx.globalAlpha = 0.5; ctx.lineWidth = 1;
-    for (let i = 0; i < 50; i++) { const a = i * 2.399, r = 30 + (i * 37) % 510; ctx.beginPath(); ctx.arc(450, 80, r, a, a + s.shutter / 1600); ctx.stroke(); }
-    ctx.restore();
   }
   const pixels = ctx.getImageData(0, 0, 900, 600);
   const noise = Math.max(0, Math.log2(s.iso / 100)) * 2.3;
@@ -587,7 +604,7 @@ function updateNPCPrompt() {
   if (npc && prompt.dataset.npc !== npc.id) { prompt.dataset.npc = npc.id; prompt.innerHTML = `<kbd>R</kbd> Talk to ${esc(npc.name)} <small>${esc(npc.role)}</small>`; }
 }
 function openJournal() {
-  showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told. The latest 16 photos are kept on this device.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category} · ${p.result.passed ? '✓ Assignment complete' : 'A work in progress'} · ${p.result.score}/100${p.burst ? ` · Burst ${p.burst.index}/${p.burst.total}` : ''}</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press C to make your first photograph.</p></div>`);
+  showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told. The latest 16 photos are kept on this device.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category} · ${p.result.passed ? '✓ Assignment complete' : 'A work in progress'} · ${p.result.score}/100${p.burst ? ` · Burst ${p.burst.index}/${p.burst.total}` : ''}</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press Space or C to make your first photograph.</p></div>`);
   modal.querySelectorAll<HTMLButtonElement>('[data-photo]').forEach(b => b.onclick = () => openReview(save.photos.find(p => p.id === b.dataset.photo)!));
 }
 function openReview(photo: Photo) {
@@ -632,9 +649,9 @@ function openMap() {
 function openHelp() {
   showModal('Take your time. Look around.', 'WELCOME TO WILLOWBROOK', 'An early prototype about learning the craft, one photograph at a time.', `<div class="help-grid">
     <div class="help-card"><strong>Wander and frame</strong><kbd>W A S D</kbd> walk · <kbd>Shift</kbd> move faster.<br/>Drag the world to look around. Arrow keys also aim. The starter lens is fixed at 35 mm. Buy and equip a zoom or wildlife lens in the gear shop to use the scroll wheel or <kbd>− / +</kbd>. <kbd>E</kbd> raises the viewfinder.</div>
-    <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>C</kbd> takes a photo. With the burst camera, <kbd>B</kbd> toggles three-frame bursts at 5 fps. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
+    <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>Space</kbd> or <kbd>C</kbd> takes a photo. With the burst camera, <kbd>B</kbd> toggles three-frame bursts at 5 fps. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
     <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, map and field notes. Press it again to resume. From a submenu, Esc returns to the pause menu.<br/>You start with one lighthouse assignment. Find locals with golden markers and press <kbd>R</kbd> to talk. Their stories are added to your notebook. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments.</div>
-    <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Click the brief thumbnail or open the journal to read feedback and try again. Higher ISO is often the right choice when a moment moves fast.</div>
+    <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Click the brief thumbnail or open the journal to read feedback and try again. Slow shutters record moving subjects as streaks; fast shutters freeze them. A tripod steadies the scenery, while Panning follows the runner and streaks the background. Higher ISO is often the right choice when a moment moves fast.</div>
     <div class="help-card"><strong>Shape the light</strong><kbd>L</kbd> opens the Lighting kit; <kbd>F</kbd> toggles purchased flash. Adjust manual flash power or visit the studio to move and tune key, fill, and rim lights. A brief flash favours close subjects; shutter speed controls the ambient within the 1/250 s sync limit.</div>
     <div class="help-card"><strong>Wait for the light</strong>The sun, clouds, exposure and stars change through a 30-minute day. Some assignments need a particular time. Open <kbd>Esc</kbd> → Meditate to skip ahead to dawn, daylight, golden hour, night or the assignment’s preferred time. Time pauses while menus are open.</div>
     <div class="help-card"><strong>Your little collection</strong>Assignments pay once. Open <kbd>Esc</kbd> → Gear shop for a zoom lens, camera flash, or burst camera. The 200–600 mm wildlife lens unlocks bird close-ups. Equip lenses in the shop; bird suggested settings also equip that lens.<br/>Progress and the latest 16 photographs save in this browser on this device. Download favourites from the darkroom. This prototype is designed for a desktop keyboard and mouse.</div>
@@ -700,14 +717,16 @@ document.addEventListener('keydown', e => {
   const key = e.key.toLowerCase();
   if (key === 'escape') { e.preventDefault(); if (meditation) finishMeditation(); if (!e.repeat) { if (modal.open) leaveModal(); else openPauseMenu(); } return; }
   if ((e.target as HTMLElement).matches('select,input,textarea') || modal.open || meditation) return;
-  if (capturing) { if (e.key.startsWith('Arrow')) { e.preventDefault(); keys.add(key); } return; }
+  if (key === ' ' && (e.target as HTMLElement).closest('button,a,[contenteditable]')) return;
+  if (capturing) { if (key === ' ') e.preventDefault(); if (e.key.startsWith('Arrow')) { e.preventDefault(); keys.add(key); } return; }
   if (['-', '=', '+'].includes(key)) { e.preventDefault(); zoomCamera(key === '-' ? 100 : -100); return; }
   const adjustment = adjustCameraSetting(settings, e.code.startsWith('Digit') ? e.code.slice(5) : key);
   if (adjustment) { e.preventDefault(); settings = adjustment.settings; syncSettings(); return; }
-  if (['w', 'a', 's', 'd', 'shift', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' '].includes(key)) { e.preventDefault(); keys.add(key); }
+  if (['w', 'a', 's', 'd', 'shift', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) { e.preventDefault(); keys.add(key); }
+  if (key === ' ') e.preventDefault();
   if (e.repeat) return;
   if (key === 'r') { e.preventDefault(); talkToNPC(); }
-  if (key === 'c') { e.preventDefault(); capture(); }
+  if (key === 'c' || key === ' ') { e.preventDefault(); capture(); }
   if (key === 'e') { e.preventDefault(); setCameraMode(!cameraMode); }
   if (key === 't') { e.preventDefault(); $('tripod').click(); }
   if (key === 'b') { e.preventDefault(); toggleBurst(); }

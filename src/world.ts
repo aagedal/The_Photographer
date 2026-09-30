@@ -434,8 +434,8 @@ export function createWorld(): World {
       runner.legs[0].rotation.x = Math.sin(time * 9) * 0.5; runner.legs[1].rotation.x = -Math.sin(time * 9) * 0.5;
       people.forEach((g, i) => { if (g !== runner.group) g.rotation.y = Math.sin(time * 0.45 + i) * 0.12; });
       bird.rotation.y = Math.sin(time * 0.9) * 0.32; birdHead.rotation.y = Math.sin(time * 1.7) * 0.25;
-      ripples.children.forEach((m, i) => { m.position.x += Math.sin(time + i) * 0.0008; m.scale.z = 0.03 + Math.sin(time * 1.5 + i) * 0.01; });
-      streaks.forEach((s, i) => { s.position.y = 3.8 - ((time * 2 + i * 0.5) % 3.8); s.scale.y = settings.shutter >= 0.25 ? 2.5 : 0.6; });
+      ripples.children.forEach((m, i) => { m.position.x = -19 + seed(i) * 24 + Math.sin(time + i) * 0.35; m.scale.z = 0.03 + Math.sin(time * 1.5 + i) * 0.01; });
+      streaks.forEach((s, i) => { s.position.y = 3.8 - (((time * 2 + i * 0.5) % 3.8 + 3.8) % 3.8); s.scale.y = 0.6; });
       glassMat.opacity = settings.filter === 'cpl' ? 0.08 : 0.42;
     },
     canWalk(x, z) {

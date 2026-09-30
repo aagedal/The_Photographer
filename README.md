@@ -29,7 +29,7 @@ npm run preview
 | Zoom (equipped purchased lens) | Scroll over the world, or − / + |
 | Raise/lower viewfinder | E |
 | Talk to a nearby local | R or the on-screen prompt |
-| Make a photograph | C or shutter button |
+| Make a photograph | Space, C, or shutter button |
 | Slower / faster shutter | 1 / 2 |
 | Wider / narrower aperture | 3 / 4 |
 | Lower / higher ISO | 5 / 6 |
@@ -42,7 +42,9 @@ npm run preview
 
 A fresh notebook starts with **Chasing the golden hour**, the lighthouse assignment. Walk to locals with golden markers and press **R** (or click the talk prompt) to hear their stories. Their briefs are added to **Esc → Assignments**, where you can accept them later. Explore by the creek, track, square, garden, studio, and northern ridge. Travel shortcuts in **Esc → Find the spot** and the map are available for discovered, gear-ready assignments. Frame the marked subject. Adjust shutter, aperture, ISO, filters, and tripod. **Try suggested settings** provides a starting point for experimentation. Feedback evaluates the subject, exposure, and the lesson; try again freely. Assignment XP and payment are earned only once. Photographs and progress save locally in this browser, with the latest 16 frames retained. Taking a photo shows a brief clickable preview without interrupting play. Open the preview or **Esc → Photo journal** for feedback and downloads.
 
-The HUD contains only compact camera settings, equipment icons, an ambient meter, and a small subject cue. Shortcuts work while playing; focused dropdowns keep their normal keyboard behavior. **T** unfolds the tripod in 0.42 seconds and packs it in 0.28 seconds. Movement and capture are blocked during the transition, and movement remains locked while deployed. Reduced-motion preferences skip the animation.
+Saved photographs accumulate scene motion over the selected shutter interval: fast shutters freeze subjects, slow shutters soften flowing water and smear the runner. A tripod removes simulated handheld shake; Panning tracks the runner and lets the background streak. Motion blur appears in the photograph, while the live view remains responsive.
+
+The HUD contains only compact camera settings, equipment icons, an ambient meter, and a small subject cue. Shortcuts work while playing; focused dropdowns keep their normal keyboard behavior. Without a tripod, the camera has a tiny handheld wobble, softened at long focal lengths for precise aiming. **T** unfolds the tripod in 0.42 seconds and packs it in 0.28 seconds; the wobble smoothly settles during setup and returns during packing. Movement and capture are blocked during the transition, and movement remains locked while deployed. Reduced-motion preferences disable the wobble and skip the animation.
 
 To restart, open **Esc → Controls → Start a fresh notebook**. The current notebook is backed up on this device before the new one starts. **Restore previous notebook** restores that backup.
 
@@ -54,7 +56,7 @@ Successful assignments pay **$120–$260**, once per brief. Failed attempts cost
 | --- | --- | --- |
 | 24–120 mm zoom lens | $120 | Change the actual camera framing with scroll or −/+ |
 | Camera flash | $180 | Light nearby subjects; F toggles, L adjusts power |
-| Burst camera | $360 | Three frames at 5 fps; B toggles single/burst, C shoots |
+| Burst camera | $360 | Three frames at 5 fps; B toggles single/burst, Space or C shoots |
 | 200–600 mm wildlife lens | $480 | Equip it for distant bird close-ups; unlocks the kingfisher brief |
 
 The starter kit includes a fixed 35 mm lens, tripod, ND/CPL filters, and studio lights. The original twelve briefs are achievable with it. The new bird brief requires the wildlife lens. Four starter-kit briefs (lighthouse, creek, freezing the runner, and the morning baker) pay $600, enough to buy it without repeating a mission. The first five original briefs still fund the zoom, flash, and burst camera with $120 left over. Purchases take effect immediately and save with the notebook. Choose your equipped lens at the top of the gear shop; each has its own focal range, and the equipped lens and focal length persist.
@@ -104,7 +106,7 @@ Switch to **Studio lights**, visit the studio, and tune the key, fill, and rim l
 - Actual 3:2 image captures, simplified visual effects, photo review, downloads, and a persistent journal.
 - A map, travel shortcuts, keyboard aiming, and a performance setting.
 
-This is a foundation, not the finished game. Blur and background separation use image-space approximations, panning uses a switch, glass reflections are simulated, exposure durations resolve instantly, and star trails are illustrative. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, flash duration/motion freezing, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. Deeper NPC stories, staged events, focus simulation, audio, full collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
+This is a foundation, not the finished game. Motion blur accumulates up to 33 scene samples over the selected shutter interval, with simulated handheld shake, runner tracking, flowing water, and a brief flash pulse. Long exposures render immediately rather than waiting for the shutter duration. Background separation uses an image-space approximation, panning uses a switch, glass reflections are simulated, and star motion follows a simplified sky rotation. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, variable flash duration, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. Deeper NPC stories, staged events, focus simulation, audio, full collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
 
 See [the development plan](docs/PLAN.md) for the full curriculum, milestones, technical direction, and validation approach.
 

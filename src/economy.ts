@@ -3,7 +3,7 @@ import { missions } from './missions.ts';
 export const gearCatalog = [
   { id: 'zoom', name: '24–120 mm zoom lens', price: 120, icon: 'aperture', description: 'Frame distant subjects or go wide. Scroll or use −/+ to zoom.' },
   { id: 'flash', name: 'Camera flash', price: 180, icon: 'bolt', description: 'Light a close subject against a darker background. F toggles flash; L adjusts power.' },
-  { id: 'burst', name: 'Burst camera', price: 360, icon: 'burst', description: 'Catch changing moments with three frames at 5 fps. B switches single / burst; C shoots.' },
+  { id: 'burst', name: 'Burst camera', price: 360, icon: 'burst', description: 'Catch changing moments with three frames at 5 fps. B switches single / burst; Space or C shoots.' },
   { id: 'telephoto', name: '200–600 mm wildlife lens', price: 480, icon: 'aperture', description: 'Unlock bird close-ups from a respectful distance. Equip in the shop, then scroll or use −/+ to zoom.' },
 ] as const;
 export type GearId = typeof gearCatalog[number]['id'];
