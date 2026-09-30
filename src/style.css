@@ -239,3 +239,11 @@ dialog { display:flex; flex-direction:column; } dialog:not([open]) { display:non
 .opening-caption .primary { margin:22px auto 0; background:#e4e6cd; color:#2e4439; min-width:190px; }
 .opening .camera-bar,.opening .scene-location,.opening .menu-button,.opening .target-marker,.opening .npc-prompt { visibility:hidden; }
 @media(max-width:520px) { .opening-overlay { padding:24px 20px; } .opening-caption h1 { font-size:36px; } .opening-line { font-size:16px; } }
+
+.sneak-button { position:absolute; top:72px; right:24px; display:flex; gap:7px; align-items:center; padding:9px 12px; border:1px solid #fff7; border-radius:7px; font-size:10px; background:#f9f8f1dc; backdrop-filter:blur(8px); }
+.sneak-button svg { width:16px; height:16px; } .sneak-button kbd { font:9px inherit; opacity:.55; }
+.sneak-button[aria-pressed=true] { background:#dce8c6; border-color:#839b67; }
+.camera-mode .sneak-button { top:auto; bottom:115px; right:24px; }
+.opening .sneak-button { visibility:hidden; }
+.viewfinder { opacity:var(--viewfinder-progress,0); transform:translate(-50%,calc(-50% + (1 - var(--viewfinder-progress,0)) * 20px)); }
+@media(max-width:800px) { .sneak-button { right:16px; top:62px; } .camera-mode .sneak-button { bottom:190px; right:16px; } }

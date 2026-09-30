@@ -16,12 +16,15 @@ import { WORLD_HALF, coastline, terrainHeight, trails } from './terrain.ts';
 import { npcCatalog, nearestNPC, normalizeDiscovered, discoverNPC, canAcceptMission, missionGearReady, type NPC } from './exploration.ts';
 import { WorldAudio } from './audio.ts';
 import { localActivity, townRoad } from './life.ts';
-import { openingScenes } from './opening.ts';
+import { ViewfinderState, createCameraView } from './camera-view.ts';
+import { movementSpeed } from './wildlife.ts';
+import { openingScenes, arrivalPosition } from './opening.ts';
 import { cameraStore, atCameraStore } from './camera-store.ts';
 import { notebookMissions, type MissionSection } from './notebook.ts';
 import './style.css';
 
 const paths: Record<string, string> = {
+  sneak: '<path d="m7 20 2-6 5 1 3 5M9 14l2-5 5 2 3-1M7 11l4-2"/><circle cx="13" cy="5" r="2"/>',
   camera: '<path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/><path d="M18 10h.01"/>',
   mountain: '<path d="m2 20 7-14 5 9 3-5 5 10H2Z"/><path d="m7 10 2 2 2-2"/>',
   flag: '<path d="M5 21V3c5-3 9 4 14 1v10c-5 3-9-4-14-1"/>',
@@ -57,7 +60,7 @@ const esc = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 interface Photo { payment?: number; burst?: { id: string; index: number; total: number }; id: string; missionId: string; image: string; settings: CameraSettings; result: Assessment; date: number; studio?: StudioRig; environment?: { hour: number; cloudCover: number } }
-interface Save { openingSeen?: boolean; focus?: { mode: 'auto' | 'manual'; distance: number }; sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
+interface Save { walkingIntroduction?: boolean; position?: [number, number]; openingSeen?: boolean; focus?: { mode: 'auto' | 'manual'; distance: number }; sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
 const playtest = new URLSearchParams(location.search).get('playtest');
 const storageKey = playtest === null ? 'the-photographer-save-v1' : `the-photographer-playtest${playtest && playtest !== '1' ? `-${playtest.slice(0,32)}` : ''}-v1`;
 let storageAvailable = true;
@@ -69,6 +72,8 @@ function loadSave(): Save {
       return {
       version: 1,
       openingSeen: raw.openingSeen !== false,
+      walkingIntroduction: !completed.includes('intro-deer') && (raw.walkingIntroduction === true || raw.active === 'intro-deer'),
+      position: Array.isArray(raw.position) && raw.position.length === 2 && raw.position.every(Number.isFinite) ? raw.position : undefined,
       focus: new FocusState(raw.focus),
       sound: { enabled: raw.sound?.enabled !== false, volume: Number.isFinite(raw.sound?.volume) ? Math.max(0, Math.min(1, raw.sound.volume)) : 0.6 },
       filterShopVersion: 1, filter: raw.filter, gradPosition: gradientPosition(raw.gradPosition),
@@ -105,6 +110,8 @@ let studioRig = normalizeStudioRig(save.lighting?.studio);
 let lightingOpen = false;
 let lightingMode: 'flash' | 'studio' = 'flash';
 let cameraMode = false;
+let sneaking = false;
+const viewfinder = new ViewfinderState();
 let lowQuality = false;
 type PauseTab = 'assignments' | 'journal' | 'explore' | 'settings';
 let pauseTab: PauseTab = 'assignments';
@@ -131,6 +138,7 @@ $('app').innerHTML = `
     <section class="stage" id="stage" aria-label="Interactive 3D photography world">
       <div class="scene-location"><span id="time-icon">${icon('sun')}</span><div><strong><span id="location-title"></span><span id="clock-label"></span></strong><small id="subject-cue"></small></div></div>
       <button class="menu-button" id="menu-button" aria-label="Open pause menu (Escape)" title="Assignments, journal, exploration and settings (Esc)"><span>Esc</span></button>
+      <button class="sneak-button" id="sneak" aria-label="Toggle sneaking (C)" aria-pressed="false" title="Sneak quietly (C)">${icon('sneak')}<span id="sneak-label">Sneak</span><kbd>C</kbd></button>
       <aside id="lighting-panel" class="lighting-panel" aria-label="Lighting kit" hidden></aside>
       <div class="target-marker" id="target-marker"><span></span><small id="target-label"></small></div>
       <div class="viewfinder" id="viewfinder"><span class="finder-meta"><span id="lens-label">35</span> MM · <span id="lens-type">PRIME</span> · 3:2</span><span class="focus-point" id="focus-point"></span><span class="finder-focus" id="focus-label"></span></div>
@@ -164,7 +172,7 @@ $('app').innerHTML = `
           <button id="lighting-kit" aria-label="Open lighting kit (L)" aria-expanded="false" title="Lighting kit (L)">${icon('studio')}</button>
         </div>
         <div class="exposure" title="Ambient exposure meter"><strong id="ev-label"></strong><div class="meter">${Array.from({ length: 11 }, () => '<i></i>').join('')}<span class="needle" id="meter-needle"></span></div></div>
-        <button id="capture" class="shutter-button" aria-label="Take a photograph (Space / C)" title="Take a photograph (Space / C)"><span></span></button>
+        <button id="capture" class="shutter-button" aria-label="Take a photograph (Space)" title="Take a photograph (Space)"><span></span></button>
       </section>
     </section>
   </main>
@@ -186,15 +194,17 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 renderer.domElement.classList.add('world'); renderer.domElement.tabIndex = 0;
-renderer.domElement.setAttribute('aria-label', 'Game world. WASD to walk, drag to look, Space or C to photograph.');
+renderer.domElement.setAttribute('aria-label', 'Game world. WASD to walk, drag to look, Space to photograph.');
 stage.prepend(renderer.domElement);
 const world = createWorld();
 const photoRenderer = createPhotoRenderer();
 const viewfinderRenderer = createViewfinderRenderer();
 const tripodView = createTripodView();
+const cameraView = createCameraView();
 const camera = new THREE.PerspectiveCamera(fovForFocal(focalLength, 1), 1, 0.1, 450);
 camera.rotation.order = 'YXZ';
-const player = new THREE.Vector3(activeMission.viewpoint[0], world.groundHeight(activeMission.viewpoint[0], activeMission.viewpoint[2]) + 1.7, activeMission.viewpoint[2]);
+const spawn = save.position && world.canWalk(...save.position) ? save.position : activeMission.id === 'intro-deer' ? arrivalPosition : [activeMission.viewpoint[0], activeMission.viewpoint[2]] as const;
+const player = new THREE.Vector3(spawn[0], world.groundHeight(...spawn) + 1.7, spawn[1]);
 let yaw = 0, pitch = 0;
 const keys = new Set<string>();
 const targetVector = new THREE.Vector3();
@@ -225,13 +235,13 @@ function renderOpening() {
 function finishOpening(skipped: boolean) {
   openingStep = null; world.opening.finish(); stage.classList.remove('opening'); $('opening-overlay').hidden = true;
   save.openingSeen = true; keys.clear(); drag = false;
-  if (!skipped) {
-    const deer = missions.find(m => m.id === 'intro-deer')!;
-    save.discovered = normalizeDiscovered(save.discovered, [deer.id]); selectMission(deer);
-    settings = { ...deer.recommended, flashPower: 0 }; focus.mode = 'auto'; equipLens('prime');
-    travelTo(deer); setCameraMode(true); syncSettings();
-    toast('Your first hunt: frame the deer, give it space, and press Space or C.');
-  } else { selectMission(missions[0]); travelTo(activeMission); toast('Welcome to Willowbrook. Esc opens your notebook.'); }
+  save.walkingIntroduction = true;
+  const deer = missions.find(m => m.id === 'intro-deer')!;
+  save.discovered = normalizeDiscovered(save.discovered, [deer.id]); selectMission(deer);
+  settings = { ...deer.recommended, flashPower: 0 }; focus.mode = 'auto'; equipLens('prime');
+  player.set(arrivalPosition[0], world.groundHeight(...arrivalPosition) + 1.7, arrivalPosition[1]);
+  yaw = 0; pitch = 0; viewfinder.request(false, true); syncSettings(); updateCamera();
+  toast(skipped ? 'Welcome to Willowbrook. Walk inland, then follow the western trail to the meadow. C toggles sneaking.' : 'Leave the dock and follow the western trail past the chapel. C to sneak near the deer; Space for the shutter.');
   persist(); renderer.domElement.focus({ preventScroll: true });
 }
 function toast(message: string) {
@@ -239,6 +249,7 @@ function toast(message: string) {
   window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => $('toast').classList.remove('show'), 3600);
 }
 function persist() {
+  save.position = [player.x, player.z];
   save.focus = { mode: focus.mode, distance: focus.distance };
   save.sound = { enabled: audio.enabled, volume: audio.volume };
   save.active = activeMission.id; save.hour = clock.hour; save.focalLength = focalLength; save.lens = equippedLens;
@@ -275,7 +286,7 @@ function syncTripod() {
   button.setAttribute('aria-busy', String(tripod.transitioning));
   const label = tripod.transitioning ? (tripod.target ? 'Setting up tripod' : 'Packing tripod') : (tripod.deployed ? 'Pack tripod' : 'Deploy tripod');
   button.setAttribute('aria-label', `${label} (T)`); button.title = `${label} (T)`;
-  $<HTMLButtonElement>('capture').disabled = tripod.transitioning || capturing || !!meditation || performance.now() < shootReadyAt;
+  $<HTMLButtonElement>('capture').disabled = tripod.transitioning || capturing || viewfinder.transitioning || !!meditation || performance.now() < shootReadyAt;
   for (const id of ['shutter', 'aperture', 'iso', 'lens', 'filter', 'gradient-position', 'tripod', 'panning', 'flash-toggle', 'burst-mode', 'lighting-kit', 'focus-toggle', 'focus-mode', 'focus-acquire']) ($<HTMLButtonElement | HTMLSelectElement | HTMLInputElement>(id)).disabled = capturing;
   $<HTMLInputElement>('focus-distance').disabled = capturing || focus.mode === 'auto';
 }
@@ -314,7 +325,7 @@ function activeMissionContent() {
   return `<article class="pause-assignment"><span class="mission-badge">Active assignment</span><span class="eyebrow">${m.category} · ${esc(m.location)} · ${m.payment ? `${money(m.payment)} payment` : 'First photograph'}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>
     ${m.timeWindow ? `<p class="mission-time ${isMissionTime(m, clock.hour) ? 'ready' : 'waiting'}">${esc(m.timeWindow.label)} · ${isMissionTime(m, clock.hour) ? 'Ready now' : 'Wait for the light'}</p>` : ''}
     <details><summary>Field notes</summary><p>${esc(m.lesson)}</p></details>
-    <div class="pause-actions"><button class="secondary" id="travel">${icon('pin')}Find the spot</button><button class="secondary" id="suggest">Suggested settings</button></div></article>`;
+    <div class="pause-actions"><button class="secondary" id="travel">${icon('pin')}${save.walkingIntroduction ? 'Show the trail on the map' : 'Find the spot'}</button><button class="secondary" id="suggest">Suggested settings</button></div></article>`;
 }
 function openSettings() {
   pauseTab = 'settings';
@@ -366,8 +377,18 @@ function gearHint(message: string) {
   if (performance.now() - lastGearHint < 2500) return;
   lastGearHint = performance.now(); toast(message);
 }
+function toggleSneak() {
+  if (capturing || meditation || modal.open || openingStep !== null) return;
+  sneaking = !sneaking;
+  $('sneak').setAttribute('aria-pressed', String(sneaking));
+  $('sneak-label').textContent = sneaking ? 'Sneaking' : 'Sneak';
+}
 function updateClockCue() {
-  $('location-title').textContent = atCameraStore(player.x, player.y, player.z) ? cameraStore.name : player.z > 84 ? 'Southern shore' : player.z >= 31 && player.z < 80 && player.x > -15 && player.x < 57 ? 'South neighborhood' : player.x < -35 && player.x > -53 && player.z > 7 && player.z < 39 ? 'Wedding chapel' : activeMission.location;
+  $('location-title').textContent = Math.hypot(player.x - arrivalPosition[0], player.z - arrivalPosition[1]) < 10 ? 'Arrival dock' : atCameraStore(player.x, player.y, player.z) ? cameraStore.name : player.z > 84 ? 'Southern shore' : player.z >= 31 && player.z < 80 && player.x > -15 && player.x < 57 ? 'South neighborhood' : player.x < -35 && player.x > -53 && player.z > 7 && player.z < 39 ? 'Wedding chapel' : activeMission.location;
+  if (activeMission.id === 'intro-deer') {
+    const deer = subjectPosition(world, activeMission), distance = Math.round(deer.distanceTo(player)), mood = world.deerMood(elapsed);
+    $('subject-cue').textContent = mood !== 'calm' ? `Deer ${mood} · Back away quietly and let it settle` : distance > 30 ? `Western meadow · ${distance} m · Follow the western trail past the chapel` : `Meadow deer · ${distance} m · ${sneaking ? 'Sneaking quietly' : 'C to sneak; give the deer space'}`;
+  }
   const time = formatTime(clock.hour), phase = sampleSky(clock.hour).night > 0.5 ? 'moon' : 'sun';
   if ($('clock-label').textContent !== time) $('clock-label').textContent = time;
   if ($('time-icon').dataset.phase !== phase) { $('time-icon').innerHTML = icon(phase); $('time-icon').dataset.phase = phase; }
@@ -405,6 +426,7 @@ function faceSubject(m: Mission) {
   updateCamera();
 }
 function travelTo(m: Mission) {
+  if (save.walkingIntroduction) { toast('Explore on foot. Travel shortcuts unlock after your first deer photograph.'); return; }
   if (!canAcceptMission(m, save.discovered, save.economy)) return;
   player.set(m.viewpoint[0], world.groundHeight(m.viewpoint[0], m.viewpoint[2]) + 1.7, m.viewpoint[2]); requestTripod(false, true);
   // Travel preserves manual exposure choices but packs the tripod away.
@@ -454,7 +476,7 @@ function updateExposure() {
   updateLightingReadout();
 }
 function setCameraMode(value: boolean) {
-  cameraMode = value; stage.classList.toggle('camera-mode', value);
+  cameraMode = value; viewfinder.request(value, reducedMotion.matches); updateLensProjection(); syncTripod(); stage.classList.toggle('camera-mode', value);
   $('focus-control').hidden = !value;
   $('camera-mode').classList.toggle('selected', value); $('camera-mode').setAttribute('aria-pressed', String(value)); updateExposure();
   if (value) updateFocus();
@@ -565,7 +587,7 @@ function updateLightingReadout() {
 }
 function resize() {
   const { width, height } = stage.getBoundingClientRect();
-  renderer.setSize(width, height); camera.aspect = width / height; camera.fov = fovForFocal(focalLength, camera.aspect); camera.updateProjectionMatrix();
+  renderer.setSize(width, height); camera.aspect = width / height; camera.fov = viewfinder.fov(focalLength, camera.aspect); camera.updateProjectionMatrix();
   // The frame and saved photo share a centered 3:2 crop.
   $('viewfinder').style.width = `${Math.min(width, height * 1.5)}px`;
   updateLensLabel();
@@ -576,17 +598,19 @@ function getFraming(): Framing {
   targetVector.copy(subjectPosition(world, activeMission));
   const direction = targetVector.clone().sub(camera.position);
   const distance = direction.length();
-  projected.copy(targetVector).project(camera);
+  const lensCamera = camera.clone(); lensCamera.fov = fovForFocal(focalLength, camera.aspect); lensCamera.updateProjectionMatrix();
+  projected.copy(targetVector).project(lensCamera);
   const cropX = Math.min(1, 1.5 / camera.aspect), cropY = Math.min(1, camera.aspect / 1.5);
   const nx = projected.x / cropX, ny = projected.y / cropY;
   const visible = projected.z > -1 && projected.z < 1 && Math.abs(nx) < 0.96 && Math.abs(ny) < 0.96;
   raycaster.set(camera.position, direction.normalize()); raycaster.far = Math.max(0, distance - 0.7);
   const occluded = activeMission.category !== 'Astro' && raycaster.intersectObjects(world.solids, false).length > 0;
   const subjectDepth = -targetVector.clone().applyMatrix4(camera.matrixWorldInverse).z;
-  return { visible, distance, centerOffset: Math.max(Math.abs(nx), Math.abs(ny)), occluded, subjectDepth };
+  return { visible, distance, centerOffset: Math.max(Math.abs(nx), Math.abs(ny)), occluded, subjectDepth, wildlifeSpooked: activeMission.id === 'intro-deer' && world.deerMood(elapsed) !== 'calm' };
 }
 function subjectImageY(): number {
-  const p = subjectPosition(world, activeMission).project(camera);
+  const lensCamera = camera.clone(); lensCamera.fov = fovForFocal(focalLength, camera.aspect); lensCamera.updateProjectionMatrix();
+  const p = subjectPosition(world, activeMission).project(lensCamera);
   return THREE.MathUtils.clamp(0.5 - p.y / Math.min(1, camera.aspect / 1.5) * 0.5, 0, 1);
 }
 
@@ -707,7 +731,7 @@ function makePhoto(s: CameraSettings, frame: Framing): string {
 
 function capture() {
   const now = performance.now();
-  if (openingStep !== null || modal.open || capturing || tripod.transitioning || meditation || now < shootReadyAt) return;
+  if (openingStep !== null || modal.open || capturing || tripod.transitioning || viewfinder.transitioning || meditation || now < shootReadyAt) return;
   if (settings.filter !== equippedFilter(settings.filter, save.economy)) { syncSettings(); openGearShop(); toast('Buy the filter before taking a photograph with it.'); return; }
   if (activeMission.requiredGear && (!missionGearReady(activeMission, save.economy) || equippedLens !== 'telephoto')) { toast('Choose the 200–600 mm wildlife lens in the LENS dropdown.'); return; }
   capturing = true; keys.clear(); shotPhotos = []; shotPayment = 0; shotId = crypto.randomUUID();
@@ -750,6 +774,7 @@ function finishShooting() {
   window.clearTimeout(previewTimer); previewTimer = window.setTimeout(() => preview.hidden = true, 6000);
   shotPhotos = []; shotSettings = null;
   if (best.missionId === 'intro-deer' && best.result.passed && activeMission.id === 'intro-deer') {
+    save.walkingIntroduction = false;
     selectMission(missions[0]); setCameraMode(false);
     toast('A photograph, and the deer walks away. Your next story: the lighthouse at Willow Lake. Esc for directions.');
   }
@@ -795,7 +820,7 @@ function openBoard() {
   const content = missionSection === 'active' ? activeMissionContent() : `<div class="mission-grid">${list.map(missionCard).join('')}</div>${list.length ? '' : `<div class="empty"><h3>${missionSection === 'completed' ? 'Your stories will live here.' : 'More stories are out there.'}</h3><p>${missionSection === 'completed' ? 'Finish an assignment to add it to your completed collection.' : 'Talk to locals with golden markers to discover your next assignment.'}</p></div>`}`;
   showModal('Your field notebook.', 'PAUSED · ASSIGNMENTS', 'One active story at a time. Completed assignments stay here to revisit.', `<div class="mission-sections" role="group" aria-label="Assignment status">${sections.map(([id, label]) => `<button data-mission-section="${id}" aria-pressed="${missionSection === id}">${label}<span>${notebookMissions(save.discovered, save.completed, activeMission.id, id).length}</span></button>`).join('')}</div>${content}<p class="discovery-note notebook-hint">${save.discovered.length} of ${missions.length} stories discovered · Press R near a local to find more.</p>`, 'menu');
   modal.querySelectorAll<HTMLButtonElement>('[data-mission-section]').forEach(b => b.onclick = () => { missionSection = b.dataset.missionSection as MissionSection; openBoard(); modal.querySelector<HTMLButtonElement>(`[data-mission-section="${missionSection}"]`)?.focus(); });
-  if ($('travel')) $('travel').onclick = () => { modal.close(); travelTo(activeMission); };
+  if ($('travel')) $('travel').onclick = () => { if (save.walkingIntroduction) openPauseMenu('explore'); else { modal.close(); travelTo(activeMission); } };
   if ($('suggest')) $('suggest').onclick = suggestSettings;
   if ($('choose-available')) $('choose-available').onclick = () => { missionSection = 'available'; openBoard(); };
   wireMissionCards();
@@ -821,7 +846,7 @@ function updateNPCPrompt() {
 }
 function openJournal(topLevel = false) {
   if (topLevel) pauseTab = 'journal';
-  showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told. The latest 16 photos are kept on this device.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category} · ${p.result.passed ? '✓ Assignment complete' : 'A work in progress'} · ${p.result.score}/100${p.burst ? ` · Burst ${p.burst.index}/${p.burst.total}` : ''}</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press Space or C to make your first photograph.</p></div>`, topLevel ? 'menu' : 'page');
+  showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told. The latest 16 photos are kept on this device.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category} · ${p.result.passed ? '✓ Assignment complete' : 'A work in progress'} · ${p.result.score}/100${p.burst ? ` · Burst ${p.burst.index}/${p.burst.total}` : ''}</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press Space to make your first photograph.</p></div>`, topLevel ? 'menu' : 'page');
   modal.querySelectorAll<HTMLButtonElement>('[data-photo]').forEach(b => b.onclick = () => openReview(save.photos.find(p => p.id === b.dataset.photo)!));
 }
 function openReview(photo: Photo) {
@@ -854,7 +879,7 @@ function drawMap(canvas: HTMLCanvasElement) {
   ctx.fillStyle = '#85aaa0'; ctx.fillRect(mx(-21), mz(-14.5), 28 / 260 * w, 23 / 260 * h);
   ctx.beginPath(); ctx.ellipse(mx(76), mz(-54), 14 / 260 * w, 11 / 260 * h, 0, 0, Math.PI * 2); ctx.fill();
   ctx.font = '11px system-ui'; ctx.textAlign = 'center';
-  for (const [x,z,label] of [[0,30,'Willowbrook'],[-73,64,'Wildflower meadow'],[79,-80,'Eastern woodland'],[-53,-99,'Stargazer Ridge'],[-43,16,'Wedding chapel'],[20,74,'South neighborhood'],[60,114,'Ocean']] as const) { ctx.fillStyle = '#4d6145'; ctx.fillText(label,mx(x),mz(z)); }
+  for (const [x,z,label] of [[0,30,'Willowbrook'],[-73,64,'Wildflower meadow'],[79,-80,'Eastern woodland'],[-53,-99,'Stargazer Ridge'],[-43,16,'Wedding chapel'],[20,74,'South neighborhood'],[60,114,'Ocean'],[8,94,'Arrival dock']] as const) { ctx.fillStyle = '#4d6145'; ctx.fillText(label,mx(x),mz(z)); }
   for (const npc of npcCatalog) {
     if (!npc.missions.some(id => save.discovered.includes(id))) continue;
     const [x,,z] = world.npcPosition(npc.id); ctx.beginPath(); ctx.arc(mx(x), mz(z), 4, 0, Math.PI * 2); ctx.fillStyle = '#b08b46'; ctx.fill(); ctx.fillText(npc.name, mx(x), mz(z) - 9);
@@ -872,12 +897,13 @@ const landmarks = [
 ];
 function openMap(topLevel = false) {
   if (topLevel) pauseTab = 'explore';
-  const known = missions.filter(m => save.discovered.includes(m.id) && missionGearReady(m, save.economy));
-  showModal('Beyond the town.', 'EXPLORE WILLOWBROOK', '260 m across · Follow the pale trails into the hills, wetland and southern beach. Roads loop through the south neighborhood; the chapel sits beside the wedding garden. Green: you. Gold: current subject and locals you have met. Blue: camera store.', `<div class="explore-tools"><span>${formatTime(clock.hour)} in Willowbrook</span><button class="secondary" id="menu-meditate">${icon('moon')}Meditate</button><button class="secondary" id="menu-lighting">${icon('studio')}Lighting kit</button></div><canvas id="large-map" class="map-large" width="680" height="560"></canvas><p class="discovery-note">Travel shortcuts appear for stories you have discovered. Explore on foot to meet new locals.</p><div class="map-legend">${landmarks.map(p => `<button data-landmark="${p.id}">${icon('pin')}${p.name}<span style="margin-left:auto">→</span></button>`).join('')}${known.map(m => `<button data-place="${m.id}">${icon(categoryIcon[m.category])}${esc(m.title)}<span style="margin-left:auto">→</span></button>`).join('')}</div>`, topLevel ? 'menu' : 'page');
+  const known = save.walkingIntroduction ? [] : missions.filter(m => save.discovered.includes(m.id) && missionGearReady(m, save.economy));
+  showModal('Beyond the town.', 'EXPLORE WILLOWBROOK', '260 m across · Follow the pale trails into the hills, wetland and southern beach. Roads loop through the south neighborhood; the chapel sits beside the wedding garden. Green: you. Gold: current subject and locals you have met. Blue: camera store.', `<div class="explore-tools"><span>${formatTime(clock.hour)} in Willowbrook</span><button class="secondary" id="menu-meditate">${icon('moon')}Meditate</button><button class="secondary" id="menu-lighting">${icon('studio')}Lighting kit</button></div><canvas id="large-map" class="map-large" width="680" height="560"></canvas><p class="discovery-note">${save.walkingIntroduction ? 'Walk inland from the dock, then follow the western trail past the chapel into the meadow. Travel shortcuts unlock after your first deer photograph.' : 'Travel shortcuts appear for stories you have discovered. Explore on foot to meet new locals.'}</p><div class="map-legend">${landmarks.map(p => `<button data-landmark="${p.id}" ${save.walkingIntroduction ? 'disabled' : ''}>${icon('pin')}${p.name}<span style="margin-left:auto">→</span></button>`).join('')}${known.map(m => `<button data-place="${m.id}">${icon(categoryIcon[m.category])}${esc(m.title)}<span style="margin-left:auto">→</span></button>`).join('')}</div>`, topLevel ? 'menu' : 'page');
   $('menu-meditate').onclick = openMeditation;
   $('menu-lighting').onclick = () => { modal.close(); if (!lightingOpen) toggleLightingKit(); };
   drawMap($<HTMLCanvasElement>('large-map'));
   modal.querySelectorAll<HTMLButtonElement>('[data-landmark]').forEach(button => button.onclick = () => {
+    if (save.walkingIntroduction) return;
     const place = landmarks.find(p => p.id === button.dataset.landmark)!;
     requestTripod(false, true); player.set(place.x, world.groundHeight(place.x,place.z)+1.7, place.z);
     const direction = new THREE.Vector3(...place.target).sub(player);
@@ -889,9 +915,9 @@ function openMap(topLevel = false) {
 }
 function openHelp() {
   showModal('Take your time. Look around.', 'WELCOME TO WILLOWBROOK', 'An early prototype about learning the craft, one photograph at a time.', `<div class="help-grid">
-    <div class="help-card"><strong>Wander and frame</strong><kbd>W A S D</kbd> walk · <kbd>Shift</kbd> move faster.<br/>Drag the world to look around. Arrow keys also aim. The starter lens is fixed at 35 mm. Buy a zoom or wildlife lens at the camera store, then choose it in the LENS dropdown to use the scroll wheel or <kbd>− / +</kbd>. <kbd>E</kbd> raises the viewfinder.</div>
-    <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>Space</kbd> or <kbd>C</kbd> takes a photo. With the burst camera, <kbd>B</kbd> toggles three-frame bursts at 5 fps. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
-    <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, map and field notes. Press it again to resume. From a submenu, Esc returns to the pause menu.<br/>You start with one lighthouse assignment. Find locals with golden markers and press <kbd>R</kbd> to talk. Their stories are added to your notebook. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments.</div>
+    <div class="help-card"><strong>Wander and frame</strong><kbd>W A S D</kbd> walk · <kbd>Shift</kbd> move faster. <kbd>C</kbd> toggles a slow, quiet sneak; Shift stays quiet while sneaking.<br/>Drag the world to look around. Arrow keys also aim. The starter lens is fixed at 35 mm. Buy a zoom or wildlife lens at the camera store, then choose it in the LENS dropdown to use the scroll wheel or <kbd>− / +</kbd>. <kbd>E</kbd> raises or lowers the camera with a quick animation. Exploring uses a wide 24 mm view; the viewfinder and photographs use your selected lens.</div>
+    <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>Space</kbd> takes a photo. With the burst camera, <kbd>B</kbd> toggles three-frame bursts at 5 fps. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
+    <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, map and field notes. Press it again to resume. From a submenu, Esc returns to the pause menu.<br/>Walk from the arrival dock to the western meadow for your first deer photograph. Approach with <kbd>C</kbd> to sneak: walking close or running will scare the deer. Step away and wait for it to settle if it bolts. Then find the lighthouse assignment. Find locals with golden markers and press <kbd>R</kbd> to talk. Their stories are added to your notebook. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments.</div>
     <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Click the brief thumbnail or open the journal to read feedback and try again. Slow shutters record moving subjects as streaks; fast shutters freeze them. A tripod steadies the scenery, while Panning follows the runner and streaks the background. Higher ISO is often the right choice when a moment moves fast.</div>
     <div class="help-card"><strong>Choose your depth of field</strong>The viewfinder previews focus. Autofocus follows an unobstructed assignment subject inside the frame; otherwise it focuses on the center surface. Press <kbd>M</kbd> to lock the current distance and enter manual focus. Use the focus slider or <kbd>[ / ]</kbd> to focus nearer or farther; <kbd>Q</kbd> focuses once without releasing the lock. Press M again for autofocus. The distance and focus mode save with your notebook, and the reticle turns amber when the subject is out of focus. A wider aperture, longer lens, or closer subject softens the foreground and background. Stop down to bring more depth into focus. Shutter motion appears in the saved photograph.</div>
     <div class="help-card"><strong>Shape the light</strong><kbd>L</kbd> opens the Lighting kit; <kbd>F</kbd> toggles purchased flash. Adjust manual flash power or visit the studio to move and tune key, fill, and rim lights. A brief flash favours close subjects; shutter speed controls the ambient within the 1/250 s sync limit.</div>
@@ -915,11 +941,12 @@ function openNewNotebook() {
   $('confirm-new-notebook').onclick = () => {
     try { localStorage.setItem(`${storageKey}-backup`, JSON.stringify(save)); }
     catch { toast('The backup could not be saved. Your current notebook has been kept.'); return; }
+    sneaking = false; $('sneak').setAttribute('aria-pressed', 'false'); $('sneak-label').textContent = 'Sneak';
     save.openingSeen = false;
     save.completed = []; save.discovered = normalizeDiscovered(undefined); save.photos = []; equippedLens = 'prime'; save.economy = normalizeEconomy(undefined, []); focalLength = 35; activeMission = missions[0];
     settings = { shutter: 1 / 125, aperture: 5.6, iso: 100, filter: 'none', tripod: false, panning: false, flashPower: 0 }; studioRig = defaultStudioRig();
     focus.mode = 'auto'; focus.acquire(10);
-    clock.skipTo(17); world.setTime(clock.hour); requestTripod(false, true); selectMission(activeMission); player.set(...activeMission.viewpoint); camera.fov = fovForFocal(focalLength, camera.aspect); camera.updateProjectionMatrix(); faceSubject(activeMission); syncSettings(); updateLensLabel(); modal.close();
+    clock.skipTo(17); world.setTime(clock.hour); requestTripod(false, true); selectMission(activeMission); player.set(...activeMission.viewpoint); camera.fov = viewfinder.fov(focalLength, camera.aspect); camera.updateProjectionMatrix(); faceSubject(activeMission); syncSettings(); updateLensLabel(); modal.close();
     persist(); startOpening();
   };
 }
@@ -932,7 +959,7 @@ function updateLensLabel() {
   $('lens-type').textContent = equippedLens === 'telephoto' ? 'WILDLIFE' : equippedLens === 'zoom' ? 'ZOOM' : 'PRIME';
 }
 function updateLensProjection() {
-  camera.fov = fovForFocal(focalLength, camera.aspect); camera.updateProjectionMatrix(); updateLensLabel();
+  camera.fov = viewfinder.fov(focalLength, camera.aspect); camera.updateProjectionMatrix(); updateLensLabel();
 }
 function equipLens(lens: LensId) {
   if (lens !== 'prime' && !ownsGear(save.economy, lens)) return;
@@ -957,6 +984,7 @@ $<HTMLInputElement>('gradient-position').addEventListener('input', e => {
 $('tripod').onclick = () => requestTripod(tripod.target === 0);
 $('panning').onclick = () => { settings.panning = !settings.panning; syncSettings(); };
 $('capture').onclick = capture;
+$('sneak').onclick = toggleSneak;
 $('npc-prompt').onclick = talkToNPC;
 $('lighting-kit').onclick = toggleLightingKit;
 $('flash-toggle').onclick = () => { if (!ownsGear(save.economy, 'flash')) { openGearShop(); return; } settings.flashPower = flashPower(settings) > 0 ? 0 : 0.25; syncSettings(); if (lightingOpen) renderLightingPanel(); persist(); };
@@ -991,7 +1019,8 @@ document.addEventListener('keydown', e => {
   if (key === ' ') e.preventDefault();
   if (e.repeat) return;
   if (key === 'r') { e.preventDefault(); talkToNPC(); }
-  if (key === 'c' || key === ' ') { e.preventDefault(); capture(); }
+  if (key === 'c') { e.preventDefault(); toggleSneak(); }
+  if (key === ' ') { e.preventDefault(); capture(); }
   if (key === 'e') { e.preventDefault(); setCameraMode(!cameraMode); }
   if (key === 'm') { e.preventDefault(); toggleFocus(); }
   if (key === 'q') { e.preventDefault(); acquireFocus(); }
@@ -1010,7 +1039,7 @@ renderer.domElement.addEventListener('pointerdown', e => {
 });
 renderer.domElement.addEventListener('pointermove', e => {
   if (!drag || modal.open || tripod.transitioning || meditation || openingStep !== null) return;
-  const sensitivity = Math.min(1, 35 / focalLength);
+  const sensitivity = (cameraMode ? Math.min(1, 35 / focalLength) : 1);
   yaw -= (e.clientX - lastPointerX) * 0.004 * sensitivity;
   pitch = THREE.MathUtils.clamp(pitch - (e.clientY - lastPointerY) * 0.003 * sensitivity, -1.3, 1.3);
   lastPointerX = e.clientX; lastPointerY = e.clientY;
@@ -1026,7 +1055,7 @@ renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault
 world.setTime(clock.hour); applyStudioRig(); world.update(0, settings); world.scene.updateMatrixWorld(true);
 faceSubject(activeMission); renderMission(); syncSettings(); updateProgress(); resize(); updateLensLabel();
 renderer.shadowMap.needsUpdate = true;
-if (activeMission.id === 'intro-deer') { settings = { ...activeMission.recommended, flashPower: 0 }; syncSettings(); setCameraMode(true); }
+if (activeMission.id === 'intro-deer') { settings = { ...activeMission.recommended, flashPower: 0 }; syncSettings(); if (!save.position) { yaw = 0; pitch = 0; } }
 if (save.openingSeen === false) startOpening();
 let previousTime = performance.now(), lastMeterTime = 0;
 function animate(now: number) {
@@ -1043,27 +1072,33 @@ function animate(now: number) {
     if (progress === 1) { clock.skipTo(meditation.target); finishMeditation(); }
   } else if (!modal.open) {
     elapsed += dt; clock.advance(realDt); world.setTime(clock.hour);
+    const viewfinderWasTransitioning = viewfinder.transitioning;
+    viewfinder.update(dt); camera.fov = viewfinder.fov(focalLength, camera.aspect); camera.updateProjectionMatrix();
+    stage.style.setProperty('--viewfinder-progress', String(viewfinder.progress));
+    if (viewfinderWasTransitioning && !viewfinder.transitioning) syncTripod();
     const wasTransitioning = tripod.transitioning;
     tripod.update(dt);
     if (wasTransitioning) {
       settings.tripod = tripod.deployed; syncTripod();
       if (!tripod.transitioning) tripodSettle = tripod.deployed ? 0.18 : 0;
     } else tripodSettle = Math.max(0, tripodSettle - dt);
-    const aimStep = dt * Math.min(1, 35 / focalLength);
+    const aimStep = dt * (cameraMode ? Math.min(1, 35 / focalLength) : 1);
     if (!tripod.transitioning && keys.has('arrowleft')) yaw += aimStep; if (!tripod.transitioning && keys.has('arrowright')) yaw -= aimStep;
     if (!tripod.transitioning && keys.has('arrowup')) pitch = Math.min(1.3, pitch + aimStep * 0.7); if (!tripod.transitioning && keys.has('arrowdown')) pitch = Math.max(-1.3, pitch - aimStep * 0.7);
     if (!tripod.movementLocked && !capturing) {
       const forward = Number(keys.has('w')) - Number(keys.has('s')), side = Number(keys.has('d')) - Number(keys.has('a'));
-      const length = Math.hypot(forward, side) || 1, speed = (keys.has('shift') ? 8 : 4.5) * dt;
+      const length = Math.hypot(forward, side) || 1, speed = movementSpeed(sneaking, keys.has('shift')) * dt;
       const dx = (-Math.sin(yaw) * forward + Math.cos(yaw) * side) / length * speed;
       const dz = (-Math.cos(yaw) * forward - Math.sin(yaw) * side) / length * speed;
       if (world.canWalk(player.x + dx, player.z)) player.x += dx;
       if (world.canWalk(player.x, player.z + dz)) player.z += dz;
     }
+    const moving = !tripod.movementLocked && !capturing && ['w','a','s','d'].some(key => keys.has(key));
+    if (world.reactWildlife(elapsed, { x: player.x, z: player.z, moving, sneaking, running: !sneaking && keys.has('shift') })) toast('The deer startled. Back away, let it settle, then use C to approach quietly.');
     world.update(elapsed, settings);
   }
   const walking = !modal.open && !meditation && !tripod.movementLocked && !capturing && ['w','a','s','d'].some(key => keys.has(key));
-  audio.update(clock.hour, player, yaw, world.traffic, !modal.open && !meditation && !document.hidden && document.hasFocus(), walking, keys.has('shift'));
+  audio.update(clock.hour, player, yaw, world.traffic, !modal.open && !meditation && !document.hidden && document.hasFocus(), walking, !sneaking && keys.has('shift'), sneaking);
   if (openingStep !== null) world.opening.update(camera, openingStep, openingSeconds, reducedMotion.matches);
   else updateCamera();
   updateNPCPrompt(); world.scene.updateMatrixWorld(true);
@@ -1080,6 +1115,10 @@ function animate(now: number) {
   }
   if (cameraMode && openingStep === null) viewfinderRenderer.render(renderer, world.scene, camera, { aperture: settings.aperture, focalLength, focusDistance, filter: settings.filter, gradPosition: settings.gradPosition });
   else renderer.render(world.scene, camera);
+  if (!reducedMotion.matches && viewfinder.transitioning && openingStep === null) {
+    cameraView.update(viewfinder.progress, camera.aspect);
+    renderer.autoClear = false; renderer.clearDepth(); renderer.render(cameraView.scene, cameraView.camera); renderer.autoClear = true;
+  }
   if (!reducedMotion.matches && (tripod.transitioning || tripodSettle > 0)) {
     tripodView.update(tripod.progress, tripod.transitioning ? 1 : tripodSettle / 0.18, camera.aspect);
     renderer.autoClear = false; renderer.clearDepth(); renderer.render(tripodView.scene, tripodView.camera); renderer.autoClear = true;

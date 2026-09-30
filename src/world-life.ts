@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { terrainHeight } from './terrain.ts';
 import { isActiveHour, routeLength, routePose, routinePose, townRoad, townSidewalk, trafficRoutes, type Route } from './life.ts';
+import { DeerAwareness, type WildlifeVisitor } from './wildlife.ts';
 
 export type Box = (x: number, y: number, z: number, w: number, h: number, d: number, color: string, parent?: THREE.Object3D, solid?: boolean) => THREE.Mesh;
 type Sphere = (x: number, y: number, z: number, sx: number, sy: number, sz: number, color: string, parent: THREE.Object3D) => THREE.Mesh;
@@ -143,6 +144,8 @@ export function createTownLife({ scene, solids, box, sphere, person, house, batc
   const fox = quadruped('woodland-fox','#b86e45',0.75);
   fox.tail.scale.set(0.19,0.17,0.65);
   const deerRoute: Route = [[-68,57],[-72,60],[-77,62],[-73,58],[-68,57]];
+  const deerAwareness = deer.map(() => new DeerAwareness());
+  const deerRoutine = (hour: number, i: number) => routinePose(deerRoute, hour + i * 0.05, 4, 23, 0.4, 18);
   const foxRoute: Route = [[62,-28],[65,-32],[68,-36],[72,-32],[68,-27],[62,-28]];
   const ducks = Array.from({length:5},(_,i) => {
     const group=new THREE.Group(); group.name=`lake-duck-${i}`; scene.add(group);
@@ -163,6 +166,10 @@ export function createTownLife({ scene, solids, box, sphere, person, house, batc
       night=darkness; lamps.forEach(lamp => { lamp.intensity=night*16; });
       glow.emissiveIntensity=night*1.3; headlights.emissiveIntensity=0.15+night*1.8; tailLights.emissiveIntensity=0.1+night;
     },
+    reactWildlife(time: number, hour: number, visitor: WildlifeVisitor, canWalk: (x: number, z: number) => boolean) {
+      return deerAwareness.map((awareness, i) => awareness.advance(time, deerRoutine(hour, i), visitor, canWalk)).some(Boolean);
+    },
+    deerMood(time: number) { return deerAwareness[0].mood(time); },
     update(time: number, hour: number) {
       walkers.forEach((character,i) => {
         const active=isActiveHour(hour,i===7?16:7,i===7?23:21);
@@ -179,15 +186,15 @@ export function createTownLife({ scene, solids, box, sphere, person, house, batc
         car.group.position.set(p.x,terrainHeight(p.x,p.z)+0.07,p.z); car.group.rotation.y=p.yaw; car.beam.intensity=night*35;
         if (i>0) parked[i-1].visible=!car.group.visible;
       });
-      const animateAnimal=(animal: ReturnType<typeof quadruped>, p: {x:number;z:number;yaw:number;walking:boolean}, grazing=false) => {
+      const animateAnimal=(animal: ReturnType<typeof quadruped>, p: {x:number;z:number;yaw:number;walking:boolean;running?:boolean}, grazing=false) => {
         animal.group.position.set(p.x,terrainHeight(p.x,p.z),p.z); animal.group.rotation.y=p.yaw;
-        animal.legs.forEach((leg,i)=>{leg.rotation.x=p.walking?Math.sin(time*6+(i===0||i===3?0:Math.PI))*0.3:0;});
+        animal.legs.forEach((leg,i)=>{leg.rotation.x=p.walking?Math.sin(time*(p.running?13:6)+(i===0||i===3?0:Math.PI))*(p.running?0.55:0.3):0;});
         animal.head.rotation.x=grazing&&!p.walking?0.9+Math.sin(time*1.8)*0.1:Math.sin(time*0.8)*0.08;
         animal.tail.rotation.y=Math.sin(time*4)*0.25;
       };
       dog.group.visible=walkers[0].group.visible;
       const walker=walkers[0].group; animateAnimal(dog,{x:walker.position.x-Math.sin(walker.rotation.y)*1.2,z:walker.position.z-Math.cos(walker.rotation.y)*1.2,yaw:walker.rotation.y,walking:true});
-      deer.forEach((animal,i)=>{ const p=routinePose(deerRoute,hour+i*0.05,4,23,0.4,18); animateAnimal(animal,p,true); });
+      deer.forEach((animal,i)=>{ const p=deerAwareness[i].pose(time,deerRoutine(hour,i)); animateAnimal(animal,p,deerAwareness[i].mood(time)==='calm'); });
       fox.group.visible=isActiveHour(hour,19,6); animateAnimal(fox,routinePose(foxRoute,hour,19,6,0.7,12));
       ducks.forEach((duck,i)=>{
         const active=isActiveHour(hour,5,21), angle=time*0.13+i*0.6;

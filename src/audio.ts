@@ -57,7 +57,7 @@ export class WorldAudio {
     });
   }
   silence() { this.active=false; if (this.context && this.master) this.master.gain.setTargetAtTime(0,this.context.currentTime,0.025); }
-  update(hour: number, player: Position, yaw: number, vehicles: AudioSource[], playing: boolean, moving: boolean, running: boolean) {
+  update(hour: number, player: Position, yaw: number, vehicles: AudioSource[], playing: boolean, moving: boolean, running: boolean, sneaking = false) {
     const context=this.context;
     this.active=playing && this.enabled;
     if (this.failed || !context || !this.master) return;
@@ -86,10 +86,10 @@ export class WorldAudio {
       for (let i=0;i<3;i++) this.tone(now+i*0.14,0.095,2100+i*300,3300-i*230,0.025*levels.birds,pan);
     }
     if (moving && now>=this.nextStep) {
-      this.nextStep=now+(running?0.29:0.44);
+      this.nextStep=now+(sneaking?0.7:running?0.29:0.44);
       const source=context.createBufferSource(),filter=context.createBiquadFilter(),gain=context.createGain();source.buffer=this.noise!;
       filter.type='lowpass';filter.frequency.value=650;source.connect(filter);filter.connect(gain);gain.connect(this.master);
-      gain.gain.setValueAtTime(0.15,now);gain.gain.exponentialRampToValueAtTime(0.001,now+0.09);source.start(now);source.stop(now+0.1);
+      gain.gain.setValueAtTime(sneaking?0.035:0.15,now);gain.gain.exponentialRampToValueAtTime(0.001,now+0.09);source.start(now);source.stop(now+0.1);
       source.onended=()=>{source.disconnect();filter.disconnect();gain.disconnect();};
     }
   }

@@ -11,12 +11,15 @@ import { createTownLife } from './world-life.ts';
 import { createChurch } from './church.ts';
 import { createCoast } from './coast.ts';
 import { createOpening } from './opening.ts';
+import type { DeerMood, WildlifeVisitor } from './wildlife.ts';
 import { createCameraStore } from './camera-store.ts';
 import { sampleSky } from './environment.ts';
 import type { Mission } from './missions.ts';
 import { defaultStudioRig, lightNames, lightPosition, type StudioRig } from './lighting.ts';
 
 export interface World {
+  reactWildlife: (time: number, visitor: WildlifeVisitor) => boolean;
+  deerMood: (time: number) => DeerMood;
   opening: ReturnType<typeof createOpening>;
   scene: THREE.Scene; subjects: Map<string, THREE.Object3D>; solids: THREE.Object3D[];
   update: (time: number, settings: { filter: string; shutter: number }, activityHour?: number) => void;
@@ -515,6 +518,8 @@ export function createWorld(): World {
   const staticSolidCount = solids.length;
   return {
     opening, scene, subjects, solids, traffic: townLife.traffic,
+    reactWildlife(time, visitor) { return townLife.reactWildlife(time, sky.hour, visitor, (x, z) => this.canWalk(x, z)); },
+    deerMood: townLife.deerMood,
     npcPosition(id) { const p = locals.get(id)!.group.position; return [p.x, p.y, p.z]; },
     groundHeight: opening.dockHeight,
     setTime(hour) { sky = sampleSky(hour); applyEnvironment(); },

@@ -4,7 +4,7 @@ import { filterStops, graduatedStops, type FilterId } from './filters.ts';
 import { subjectInFocus, type FocusMode } from './focus.ts';
 export { filterStops } from './filters.ts';
 export interface CameraSettings { shutter: number; aperture: number; iso: number; filter: FilterId; gradPosition?: number; tripod: boolean; panning: boolean; flashPower?: number; focalLength?: number; focusDistance?: number; focusMode?: FocusMode }
-export interface Framing { visible: boolean; distance: number; centerOffset: number; occluded: boolean; subjectDepth?: number }
+export interface Framing { visible: boolean; distance: number; centerOffset: number; occluded: boolean; subjectDepth?: number; wildlifeSpooked?: boolean }
 export interface Feedback { label: string; passed: boolean; text: string }
 export interface Assessment { score: number; passed: boolean; exposureStops: number; feedback: Feedback[] }
 export const cameraEV = (s: CameraSettings, imageY = 0.5) => Math.log2(s.aperture ** 2 / s.shutter) - Math.log2(s.iso / 100) + filterStops(s.filter) + graduatedStops(s.filter, imageY, s.gradPosition);
@@ -38,6 +38,7 @@ export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing,
   if (mission.requiredGear) add('Required gear', lighting?.gearReady === true, 'The wildlife lens gives you the reach this assignment needs.', 'Buy the 200–600 mm wildlife lens at the camera store before taking this assignment.');
   switch (mission.technique) {
     case 'wildlife':
+      add('An undisturbed subject', !frame.wildlifeSpooked, 'The deer stayed calm while you made your photograph.', 'The deer is startled. Back away quietly, let it settle, then approach with C to sneak.');
       add('A gentle distance', frame.distance >= 6, 'You kept your distance and brought back a photograph.', 'Give the deer at least six metres of space. Stay on the trail and frame it from there.');
       add('Your first moment', s.shutter <= 1 / 250, 'A quick shutter keeps the deer clear.', 'Use 1/250 second or faster to keep your first wildlife photograph sharp.'); break;
     case 'bird':

@@ -4,8 +4,9 @@ import { terrainHeight } from './terrain.ts';
 export const openingScenes = [
   { title: 'A place worth finding.', speaker: 'The boatman', line: 'Willowbrook. End of the line. You picked a fine evening to arrive.', action: 'Step ashore' },
   { title: 'One small assignment.', speaker: 'Mara · Creek ranger', line: 'Fancy a little hunting? There’s a deer in the western meadow. I’d like you to take a shot.', action: 'Take the camera' },
-  { title: 'Bring back a photograph.', speaker: 'Mara · Creek ranger', line: 'Here. Your camera. Keep your distance, find the deer in your frame, and press the shutter. We leave only footprints here.', action: 'Go find the deer' },
+  { title: 'Bring back a photograph.', speaker: 'Mara · Creek ranger', line: 'Here. Your camera. Walk inland from the dock, then take the western trail past the chapel into the meadow. Press C to sneak as you approach the deer, and Space for the shutter. We leave only footprints here.', action: 'Start exploring' },
 ];
+export const arrivalPosition = [8, 94] as const;
 
 export function createOpening(scene: THREE.Scene) {
   const boat = new THREE.Group(); boat.name = 'arrival-boat'; scene.add(boat);
