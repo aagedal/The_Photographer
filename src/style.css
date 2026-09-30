@@ -120,3 +120,37 @@ dialog{border:1px solid #d9deca;border-radius:13px;padding:0;background:var(--pa
 .meditation-overlay p { font-size:12px; margin:12px 0; letter-spacing:1px; }
 .meditation-overlay strong { display:block; font-size:32px; font-weight:400; font-variant-numeric:tabular-nums; }
 .meditation-overlay small { display:block; font-size:9px; opacity:.65; margin-top:14px; }
+
+.equipment button.gear-locked { opacity:.4; }
+.shop-wallet { display:flex; justify-content:space-between; align-items:center; gap:15px; padding:0 0 22px; }
+.shop-wallet small { font-size:8px; color:var(--muted); letter-spacing:1px; }
+.shop-wallet strong { display:block; font-size:34px; font-weight:500; margin-top:5px; }
+.shop-wallet>span { font-size:10px; color:var(--muted); }
+.gear-grid { display:grid; gap:12px; }
+.gear-card { display:grid; grid-template-columns:48px 1fr; gap:17px; border:1px solid var(--line); border-radius:8px; padding:20px; }
+.gear-icon { width:48px; height:48px; display:grid; place-items:center; border-radius:8px; background:#e5ebd8; }
+.gear-icon svg { width:24px; height:24px; }
+.gear-card h3 { font-family:'Libre Caslon Display',Georgia,serif; font-size:25px; font-weight:400; }
+.gear-card p { font-size:11px; line-height:1.7; color:var(--muted); margin-top:6px; }
+.gear-action { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:16px; }
+.gear-action>strong { font-size:15px; font-weight:500; }
+.gear-owned { font-size:11px; color:#627b49; display:flex; gap:6px; align-items:center; }
+.gear-owned svg { width:14px; height:14px; }
+.starter-kit { font-size:10px; line-height:1.7; color:var(--muted); padding-top:17px; }
+@media(max-width:520px) {
+  .equipment { width:210px; }
+  .gear-card { grid-template-columns:34px 1fr; gap:10px; padding:15px; }
+  .gear-icon { width:34px; height:34px; } .gear-icon svg { width:20px; height:20px; }
+  .shop-wallet { align-items:flex-end; } .shop-wallet>span { max-width:150px; text-align:right; }
+}
+
+@media(min-width:521px) {
+  .gear-card { padding:14px; grid-template-columns:40px 1fr; gap:14px; }
+  .gear-icon { width:40px; height:40px; }
+  .gear-card>div:last-child { display:grid; grid-template-columns:1fr 145px; column-gap:16px; }
+  .gear-card h3 { grid-column:1; font-size:22px; }
+  .gear-card p { grid-column:1; }
+  .gear-action { grid-column:2; grid-row:1 / span 2; margin:0; flex-direction:column; justify-content:center; gap:8px; }
+  .gear-owned { font-size:10px; text-align:center; }
+  .shop-wallet { padding-bottom:14px; } .shop-wallet strong { font-size:28px; }
+}

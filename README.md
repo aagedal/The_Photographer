@@ -26,23 +26,38 @@ npm run preview
 | Walk | W A S D |
 | Walk faster | Shift |
 | Look | Drag the world, or arrow keys |
-| Zoom | Scroll over the world |
+| Zoom (purchased lens) | Scroll over the world, or − / + |
 | Raise/lower viewfinder | E |
 | Make a photograph | C or shutter button |
 | Slower / faster shutter | 1 / 2 |
 | Wider / narrower aperture | 3 / 4 |
 | Lower / higher ISO | 5 / 6 |
 | Set/pack tripod | T or tripod icon |
-| Toggle camera flash | F or Flash toggle |
+| Toggle purchased flash | F or flash icon |
+| Single / burst (purchased camera) | B or burst icon |
 | Open lighting kit | L or Lighting button |
-| Pause menu: assignments, journal, map, controls | Escape or Esc button |
+| Pause menu: assignments, journal, gear shop, map, controls | Escape or Esc button |
 | Back to pause menu / resume | Escape |
 
-Open **Esc → Assignments** to select an assignment, then explore or use **Esc → Find the spot**, and frame the marked subject. Adjust shutter, aperture, ISO, filters, and tripod. **Try suggested settings** provides a starting point for experimentation. Feedback evaluates the subject, exposure, and the lesson; try again freely. Assignment XP is earned only once. Photographs and progress save locally in this browser, with the latest 16 frames retained. Taking a photo shows a brief clickable preview without interrupting play. Open the preview or **Esc → Photo journal** for feedback and downloads.
+Open **Esc → Assignments** to select an assignment, then explore or use **Esc → Find the spot**, and frame the marked subject. Adjust shutter, aperture, ISO, filters, and tripod. **Try suggested settings** provides a starting point for experimentation. Feedback evaluates the subject, exposure, and the lesson; try again freely. Assignment XP and payment are earned only once. Photographs and progress save locally in this browser, with the latest 16 frames retained. Taking a photo shows a brief clickable preview without interrupting play. Open the preview or **Esc → Photo journal** for feedback and downloads.
 
 The HUD contains only compact camera settings, equipment icons, an ambient meter, and a small subject cue. Shortcuts work while playing; focused dropdowns keep their normal keyboard behavior. **T** unfolds the tripod in 0.42 seconds and packs it in 0.28 seconds. Movement and capture are blocked during the transition, and movement remains locked while deployed. Reduced-motion preferences skip the animation.
 
 To restart, open **Esc → Controls → Start a fresh notebook**. The current notebook is backed up on this device before the new one starts. **Restore previous notebook** restores that backup.
+
+## Mission payments and gear
+
+Successful assignments pay **$120–$220**, once per brief. Failed attempts cost nothing; repeating a completed brief still saves the photo but earns no extra cash. Open **Esc → Gear shop** to spend your earnings:
+
+| Upgrade | Price | Ability |
+| --- | --- | --- |
+| 24–120 mm zoom lens | $120 | Change the actual camera framing with scroll or −/+ |
+| Camera flash | $180 | Light nearby subjects; F toggles, L adjusts power |
+| Burst camera | $360 | Three frames at 5 fps; B toggles single/burst, C shoots |
+
+The starter kit includes a fixed 35 mm lens, tripod, ND/CPL filters, and studio lights. Every brief is achievable with it. The first five assignments fund all three upgrades with $120 left over, without repeat payments. Purchases take effect immediately and save with the notebook.
+
+A burst samples the moving world between frames, keeps every frame in the journal, and previews the highest-scoring frame. Camera settings stay fixed during the sequence; you can keep aiming. Completed missions from older notebooks receive back pay, and a flash already used in those notebooks is kept for free. Starting a fresh notebook also resets money and purchases; its backup preserves them.
 
 ## Sky, time, and meditation
 
@@ -63,11 +78,11 @@ Accepting an assignment or travelling preserves the clock. Suggested settings ar
 
 ## Flash and studio practice
 
-Press **L**, click the lighting icon, or open **Esc → Lighting kit**. The **Camera flash** tab offers manual power from 1/64 to full. The ambient meter shows continuous light; the subject reading also includes flash. Flash exposure depends on power, distance, aperture, ISO, and filters. Within the 1/250 s sync limit, shutter speed changes the ambient exposure while the brief flash contribution stays constant. Above that limit the flash is suppressed with feedback; high-speed sync is not implemented.
+Press **L**, click the lighting icon, or open **Esc → Lighting kit**. After buying the flash, the **Camera flash** tab offers manual power from 1/64 to full. The ambient meter shows continuous light; the subject reading also includes flash. Flash exposure depends on power, distance, aperture, ISO, and filters. Within the 1/250 s sync limit, shutter speed changes the ambient exposure while the brief flash contribution stays constant. Above that limit the flash is suppressed with feedback; high-speed sync is not implemented.
 
 Switch to **Studio lights**, visit the studio, and tune the key, fill, and rim lights. Each has an on/off switch, power, angle, distance, height, and colour. Balanced, dramatic, rim-light, and lights-off presets provide starting points. Adjustments update the actual 3D lights and stands live, and save on this device. Unlike a flash pulse, these continuous studio lights respond to shutter duration as well as aperture and ISO.
 
-**Try a close flash portrait** sets up a nearby subject with the studio lamps off and 1/4 flash power. Compare it with flash off, then change shutter speed to explore the background/subject balance. The flash preview appears as a steady light for easy adjustments; photographs simulate a brief pulse. Captures record flash power and the studio rig in their journal entry.
+**Try a close flash portrait**, available after buying the flash, sets up a nearby subject with the studio lamps off and 1/4 flash power. Compare it with flash off, then change shutter speed to explore the background/subject balance. The flash preview appears as a steady light for easy adjustments; photographs simulate a brief pulse. Captures record flash power and the studio rig in their journal entry.
 
 ## First milestone
 
@@ -75,6 +90,7 @@ Switch to **Studio lights**, visit the studio, and tune the key, fill, and rim l
 - Twelve playable prototype briefs: two each for nature, sports, news, wedding, studio, and astrophotography.
 - Calculated exposure, filter attenuation, composition/distance/obstruction checks, and lesson-specific feedback.
 - Manual flash with distance falloff and sync checking; adjustable continuous key, fill, and rim studio lights.
+- Mission payments, a gear shop, an unlockable zoom/flash/burst camera, and three-frame sports bursts.
 - Actual 3:2 image captures, simplified visual effects, photo review, downloads, and a persistent journal.
 - A map, travel shortcuts, keyboard aiming, and a performance setting.
 
@@ -89,6 +105,7 @@ See [the development plan](docs/PLAN.md) for the full curriculum, milestones, te
 - `src/photography.ts` — pure exposure and assessment model.
 - `src/lighting.ts` — flash exposure/sync, studio settings, and continuous-light metering.
 - `src/environment.ts` — world clock, sky/weather sampling, assignment time windows, and outdoor metering.
+- `src/economy.ts` — mission payments, gear ownership, save migration, focal range, and burst timing.
 - `src/controls.ts` — camera shortcuts and tripod transition state.
 - `src/tripod.ts` — lightweight first-person tripod animation, excluded from captures.
 - `src/main.ts` — exploration, camera interaction, captures, UI, and saves.
@@ -96,7 +113,7 @@ See [the development plan](docs/PLAN.md) for the full curriculum, milestones, te
 
 The production output is a static `dist/` directory. The prototype has no backend and has not been publicly deployed.
 
-Browser playtesting can use `/?playtest=1` to keep test captures in a separate save from the player's notebook.
+Browser playtesting can use `/?playtest=1` or a named notebook such as `/?playtest=gear-progression` to keep test captures in a separate save from the player's notebook.
 
 ## License
 

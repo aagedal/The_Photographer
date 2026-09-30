@@ -1,6 +1,6 @@
 import { formatTime, isMissionTime } from './environment.ts';
 import type { Mission } from './missions.ts';
-export interface CameraSettings { shutter: number; aperture: number; iso: number; filter: 'none' | 'nd6' | 'cpl'; tripod: boolean; panning: boolean; flashPower?: number }
+export interface CameraSettings { shutter: number; aperture: number; iso: number; filter: 'none' | 'nd6' | 'cpl'; tripod: boolean; panning: boolean; flashPower?: number; focalLength?: number }
 export interface Framing { visible: boolean; distance: number; centerOffset: number; occluded: boolean }
 export interface Feedback { label: string; passed: boolean; text: string }
 export interface Assessment { score: number; passed: boolean; exposureStops: number; feedback: Feedback[] }

@@ -4,7 +4,7 @@ Validated on 30 September 2026.
 
 ## Automated
 
-- 47 tests pass using Node's test runner.
+- 58 tests pass using Node's test runner.
 - Exposure math: doubling ISO, exposure time, or aperture area changes exposure by the expected stop.
 - Filters: ND64 attenuates six stops; prototype CPL attenuates one stop.
 - All twelve suggested camera setups pass their assignment's lesson assessment with valid framing.
@@ -14,7 +14,7 @@ Validated on 30 September 2026.
 - Flash tests cover inverse-square distance falloff, power/aperture/ISO/filter response, shutter-independent pulse exposure within sync, suppression beyond sync, and a lit close portrait with dark ambient exposure.
 - Studio tests cover continuous-light metering, moving and aiming the actual lights, colour and power, disabling lights, and migration of old/malformed lighting saves.
 - Controls tests cover both shortcut directions, exposure effects, clamped limits, tripod stability/locking, reversal during setup, and instant setup/packing.
-- Strict TypeScript check and Vite production build pass. The renderer makes the main bundle larger than Vite's default 500 kB warning threshold (about 156 kB compressed); no build error.
+- Strict TypeScript check and Vite production build pass. The renderer makes the main bundle larger than Vite's default 500 kB warning threshold (about 159 kB compressed); no build error.
 
 ## Browser playtesting
 
@@ -54,6 +54,17 @@ Validated on 30 September 2026.
 - Browser: the world clock survives a reload and stays fixed while the pause menu is open. “For this assignment” skips back to golden-hour light and the lighthouse capture completes at 100/100.
 - Preview screenshots: `docs/daylight.png`, `docs/minimal-ui.png` (golden hour), and `docs/night.png`.
 - Browser: no console errors observed during these captures. All testing uses the isolated playtest notebook.
+
+## Mission payments and purchasable gear
+
+- Eleven economy tests cover one-time payments, failed/repeat attempts, duplicate mission IDs, affordability, immutable purchases, invalid gear IDs, save normalization, legacy back pay/flash, sufficient early rewards, actual focal range/crop math, burst ownership/preferences, 200 ms sequencing, cancellation, and one payment across three passing frames.
+- Browser tests used the separate named `?playtest=gear-progression` notebook. A fresh wallet starts at $0, unavailable purchases are disabled, and using a locked flash opens the shop. Flash power remains disabled until owned; studio lights remain available.
+- The golden-hour assignment paid $120 and bought the zoom lens. Creek, studio, and astro briefs paid $180, $140, and $200; buying the $360 burst camera left $160.
+- A sports burst saved three separately indexed frames at 100/100 and paid $160 once. Buying the $180 flash left $140 against $800 earned and $660 spent. B changed to single-shot capture, added exactly one journal entry, and repeating the sports brief left the wallet at $140.
+- Zoom keyboard controls changed the focal-length display in both directions. F toggled purchased flash; B and the shop toggle changed burst mode. Photo review retained focal length and burst index; the journal labels each burst frame.
+- Reload restored all purchases, burst preference, wallet, focal length, and nine journal frames. The older playtest notebook received $460 in back pay and preserved its previously used flash for free.
+- Shop inspected at 1280 × 720 and 480 × 740. The narrow dialog scrolls vertically without horizontal overflow. No browser console errors observed. Temporary test tabs were closed and the viewport override reset.
+- Verified preview: `docs/gear-shop.png`.
 
 ## Remaining validation
 
