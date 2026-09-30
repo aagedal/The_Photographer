@@ -134,3 +134,11 @@ Validated on 30 September 2026.
 ## Remaining validation
 
 No native application or Linux browser run yet. Performance targets require profiling on target hardware. Observed frame counters in the current browser are not a cross-platform benchmark. Do not treat the simplified visual effects as physically accurate optics.
+
+## Living town, chapel and southern coast
+
+- Strict TypeScript and production build pass. 91 Node checks pass, including six new checks covering local schedules across midnight, closing-time continuity, 192 sampled clock positions for every local, live dialogue proximity and attached markers, active versus parked traffic, night lighting/wildlife, collision cleanup and exact temporal rewind, chapel/street/beach access, coast water boundaries and positional/day-night ambient levels.
+- The existing 26 GPU checks pass in the Codex browser, including motion/depth accumulation, runner tracking, polarization, fish/waterfall visibility and exact frame restoration. No browser shader warnings or errors were reported.
+- Playtested only `/?playtest=living-town`: map shortcuts reach the neighborhood, chapel and ocean; the chapel door shows its central aisle, pews and altar; the beach shows surf and circling gulls. Meditation to 23:00 darkens the sky, lights the streets and leaves quieter traffic.
+- Sound controls render correctly; mute and a changed 35% volume survive reload. Audio unlock, mute, menus and tab/window silence are wired through the Web Audio master gain. Synthesized sound quality has not been assessed by listening; automated checks validate the ambient level model, not perceptual audio fidelity.
+- The existing Vite bundle-size advisory remains. Animation uses scheduled routes and activity windows; this is not a full traffic, animal-needs or interior-NPC simulation.

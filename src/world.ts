@@ -4,18 +4,24 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 import { createWaterSurface, createFishSchool, isolateReflections } from './water.ts';
 import { createWaterfall } from './waterfall.ts';
 import { creekDistance } from './creek.ts';
-import { WORLD_HALF, terrainHeight, trails, distanceToTrail } from './terrain.ts';
-import { npcCatalog, npcPosition } from './exploration.ts';
+import { WORLD_HALF, coastline, terrainHeight, trails, distanceToTrail } from './terrain.ts';
+import { npcCatalog } from './exploration.ts';
+import { localPose } from './life.ts';
+import { createTownLife } from './world-life.ts';
+import { createChurch } from './church.ts';
+import { createCoast } from './coast.ts';
 import { sampleSky } from './environment.ts';
 import type { Mission } from './missions.ts';
 import { defaultStudioRig, lightNames, lightPosition, type StudioRig } from './lighting.ts';
 
 export interface World {
   scene: THREE.Scene; subjects: Map<string, THREE.Object3D>; solids: THREE.Object3D[];
-  update: (time: number, settings: { filter: string; shutter: number }) => void;
+  update: (time: number, settings: { filter: string; shutter: number }, activityHour?: number) => void;
   setTime: (hour: number) => void;
   setStudioRig: (rig: StudioRig, focus: [number, number, number], controlled: boolean) => void;
   setFlash: (position: [number, number, number], direction: [number, number, number], intensity: number) => void;
+  npcPosition: (id: string) => [number, number, number];
+  traffic: THREE.Object3D[];
   canWalk: (x: number, z: number) => boolean;
   groundHeight: (x: number, z: number) => number;
 }
@@ -87,6 +93,7 @@ export function createWorld(): World {
   terrain.rotateX(-Math.PI / 2);
   const positions = terrain.getAttribute('position');
   const colours: number[] = [];
+  const sand = new THREE.Color('#cfbf98'), seabed = new THREE.Color('#74988e');
   const grass = new THREE.Color('#88a86c'), highland = new THREE.Color('#929678'), pathColour = new THREE.Color('#c3b694'), lakebed = new THREE.Color('#8fa99b');
   for (let i = 0; i < positions.count; i++) {
     const x = positions.getX(i), z = positions.getZ(i), height = terrainHeight(x, z);
@@ -95,6 +102,7 @@ export function createWorld(): World {
     if (height < -0.1 || Math.hypot((x - 76) / 14, (z + 54) / 11) < 0.9) colour.lerp(lakebed, Math.min(1, Math.max(0, -height) + 0.6));
     colour.multiplyScalar(0.94 + seed(i + 308) * 0.12);
     if (distanceToTrail(x, z) < 1.6) colour.copy(pathColour);
+    if (z > coastline(x) - 12) colour.copy(z > coastline(x) ? seabed : sand);
     colours.push(colour.r, colour.g, colour.b);
   }
   terrain.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3)); terrain.computeVertexNormals();
@@ -158,7 +166,7 @@ export function createWorld(): World {
       if (Math.max(Math.abs(x), Math.abs(z)) < 52) x += x < 0 ? -55 : 55;
     }
     // Clear the trails, ridge viewpoint, and bird sightline.
-    if (distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 115 + seed(i) * 9; z = -120 + seed(i + 9) * 240; }
+    if ((x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 115 + seed(i) * 9; z = -120 + seed(i + 9) * 240; }
     const ground = terrainHeight(x, z);
     const size = 0.8 + seed(i + 13) * 1.3;
     dummy.position.set(x, ground + size * 1.5, z); dummy.scale.set(0.35 * size, 3 * size, 0.35 * size); dummy.rotation.y = 0; dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
@@ -176,11 +184,13 @@ export function createWorld(): World {
   }
   // Far shoreline houses.
   const house = (x: number, z: number, w: number, h: number, d: number, color: string) => {
-    const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+    const g = new THREE.Group(); g.position.set(x, terrainHeight(x, z), z); scene.add(g);
     box(0, h / 2, 0, w, h, d, color, g, true);
     const roof = cone(0, h + 0.8, 0, 1, 2, '#926952', 4, g); roof.rotation.y = Math.PI / 4; roof.scale.set(w / 1.3, 1, d / 1.3);
-    box(-w * 0.22, h * 0.6, d / 2 + 0.02, w * 0.22, h * 0.25, 0.07, '#bdd4cb', g);
-    box(w * 0.22, h * 0.6, d / 2 + 0.02, w * 0.22, h * 0.25, 0.07, '#bdd4cb', g);
+    for (const side of [-1, 1]) for (const x of [-w * 0.22, w * 0.22]) {
+      box(x, h * 0.6, side * (d / 2 + 0.02), w * 0.22, h * 0.25, 0.07, '#bdd4cb', g);
+      box(x, h * 0.6, side * (d / 2 + 0.065), 0.045, h * 0.25, 0.035, '#69795d', g);
+    }
     box(0, h * 0.25, d / 2 + 0.03, 0.9, h / 2, 0.08, '#69795d', g);
     blockers.push({ x, z, w, d }); return g;
   };
@@ -222,18 +232,43 @@ export function createWorld(): World {
     const mesh = new THREE.Mesh(sphereGeo, material(color)); mesh.position.set(x, y, z); mesh.scale.set(sx, sy, sz); mesh.castShadow = true; parent.add(mesh); return mesh;
   };
   const people: THREE.Group[] = [];
+  const characters: { group: THREE.Group; arms: THREE.Group[]; legs: THREE.Group[] }[] = [];
+  const locals = new Map<string, ReturnType<typeof person>>();
   const person = (x: number, z: number, shirt: string, parent: THREE.Object3D = scene, variant = 0) => {
     const g = new THREE.Group(); g.position.set(x, terrainHeight(x, z), z); parent.add(g); people.push(g);
-    const skin = ['#dbb693', '#a57453', '#d6a17d', '#795641'][variant % 4];
+    const skin = ['#dbb693', '#a57453', '#d6a17d', '#795641', '#e6c5a2', '#b18468'][variant % 6];
+    const hair = ['#675344', '#332c2c', '#b37943', '#493c34', '#acaaa0', '#d9b96d'][variant % 6];
+    const trousers = ['#465659', '#394656', '#736452', '#5c5264'][variant % 4];
+    const height = [1, 1.07, 0.95, 1.02, 1.1, 0.92, 0.78, 1.03][variant % 8];
+    const build = [1, 1.12, 0.88, 1.18, 0.94, 1.06][variant % 6];
+    g.scale.set(build, height, 1);
+    g.userData.height = height;
     sphere(0, 1.1, 0, 0.31, 0.39, 0.21, shirt, g);
-    box(0, 0.78, 0, 0.49, 0.13, 0.3, '#425657', g);
+    box(0, 0.78, 0, 0.49, 0.13, 0.3, trousers, g);
     box(0, 1.46, 0, 0.15, 0.18, 0.15, skin, g);
     sphere(0, 1.69, 0, 0.22, 0.27, 0.21, skin, g);
-    sphere(0, 1.88, -0.035, 0.235, 0.12, 0.215, variant % 2 ? '#493c34' : '#675344', g);
-    box(-0.185, 1.73, -0.02, 0.08, 0.24, 0.22, '#675344', g);
+    sphere(0, 1.88, -0.035, 0.235, 0.12, 0.215, hair, g);
+    if (variant % 3 === 0) {
+      for (const x of [-0.19, 0.19]) box(x, 1.66, -0.035, 0.08, 0.4, 0.25, hair, g);
+    } else if (variant % 3 === 1) {
+      sphere(0, 1.78, -0.22, 0.13, 0.14, 0.24, hair, g);
+    } else {
+      sphere(0, 1.97, -0.04, 0.21, 0.1, 0.18, hair, g);
+    }
+    if (variant % 4 === 1) {
+      for (const x of [-0.08, 0.08]) box(x, 1.73, 0.211, 0.105, 0.075, 0.018, '#394d45', g);
+      box(0, 1.73, 0.221, 0.065, 0.018, 0.02, '#c9c3ac', g);
+    }
+    if (variant % 5 === 3) {
+      const skirt = cone(0, 0.57, 0, 0.42, 0.58, shirt, 8, g); skirt.rotation.x = Math.PI;
+    }
+    if (variant % 4 === 2) {
+      box(0, 1.27, 0.2, 0.47, 0.12, 0.08, '#e0bd6e', g);
+      box(0.14, 1.08, 0.23, 0.11, 0.37, 0.06, '#e0bd6e', g);
+    }
     for (const a of [-0.08, 0.08]) {
       box(a, 1.73, 0.194, 0.055, 0.035, 0.018, '#273c39', g);
-      box(a, 1.8, 0.184, 0.07, 0.026, 0.025, '#675344', g);
+      box(a, 1.8, 0.184, 0.07, 0.026, 0.025, hair, g);
     }
     sphere(0, 1.67, 0.224, 0.043, 0.06, 0.06, skin, g);
     box(0, 1.58, 0.198, 0.07, 0.017, 0.018, '#955e50', g);
@@ -241,21 +276,24 @@ export function createWorld(): World {
     box(0.14, 1.14, 0.206, 0.12, 0.13, 0.03, shirt, g);
     const legs = [-0.14, 0.14].map(a => {
       const limb = new THREE.Group(); limb.position.set(a, 0.77, 0); g.add(limb);
-      sphere(0, -0.32, 0, 0.105, 0.37, 0.12, '#465659', limb);
+      sphere(0, -0.32, 0, 0.105, 0.37, 0.12, trousers, limb);
       sphere(0, -0.68, 0.065, 0.13, 0.085, 0.21, '#e1d5b9', limb); return limb;
     });
-    for (const a of [-0.34, 0.34]) {
-      sphere(a, 1.17, 0, 0.12, 0.21, 0.13, shirt, g);
-      sphere(a, 0.94, 0.015, 0.08, 0.16, 0.085, skin, g);
-      sphere(a, 0.78, 0.035, 0.085, 0.1, 0.075, skin, g);
-    }
+    const arms = [-0.34, 0.34].map(a => {
+      const arm = new THREE.Group(); arm.position.set(a, 1.38, 0); g.add(arm);
+      sphere(0, -0.21, 0, 0.12, 0.21, 0.13, shirt, arm);
+      sphere(0, -0.44, 0.015, 0.08, 0.16, 0.085, skin, arm);
+      sphere(0, -0.6, 0.035, 0.085, 0.1, 0.075, skin, arm);
+      batchMeshes(arm); return arm;
+    });
     const focus = new THREE.Object3D(); focus.position.y = 1.35; g.add(focus);
     batchMeshes(g);
-    return { group: g, focus, legs };
+    const character = { group: g, focus, legs, arms }; characters.push(character);
+    return character;
   };
   for (const [index, npc] of npcCatalog.entries()) {
     const character = person(npc.x, npc.z, npc.shirt, scene, index); character.group.name = `npc-${npc.id}`;
-    const [x, y, z] = npcPosition(npc);
+    locals.set(npc.id, character);
     // Field bag, strap and a distinctive ranger hat / astronomer's beanie.
     box(-0.27, 1.03, -0.15, 0.19, 0.3, 0.18, '#746447', character.group);
     box(-0.18, 1.24, -0.19, 0.045, 0.46, 0.035, '#d6c19a', character.group);
@@ -263,7 +301,7 @@ export function createWorld(): World {
       sphere(0, 1.91, 0, 0.25, 0.13, 0.24, index === 0 ? '#b6ac78' : '#d3a46c', character.group);
       if (index === 0) box(0, 1.86, 0.06, 0.64, 0.045, 0.47, '#b6ac78', character.group);
     }
-    const marker = cone(x, y + 2.7, z, 0.12, 0.26, '#f0cd76', 4); marker.rotation.z = Math.PI; marker.name = `npc-marker-${npc.id}`;
+    const marker = cone(0, 2.7 / character.group.scale.y, 0, 0.12, 0.26, '#f0cd76', 4, character.group); marker.rotation.z = Math.PI; marker.name = `npc-marker-${npc.id}`;
   }
   // Sports: a moving subject on a visible terracotta running track.
   box(29, 0.04, 5, 20, 0.13, 17, '#be8865'); box(29, 0.13, 5, 13, 0.04, 10, '#92a26c');
@@ -276,7 +314,9 @@ export function createWorld(): World {
   box(8.5, 2, -14, 0.4, 4, 6, '#dbc3a5', scene, true); box(17.5, 2, -14, 0.4, 4, 6, '#dbc3a5', scene, true);
   box(13, 4.2, -14, 9.5, 0.5, 6.5, '#93775b'); box(13, 0.05, -14, 9, 0.1, 6, '#bba789');
   box(13, 1, -13.5, 6, 1, 0.8, '#a58861');
-  const baker = person(13, -14.6, '#ede0bc'); subjects.set('Baker', baker.focus);
+  const baker = person(13, -14.6, '#ede0bc', scene, 4);
+  box(0, 1.01, 0.235, 0.38, 0.6, 0.04, '#f1e8d4', baker.group);
+  box(0, 1.96, 0, 0.4, 0.15, 0.35, '#f1e8d4', baker.group); subjects.set('Baker', baker.focus);
   const glassMat = new THREE.MeshPhysicalMaterial({ color: '#d0e3d9', roughness: 0.1, metalness: 0, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide });
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 3.5), glassMat); glass.name = 'bakery-glass'; glass.position.set(13, 2, -10.95); scene.add(glass);
   const reflection = new Reflector(new THREE.PlaneGeometry(8.5, 3.5), {
@@ -303,15 +343,15 @@ export function createWorld(): World {
   scene.add(reflection);
   for (const x of [8.6, 13.8, 17.4]) box(x, 2, -10.85, 0.09, 4, 0.1, '#657963');
   box(13, 3.8, -10.85, 9, 0.1, 0.1, '#657963');
-  const reporter = person(8, -7, '#718b86'); subjects.set('Reporter', reporter.focus);
+  const reporter = person(8, -7, '#718b86', scene, 2); subjects.set('Reporter', reporter.focus);
   box(8.45, 1.15, -6.85, 0.13, 0.38, 0.13, '#394d45');
   // Wedding garden: arch, flower beds, couple, and guests at different depths.
   for (const x of [-27, -23]) box(x, 2.2, 25, 0.24, 4.4, 0.24, '#e3d7bb');
   box(-25, 4.3, 25, 4.3, 0.24, 0.3, '#e3d7bb');
   for (let i = 0; i < 12; i++) box(-27 + i * 0.36, 4.55 + Math.sin(i) * 0.13, 25, 0.25, 0.25, 0.35, i % 2 ? '#cfab95' : '#eee2c7');
-  const coupleA = person(-25.55, 25, '#eee7d7'); person(-24.65, 25, '#526e69');
+  const coupleA = person(-25.55, 25, '#eee7d7', scene, 3); person(-24.65, 25, '#526e69', scene, 1);
   const coupleFocus = new THREE.Object3D(); coupleFocus.position.set(-25, 1.35, 25); scene.add(coupleFocus); subjects.set('Newlyweds', coupleFocus); coupleA.group.rotation.y = 0.2;
-  for (let i = 0; i < 5; i++) person(-22 + i, 25 + (i % 2) * 0.8, ['#b99d85', '#818e70', '#d5c4a3', '#8c9d9a', '#c88c72'][i], scene, i);
+  for (let i = 0; i < 5; i++) person(-22 + i, 25 + (i % 2) * 0.8, ['#b99d85', '#818e70', '#d5c4a3', '#8c9d9a', '#c88c72'][i], scene, i + 8);
   const guests = new THREE.Object3D(); guests.position.set(-20, 1.3, 25.4); scene.add(guests); subjects.set('Wedding guests', guests);
   for (let i = 0; i < 18; i++) {
     const x = -32 + seed(i + 4) * 4, z = 22 + seed(i + 203) * 10;
@@ -322,7 +362,8 @@ export function createWorld(): World {
   box(24, 2.5, -26, 0.4, 5, 6, '#d7d0b9', scene, true); box(36, 2.5, -26, 0.4, 5, 6, '#d7d0b9', scene, true);
   box(30, 0.05, -25, 12, 0.1, 8, '#c7bea7');
   box(29, 2.3, -28.7, 8, 4.3, 0.08, '#aaad92');
-  const maker = person(28, -26, '#b78568'); subjects.set('Pottery maker', maker.focus);
+  const maker = person(28, -26, '#b78568', scene, 5);
+  box(0, 1.04, 0.225, 0.42, 0.57, 0.04, '#77917c', maker.group); subjects.set('Pottery maker', maker.focus);
   box(32, 0.6, -26, 1.1, 1.2, 1.1, '#e2d8be');
   const vase = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.75, 8), material('#b47759')); vase.position.set(32, 1.55, -26); vase.castShadow = true; scene.add(vase); subjects.set('Terracotta vase', vase);
   const studioLights = lightNames.map(name => {
@@ -343,18 +384,22 @@ export function createWorld(): World {
   cameraFlash.name = 'camera-flash'; cameraFlash.castShadow = true; cameraFlash.shadow.mapSize.set(512, 512);
   cameraFlash.shadow.bias = -0.001; cameraFlash.shadow.normalBias = 0.025; cameraFlash.visible = false;
   scene.add(cameraFlash, cameraFlash.target);
+  const church = createChurch(scene, box, solids, blockers);
+  const coast = createCoast(scene);
+  const townLife = createTownLife({ scene, solids, box, sphere, person, house, batchMeshes });
   // Direction signs and park lamp posts.
   for (const [x, z] of [[-4, 15], [17, 14], [-16, 25], [-4, -26]]) {
     box(x, 1.2, z, 0.16, 2.4, 0.16, '#766246'); box(x + 0.5, 2.1, z, 1.8, 0.55, 0.15, '#eee0bb');
   }
+  const parkLamps: THREE.PointLight[] = [];
   for (const [x, z] of [[10, 14], [17, -5], [-17, 17]]) {
     box(x, 1.6, z, 0.1, 3.2, 0.1, '#566958'); box(x, 3.3, z, 0.5, 0.5, 0.5, '#e8d6a4');
-    const lamp = new THREE.PointLight('#ffce81', 3, 10); lamp.position.set(x, 3.2, z); scene.add(lamp);
+    const lamp = new THREE.PointLight('#ffce81', 3, 10); lamp.position.set(x, 3.2, z); scene.add(lamp); parkLamps.push(lamp);
   }
   // A wetland, bird perch and raised hide make the long-lens assignment a real place.
   const pondGeometry = new THREE.CircleGeometry(1, 48); pondGeometry.scale(14, 11, 1);
   const pond = createWaterSurface(pondGeometry, 76, 1.28, -54, 'wetland'); scene.add(pond.tint, pond.reflection);
-  isolateReflections([reflection, lake.reflection, pond.reflection, creek.river.reflection]);
+  isolateReflections([coast.reflection, reflection, lake.reflection, pond.reflection, creek.river.reflection]);
   const bird = new THREE.Group(); bird.name = 'kingfisher'; bird.position.set(76, 3.6, -54); scene.add(bird);
   box(76, 2.35, -54, 0.18, 2.25, 0.18, '#80684d'); box(76, 3.39, -54, 1.6, 0.12, 0.17, '#80684d');
   sphere(0, 0, 0, 0.15, 0.23, 0.29, '#397f96', bird);
@@ -429,6 +474,10 @@ export function createWorld(): World {
     stars.rotation.y = sky.hour / 24 * Math.PI * 2; stars.visible = sky.night > 0.01; (stars.material as THREE.PointsMaterial).opacity = sky.night * (1 - sky.cloudCover * 0.45);
     cloudColour.copy(darkCloud).lerp(whiteCloud, sky.daylight).lerp(sunsetCloud, sky.warmth * 0.6);
     cloudMaterial.color.copy(cloudColour);
+    parkLamps.forEach(lamp => { lamp.intensity = 3 * (1 - sky.daylight); });
+    material('#e8d6a4').emissive.set('#ffce81'); material('#e8d6a4').emissiveIntensity = 1 - sky.daylight;
+    material('#bdd4cb').emissive.set('#ffc078'); material('#bdd4cb').emissiveIntensity = (1 - sky.daylight) * 0.8;
+    townLife.setTime(sky.hour, 1 - sky.daylight); church.setTime(1 - sky.daylight);
     for (let i = 0; i < 60; i++) {
       const cluster = Math.floor(i / 5), puff = i % 5;
       const drift = ((seed(cluster + 500) * 300 + sky.hour * 12.5) % 300) - 150;
@@ -456,8 +505,10 @@ export function createWorld(): World {
   };
   setStudioRig(defaultStudioRig(), [28, 1.35, -26], false);
   batchMeshes(scene, new Set(solids));
+  const staticSolidCount = solids.length;
   return {
-    scene, subjects, solids,
+    scene, subjects, solids, traffic: townLife.traffic,
+    npcPosition(id) { const p = locals.get(id)!.group.position; return [p.x, p.y, p.z]; },
     groundHeight: terrainHeight,
     setTime(hour) { sky = sampleSky(hour); applyEnvironment(); },
     setStudioRig,
@@ -466,11 +517,25 @@ export function createWorld(): World {
       cameraFlash.position.set(position[0], position[1] + 0.18, position[2]);
       cameraFlash.target.position.set(position[0] + direction[0] * 10, position[1] + 0.18 + direction[1] * 10, position[2] + direction[2] * 10);
     },
-    update(time, settings) {
+    update(time, settings, activityHour = sky.hour) {
       runner.group.position.set(29 + Math.sin(time * 0.9) * 6, 0, 5 + Math.cos(time * 0.9) * 5);
       runner.group.rotation.y = time * 0.9 + Math.PI / 2;
       runner.legs[0].rotation.x = Math.sin(time * 9) * 0.5; runner.legs[1].rotation.x = -Math.sin(time * 9) * 0.5;
       people.forEach((g, i) => { if (g !== runner.group) g.rotation.y = Math.sin(time * 0.45 + i) * 0.12; });
+      characters.forEach((character, i) => character.arms.forEach((arm, j) => { arm.rotation.x = Math.sin(time * 0.7 + i + j) * 0.08; }));
+      // The clock determines routes; the shutter offset supplies sub-frame motion.
+      const poseHour = activityHour;
+      locals.forEach((character, id) => {
+        const pose = localPose(id, poseHour);
+        character.group.position.set(pose.x, terrainHeight(pose.x, pose.z), pose.z);
+        character.group.rotation.y = pose.walking ? pose.yaw : Math.sin(time * 0.4) * 0.15;
+        character.legs.forEach((leg, i) => { leg.rotation.x = pose.walking ? Math.sin(time * 5 + i * Math.PI) * 0.32 : 0; });
+        character.arms.forEach((arm, i) => { arm.rotation.x = pose.walking ? -Math.sin(time * 5 + i * Math.PI) * 0.25 : Math.sin(time * 0.7 + i) * 0.08; });
+      });
+      runner.arms.forEach((arm, i) => { arm.rotation.x = -Math.sin(time * 9 + i * Math.PI) * 0.5; });
+      townLife.update(time, poseHour);
+      solids.splice(staticSolidCount, solids.length - staticSolidCount, ...townLife.dynamicSolids());
+      coast.update(time, settings.filter, sky.daylight);
       bird.rotation.y = Math.sin(time * 0.9) * 0.32; birdHead.rotation.y = Math.sin(time * 1.7) * 0.25;
       lake.update(time, settings.filter, sky.daylight); pond.update(time, settings.filter, sky.daylight);
       schools.forEach(school => school.update(time));
@@ -480,8 +545,9 @@ export function createWorld(): World {
     },
     canWalk(x, z) {
       if (Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4) return false;
+      if (z > coastline(x) - 1.2) return false;
       if (Math.hypot((x - 76) / 14, (z + 54) / 11) < 1) return false;
-      if (creekDistance(x, z) < 1.08) return false;
+      if (creekDistance(x, z) < 1.08 || townLife.blocksWalking(x, z)) return false;
       // The jetty is a narrow walkable exception inside the lake boundary.
       return !blockers.some(b => Math.abs(x - b.x) < b.w / 2 + 0.25 && Math.abs(z - b.z) < b.d / 2 + 0.25 && !(b.w === 28 && Math.abs(x) < 1.25 && z > 3.5));
     },

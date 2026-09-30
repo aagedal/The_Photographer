@@ -9,10 +9,12 @@ import { exposureSamples, cameraShake, handheldWobble } from './motion.ts';
 import { createPhotoRenderer } from './photo-renderer.ts';
 import { createViewfinderRenderer } from './depth-of-field.ts';
 import { filterCatalog, filterLabel, isFilterGear, gradientPosition, type FilterId } from './filters.ts';
-import { WorldClock, sampleSky, formatTime, missionAmbientEV, missionReferenceHour, isMissionTime, wrapHour } from './environment.ts';
+import { DAY_SECONDS, WorldClock, sampleSky, formatTime, missionAmbientEV, missionReferenceHour, isMissionTime, wrapHour } from './environment.ts';
 import { gearCatalog, money, normalizeCompleted, normalizeEconomy, ownsGear, equippedFilter, balance, earnedMoney, purchaseGear, completeMission, captureCount, focalRange, zoomFocal, fovForFocal, CaptureSequence, normalizeLens, type LensId, type Economy, type GearId } from './economy.ts';
-import { WORLD_HALF, terrainHeight, trails } from './terrain.ts';
-import { npcCatalog, npcPosition, nearestNPC, normalizeDiscovered, discoverNPC, canAcceptMission, missionGearReady, type NPC } from './exploration.ts';
+import { WORLD_HALF, coastline, terrainHeight, trails } from './terrain.ts';
+import { npcCatalog, nearestNPC, normalizeDiscovered, discoverNPC, canAcceptMission, missionGearReady, type NPC } from './exploration.ts';
+import { WorldAudio } from './audio.ts';
+import { localActivity, townRoad } from './life.ts';
 import './style.css';
 
 const paths: Record<string, string> = {
@@ -41,6 +43,7 @@ const paths: Record<string, string> = {
   studio: '<path d="M4 4h16v12H4zM12 16v5M8 21h8M7 7h10v6H7z"/>',
   burst: '<path d="M3 6h14v12H3zM7 3h13v12M7 21h14v-9"/>',
   shop: '<path d="M3 9h18l-2-6H5L3 9ZM5 9v12h14V9M9 21v-7h6v7"/>',
+  sound: '<path d="M3 9h4l5-4v14l-5-4H3zM16 8c3 2 3 6 0 8M19 5c5 4 5 10 0 14"/>',
   bolt: '<path d="m13 2-9 12h7l-1 8 10-12h-7l0-8Z"/>',
 };
 const icon = (name: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name] ?? paths.camera}</svg>`;
@@ -49,7 +52,7 @@ const esc = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 interface Photo { payment?: number; burst?: { id: string; index: number; total: number }; id: string; missionId: string; image: string; settings: CameraSettings; result: Assessment; date: number; studio?: StudioRig; environment?: { hour: number; cloudCover: number } }
-interface Save { discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
+interface Save { sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
 const playtest = new URLSearchParams(location.search).get('playtest');
 const storageKey = playtest === null ? 'the-photographer-save-v1' : `the-photographer-playtest${playtest && playtest !== '1' ? `-${playtest.slice(0,32)}` : ''}-v1`;
 let storageAvailable = true;
@@ -60,6 +63,7 @@ function loadSave(): Save {
       const completed = normalizeCompleted(raw.completed);
       return {
       version: 1,
+      sound: { enabled: raw.sound?.enabled !== false, volume: Number.isFinite(raw.sound?.volume) ? Math.max(0, Math.min(1, raw.sound.volume)) : 0.6 },
       filterShopVersion: 1, filter: raw.filter, gradPosition: gradientPosition(raw.gradPosition),
       completed,
       discovered: normalizeDiscovered(raw.discovered, [...completed, raw.active, ...(Array.isArray(raw.photos) ? raw.photos.map((p: Photo) => p?.missionId) : [])]),
@@ -76,6 +80,10 @@ function loadSave(): Save {
   return { version: 1, filterShopVersion: 1, discovered: normalizeDiscovered(undefined), completed: [], photos: [], active: missions[0].id, economy: normalizeEconomy(undefined, []) };
 }
 const save = loadSave();
+const audio = new WorldAudio(save.sound?.enabled ?? true, save.sound?.volume ?? 0.6);
+// These listeners execute within the browser’s user-gesture window.
+document.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
+document.addEventListener('keydown', () => audio.unlock());
 let activeMission = missions.find(m => m.id === save.active && canAcceptMission(m, save.discovered, save.economy)) ?? missions[0];
 const clock = new WorldClock(save.hour ?? missionReferenceHour(activeMission));
 let meditation: { start: number; distance: number; elapsed: number; target: number } | null = null;
@@ -179,6 +187,7 @@ function toast(message: string) {
   window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => $('toast').classList.remove('show'), 3600);
 }
 function persist() {
+  save.sound = { enabled: audio.enabled, volume: audio.volume };
   save.active = activeMission.id; save.hour = clock.hour; save.focalLength = focalLength; save.lens = equippedLens;
   save.filterShopVersion = 1; save.filter = settings.filter; save.gradPosition = gradientPosition(settings.gradPosition);
   save.lighting = { flashPower: flashPower(settings), studio: normalizeStudioRig(studioRig) };
@@ -240,17 +249,23 @@ function openPauseMenu() {
       ${m.timeWindow ? `<p class="mission-time ${isMissionTime(m, clock.hour) ? 'ready' : 'waiting'}">${esc(m.timeWindow.label)} · ${isMissionTime(m, clock.hour) ? 'Ready now' : 'Wait for the light'}</p>` : ''}<details><summary>Field notes</summary><p>${esc(m.lesson)}</p></details>
       <div class="pause-actions"><button class="secondary" id="travel">${icon('pin')}Find the spot</button><button class="secondary" id="suggest">Suggested settings</button></div>
     </div>
-    <div class="pause-grid"><button id="menu-board">${icon('flag')}Assignments</button><button id="menu-journal">${icon('book')}Photo journal</button><button id="menu-map">${icon('map')}World map</button><button id="menu-help">${icon('info')}Controls</button><button id="menu-shop">${icon('shop')}Gear shop · ${money(balance(save.economy, save.completed))}</button><button id="menu-lighting">${icon('studio')}Lighting kit</button><button id="quality">${icon('sun')}Quality: ${lowQuality ? 'performance' : 'balanced'}</button><button id="menu-meditate">${icon('moon')}Meditate · ${formatTime(clock.hour)}</button></div>
+    <div class="pause-grid"><button id="menu-board">${icon('flag')}Assignments</button><button id="menu-journal">${icon('book')}Photo journal</button><button id="menu-map">${icon('map')}World map</button><button id="menu-help">${icon('info')}Controls</button><button id="menu-shop">${icon('shop')}Gear shop · ${money(balance(save.economy, save.completed))}</button><button id="menu-lighting">${icon('studio')}Lighting kit</button><button id="quality">${icon('sun')}Quality: ${lowQuality ? 'performance' : 'balanced'}</button><button id="menu-sound">${icon('sound')}Sound: ${audio.enabled ? 'on' : 'off'}</button><button id="menu-meditate">${icon('moon')}Meditate · ${formatTime(clock.hour)}</button></div>
     <div class="pause-footer"><div><span id="menu-progress"></span><small id="save-status"></small></div><button class="primary" id="resume">Resume <kbd>Esc</kbd></button></div>`, 'menu');
   $('travel').onclick = () => { modal.close(); travelTo(m); };
   $('suggest').onclick = suggestSettings;
   $('menu-board').onclick = openBoard; $('menu-journal').onclick = openJournal;
   $('menu-shop').onclick = openGearShop;
   $('menu-meditate').onclick = openMeditation;
+  $('menu-sound').onclick = openSound;
   $('menu-map').onclick = openMap; $('menu-help').onclick = openHelp;
   $('menu-lighting').onclick = () => { modal.close(); if (!lightingOpen) toggleLightingKit(); };
   $('quality').onclick = () => { toggleQuality(); openPauseMenu(); };
   $('resume').onclick = () => modal.close(); updateProgress();
+}
+function openSound() {
+  showModal('Listen to Willowbrook.', 'SOUND', 'Wind, water, birds and quiet streets change as the day turns.', `<div class="help-card"><p>Sound starts after your first click or key press, and pauses in menus or when you leave the game. ${audio.available ? '' : 'Audio is unavailable in this browser.'}</p><button class="secondary" id="sound-toggle" aria-pressed="${audio.enabled}" ${audio.available ? '' : 'disabled'}>${audio.enabled ? 'Mute sound' : 'Enable sound'}</button><p><label for="sound-volume">Volume <span id="sound-value">${Math.round(audio.volume * 100)}%</span></label></p><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(audio.volume * 100)}" style="width:100%" aria-label="Ambient sound volume" /></div>`);
+  $('sound-toggle').onclick = () => { audio.enabled = !audio.enabled; if (audio.enabled) audio.unlock(); else audio.silence(); persist(); openSound(); };
+  $<HTMLInputElement>('sound-volume').oninput = e => { audio.volume = Number((e.target as HTMLInputElement).value) / 100; $('sound-value').textContent = `${Math.round(audio.volume * 100)}%`; persist(); };
 }
 function openGearShop() {
   const cash = balance(save.economy, save.completed);
@@ -288,6 +303,7 @@ function gearHint(message: string) {
   lastGearHint = performance.now(); toast(message);
 }
 function updateClockCue() {
+  $('location-title').textContent = player.z > 84 ? 'Southern shore' : player.z >= 31 && player.z < 80 && player.x > -15 && player.x < 57 ? 'South neighborhood' : player.x < -35 && player.x > -53 && player.z > 7 && player.z < 39 ? 'Wedding chapel' : activeMission.location;
   const time = formatTime(clock.hour), phase = sampleSky(clock.hour).night > 0.5 ? 'moon' : 'sun';
   if ($('clock-label').textContent !== time) $('clock-label').textContent = time;
   if ($('time-icon').dataset.phase !== phase) { $('time-icon').innerHTML = icon(phase); $('time-icon').dataset.phase = phase; }
@@ -309,7 +325,7 @@ function startMeditation(target: number) {
 }
 function finishMeditation() {
   meditation = null; $('meditation-overlay').hidden = true;
-  world.setTime(clock.hour); renderer.shadowMap.needsUpdate = true;
+  world.setTime(clock.hour); world.update(elapsed, settings); renderer.shadowMap.needsUpdate = true;
   updateClockCue(); updateExposure(); syncTripod(); persist();
 }
 function leaveModal() { if (modalView === 'menu') modal.close(); else openPauseMenu(); }
@@ -549,7 +565,7 @@ function makePhoto(s: CameraSettings, frame: Framing): string {
   try {
     base = photoRenderer.render(renderer, samples.length, photoCamera, { aperture: s.aperture, focalLength: s.focalLength ?? focalLength, focusDistance: s.focusDistance ?? autofocus(frame), filter: s.filter, gradPosition: s.gradPosition }, i => {
       const offset = samples[i];
-      world.update(elapsed + offset, s);
+      world.update(elapsed + offset, s, clock.hour + offset * 24 / DAY_SECONDS);
       // Sky motion uses exposure seconds rather than the accelerated game clock.
       world.setTime(clock.hour + offset / 3600);
       world.scene.updateMatrixWorld(true);
@@ -570,7 +586,7 @@ function makePhoto(s: CameraSettings, frame: Framing): string {
       renderer.render(world.scene, photoCamera);
     });
   } finally {
-    world.update(elapsed, settings); world.setTime(clock.hour); world.scene.updateMatrixWorld(true);
+    world.setTime(clock.hour); world.update(elapsed, settings); world.scene.updateMatrixWorld(true);
     applyCameraLight(settings); renderer.shadowMap.needsUpdate = true;
   }
   const canvas = document.createElement('canvas'); canvas.width = 900; canvas.height = 600;
@@ -612,6 +628,7 @@ function captureFrame(now: number) {
     finishShooting(); console.error('Photograph rendering failed', error);
     toast('The photograph could not be rendered. Try again or lower graphics quality in Esc.'); return;
   }
+  audio.shutter();
   const photo: Photo = { id: crypto.randomUUID(), missionId: activeMission.id, image, settings: captureSettings, result, date: Date.now(), studio: activeMission.category === 'Studio' ? normalizeStudioRig(studioRig) : undefined, environment: { hour: clock.hour, cloudCover: sampleSky(clock.hour).cloudCover }, burst: shot.total > 1 ? { id: shotId, index: shot.index, total: shot.total } : undefined };
   const completion = completeMission(save.completed, activeMission.id, result.passed);
   save.completed = completion.completed; photo.payment = completion.payment; shotPayment += completion.payment;
@@ -634,7 +651,7 @@ function finishShooting() {
 
 function showModal(title: string, eyebrow: string, subtitle: string, content: string, view: 'menu' | 'page' = 'page') {
   if (capturing) finishShooting();
-  modalView = view; keys.clear(); drag = false;
+  modalView = view; keys.clear(); drag = false; audio.silence();
   modal.innerHTML = `<div class="modal-header"><div><div class="eyebrow">${esc(eyebrow)}</div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" id="close-modal" aria-label="${view === 'menu' ? 'Resume game' : 'Back to pause menu'}">${icon('close')}</button></div><div class="modal-body">${content}</div>`;
   if (!modal.open) modal.showModal();
   $('close-modal').onclick = leaveModal;
@@ -656,7 +673,7 @@ function openBoard() {
 }
 function talkToNPC() {
   if (modal.open || capturing || meditation || tripod.transitioning) return;
-  const npc = nearestNPC(player.x, player.y, player.z);
+  const npc = nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id));
   if (!npc) return;
   const before = save.discovered.length;
   save.discovered = discoverNPC(save.discovered, npc); persist();
@@ -664,10 +681,11 @@ function talkToNPC() {
   wireMissionCards(); $('leave-npc').onclick = () => modal.close();
 }
 function updateNPCPrompt() {
-  const npc: NPC | undefined = nearestNPC(player.x, player.y, player.z);
+  const npc: NPC | undefined = nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id));
   const prompt = $('npc-prompt');
   prompt.hidden = !npc || modal.open || capturing || tripod.transitioning || !!meditation;
-  if (npc && prompt.dataset.npc !== npc.id) { prompt.dataset.npc = npc.id; prompt.innerHTML = `<kbd>R</kbd> Talk to ${esc(npc.name)} <small>${esc(npc.role)}</small>`; }
+  const promptKey = npc ? `${npc.id}-${localActivity(npc.id, clock.hour)}` : '';
+  if (npc && prompt.dataset.npc !== promptKey) { prompt.dataset.npc = promptKey; prompt.innerHTML = `<kbd>R</kbd> Talk to ${esc(npc.name)} <small>${esc(npc.role)} · ${esc(localActivity(npc.id, clock.hour))}</small>`; }
 }
 function openJournal() {
   showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told. The latest 16 photos are kept on this device.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category} · ${p.result.passed ? '✓ Assignment complete' : 'A work in progress'} · ${p.result.score}/100${p.burst ? ` · Burst ${p.burst.index}/${p.burst.total}` : ''}</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press Space or C to make your first photograph.</p></div>`);
@@ -690,6 +708,12 @@ function drawMap(canvas: HTMLCanvasElement) {
     const height = terrainHeight(x / w * WORLD_HALF * 2 - WORLD_HALF, z / h * WORLD_HALF * 2 - WORLD_HALF);
     ctx.fillStyle = `hsl(${90 - height}, ${22 - height * 0.4}%, ${76 - height * 1.3}%)`; ctx.fillRect(x, z, 5, 5);
   }
+  ctx.fillStyle = '#7dabb0'; ctx.beginPath(); ctx.moveTo(mx(-130),mz(130));
+  for(let x=-130;x<=130;x+=4) ctx.lineTo(mx(x),mz(coastline(x)));
+  ctx.lineTo(mx(130),mz(130)); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#75827c'; ctx.lineWidth = 6;
+  ctx.beginPath(); townRoad.forEach(([x,z],i) => i ? ctx.lineTo(mx(x),mz(z)) : ctx.moveTo(mx(x),mz(z))); ctx.stroke();
+  ctx.beginPath();ctx.moveTo(mx(48),mz(17));ctx.lineTo(mx(48),mz(37));ctx.stroke();
   ctx.strokeStyle = '#eee0bc'; ctx.lineWidth = 4; ctx.lineCap = 'round';
   for (const trail of [...trails, [[-44,16],[43,16]], [[15,-38],[15,32]], [[-35,25],[5,25]]]) {
     ctx.beginPath(); trail.forEach(([x,z],i) => i ? ctx.lineTo(mx(x),mz(z)) : ctx.moveTo(mx(x),mz(z))); ctx.stroke();
@@ -697,19 +721,32 @@ function drawMap(canvas: HTMLCanvasElement) {
   ctx.fillStyle = '#85aaa0'; ctx.fillRect(mx(-21), mz(-14.5), 28 / 260 * w, 23 / 260 * h);
   ctx.beginPath(); ctx.ellipse(mx(76), mz(-54), 14 / 260 * w, 11 / 260 * h, 0, 0, Math.PI * 2); ctx.fill();
   ctx.font = '11px system-ui'; ctx.textAlign = 'center';
-  for (const [x,z,label] of [[0,30,'Willowbrook'],[-73,64,'Wildflower meadow'],[79,-80,'Eastern woodland'],[-53,-99,'Stargazer Ridge']] as const) { ctx.fillStyle = '#4d6145'; ctx.fillText(label,mx(x),mz(z)); }
+  for (const [x,z,label] of [[0,30,'Willowbrook'],[-73,64,'Wildflower meadow'],[79,-80,'Eastern woodland'],[-53,-99,'Stargazer Ridge'],[-43,16,'Wedding chapel'],[20,74,'South neighborhood'],[60,114,'Ocean']] as const) { ctx.fillStyle = '#4d6145'; ctx.fillText(label,mx(x),mz(z)); }
   for (const npc of npcCatalog) {
     if (!npc.missions.some(id => save.discovered.includes(id))) continue;
-    const [x,,z] = npcPosition(npc); ctx.beginPath(); ctx.arc(mx(x), mz(z), 4, 0, Math.PI * 2); ctx.fillStyle = '#b08b46'; ctx.fill(); ctx.fillText(npc.name, mx(x), mz(z) - 9);
+    const [x,,z] = world.npcPosition(npc.id); ctx.beginPath(); ctx.arc(mx(x), mz(z), 4, 0, Math.PI * 2); ctx.fillStyle = '#b08b46'; ctx.fill(); ctx.fillText(npc.name, mx(x), mz(z) - 9);
   }
   const target = subjectPosition(world, activeMission); ctx.beginPath(); ctx.arc(mx(target.x),mz(target.z),5,0,Math.PI * 2);ctx.fillStyle='#dab955';ctx.fill();
   ctx.save(); ctx.translate(mx(player.x),mz(player.z));ctx.rotate(-yaw);
   ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fillStyle='#314e40';ctx.fill();ctx.restore();
 }
+const landmarks = [
+  { id: 'chapel', name: 'Wedding chapel', x: -38, z: 35, target: [-43, 5, 16] },
+  { id: 'streets', name: 'South neighborhood', x: 19, z: 32, target: [26, 1.3, 48] },
+  { id: 'beach', name: 'Beach overlook', x: 57, z: 90, target: [60, 0.6, 110] },
+];
 function openMap() {
   const known = missions.filter(m => save.discovered.includes(m.id) && missionGearReady(m, save.economy));
-  showModal('Beyond the town.', 'EXPLORE WILLOWBROOK', '260 m across · Follow the pale trails into the hills and wetland. Green: you. Gold: current subject and locals you have met.', `<canvas id="large-map" class="map-large" width="680" height="560"></canvas><p class="discovery-note">Travel shortcuts appear for stories you have discovered. Explore on foot to meet new locals.</p><div class="map-legend">${known.map(m => `<button data-place="${m.id}">${icon(categoryIcon[m.category])}${esc(m.title)}<span style="margin-left:auto">→</span></button>`).join('')}</div>`);
+  showModal('Beyond the town.', 'EXPLORE WILLOWBROOK', '260 m across · Follow the pale trails into the hills, wetland and southern beach. Roads loop through the south neighborhood; the chapel sits beside the wedding garden. Green: you. Gold: current subject and locals you have met.', `<canvas id="large-map" class="map-large" width="680" height="560"></canvas><p class="discovery-note">Travel shortcuts appear for stories you have discovered. Explore on foot to meet new locals.</p><div class="map-legend">${landmarks.map(p => `<button data-landmark="${p.id}">${icon('pin')}${p.name}<span style="margin-left:auto">→</span></button>`).join('')}${known.map(m => `<button data-place="${m.id}">${icon(categoryIcon[m.category])}${esc(m.title)}<span style="margin-left:auto">→</span></button>`).join('')}</div>`);
   drawMap($<HTMLCanvasElement>('large-map'));
+  modal.querySelectorAll<HTMLButtonElement>('[data-landmark]').forEach(button => button.onclick = () => {
+    const place = landmarks.find(p => p.id === button.dataset.landmark)!;
+    requestTripod(false, true); player.set(place.x, world.groundHeight(place.x,place.z)+1.7, place.z);
+    const direction = new THREE.Vector3(...place.target).sub(player);
+    yaw = Math.atan2(-direction.x, -direction.z); pitch = Math.atan2(direction.y, Math.hypot(direction.x,direction.z));
+    focalLength=THREE.MathUtils.clamp(35,...focalRange(save.economy,equippedLens)); updateLensProjection();
+    setCameraMode(false); modal.close(); updateClockCue(); toast(place.name);
+  });
   modal.querySelectorAll<HTMLButtonElement>('[data-place]').forEach(b => b.onclick = () => { const m = missions.find(m => m.id === b.dataset.place)!; if (selectMission(m)) { travelTo(m); modal.close(); } });
 }
 function openHelp() {
@@ -721,6 +758,7 @@ function openHelp() {
     <div class="help-card"><strong>Choose your depth of field</strong>The viewfinder previews focus. Autofocus follows an unobstructed assignment subject inside the frame; otherwise it focuses on the center surface. The AF readout shows the focus distance. A wider aperture, longer lens, or closer subject softens the foreground and background. Stop down to bring more depth into focus. Shutter motion appears in the saved photograph.</div>
     <div class="help-card"><strong>Shape the light</strong><kbd>L</kbd> opens the Lighting kit; <kbd>F</kbd> toggles purchased flash. Adjust manual flash power or visit the studio to move and tune key, fill, and rim lights. A brief flash favours close subjects; shutter speed controls the ambient within the 1/250 s sync limit.</div>
     <div class="help-card"><strong>Wait for the light</strong>The sun, clouds, exposure and stars change through a 30-minute day. Some assignments need a particular time. Open <kbd>Esc</kbd> → Meditate to skip ahead to dawn, daylight, golden hour, night or the assignment’s preferred time. Time pauses while menus are open.</div>
+    <div class="help-card"><strong>A living town</strong>Locals walk familiar routes by day; Ida watches the ridge at night. Gold markers and the map follow them. Residents and their dog wander the south neighborhood; cars slow the streets, ducks settle at dusk, deer graze in the meadow, and a fox emerges at night. Visit the wedding chapel or follow the southern path to the ocean. <kbd>Esc</kbd> → Sound controls ambient audio and volume.</div>
     <div class="help-card"><strong>Your little collection</strong>Assignments pay once. Open <kbd>Esc</kbd> → Gear shop for a zoom lens, camera flash, or burst camera. Buy ND16/ND32/ND64, CPL, or a soft graduated ND8 filter separately. The graduated filter darkens the top of the frame; its transition slider aligns the soft edge with your horizon. Only one filter is fitted at a time. The 200–600 mm wildlife lens unlocks bird close-ups. Equip lenses in the shop; bird suggested settings also equip that lens.<br/>Progress and the latest 16 photographs save in this browser on this device. Download favourites from the darkroom. This prototype is designed for a desktop keyboard and mouse.</div>
   </div><div class="review-actions"><button class="secondary" id="new-notebook">Start a fresh notebook</button><button class="primary" id="begin-explore">Let’s find the light ${icon('arrow')}</button></div>`);
   $('begin-explore').onclick = () => modal.close();
@@ -806,9 +844,9 @@ document.addEventListener('keydown', e => {
   if (key === 'l') toggleLightingKit();
 });
 document.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
-window.addEventListener('blur', () => { keys.clear(); drag = false; });
-document.addEventListener('visibilitychange', () => { keys.clear(); drag = false; previousTime = performance.now(); if (document.hidden) { if (capturing) finishShooting(); persist(); } });
-window.addEventListener('pagehide', () => { if (capturing) finishShooting(); persist(); });
+window.addEventListener('blur', () => { keys.clear(); drag = false; audio.silence(); });
+document.addEventListener('visibilitychange', () => { keys.clear(); drag = false; previousTime = performance.now(); if (document.hidden) { audio.silence(); if (capturing) finishShooting(); persist(); } });
+window.addEventListener('pagehide', () => { audio.silence(); if (capturing) finishShooting(); persist(); });
 renderer.domElement.addEventListener('pointerdown', e => {
   if (e.button !== 0 || modal.open || tripod.transitioning || meditation) return;
   drag = true; lastPointerX = e.clientX; lastPointerY = e.clientY; renderer.domElement.setPointerCapture(e.pointerId);
@@ -862,6 +900,8 @@ function animate(now: number) {
     }
     world.update(elapsed, settings);
   }
+  const walking = !modal.open && !meditation && !tripod.movementLocked && !capturing && ['w','a','s','d'].some(key => keys.has(key));
+  audio.update(clock.hour, player, yaw, world.traffic, !modal.open && !meditation && !document.hidden && document.hasFocus(), walking, keys.has('shift'));
   updateCamera(); updateNPCPrompt(); world.scene.updateMatrixWorld(true);
   if (capturing && !modal.open && !meditation) captureFrame(now);
   if (shootReadyAt && now >= shootReadyAt) { shootReadyAt = 0; syncTripod(); }

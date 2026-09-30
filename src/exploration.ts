@@ -20,9 +20,12 @@ export function normalizeDiscovered(raw: unknown, evidence: unknown[] = []) {
 export const discoverNPC = (discovered: string[], npc: NPC) => normalizeDiscovered([...discovered, ...npc.missions]);
 export const missionGearReady = (mission: Mission, economy: Economy) => !mission.requiredGear || ownsGear(economy, mission.requiredGear);
 export const canAcceptMission = (mission: Mission, discovered: string[], economy: Economy) => discovered.includes(mission.id) && missionGearReady(mission, economy);
-export function nearestNPC(x: number, y: number, z: number): NPC | undefined {
-  return npcCatalog.find(npc => {
-    const [nx, ny, nz] = npcPosition(npc);
-    return Math.hypot(x - nx, y - ny - 1.7, z - nz) < 4;
-  });
+export function nearestNPC(x: number, y: number, z: number, position: (npc: NPC) => [number, number, number] = npcPosition): NPC | undefined {
+  let closest: NPC | undefined, distance = 4;
+  for (const npc of npcCatalog) {
+    const [nx, ny, nz] = position(npc);
+    const next = Math.hypot(x - nx, y - ny - 1.7, z - nz);
+    if (next < distance) { closest = npc; distance = next; }
+  }
+  return closest;
 }

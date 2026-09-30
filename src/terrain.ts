@@ -1,6 +1,7 @@
 import { creekDistance } from './creek.ts';
 
 export const WORLD_HALF = 130;
+export const coastline = (x: number) => 98 + Math.sin(x * 0.045) * 3 + Math.sin(x * 0.1) * 1.5;
 const smooth = (a: number, b: number, value: number) => {
   const t = Math.max(0, Math.min(1, (value - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -14,14 +15,19 @@ export function terrainHeight(x: number, z: number) {
   const rolling = 2.2 + Math.sin(x * 0.055) * Math.cos(z * 0.045) * 1.8;
   // A level shelf holds the wetland; avoid a pond sitting on a slope.
   const wetland = 1 - smooth(17, 31, Math.hypot((x - 76) * 0.85, z + 54));
-  const height = edge * (ridge + meadow + east + rolling) * (1 - wetland) + 1.2 * edge * wetland;
+  const townShelf = smooth(-18, -12, x) * (1 - smooth(54, 64, x)) * smooth(29, 35, z) * (1 - smooth(76, 86, z));
+  const height = (1 - townShelf) * (edge * (ridge + meadow + east + rolling) * (1 - wetland) + 1.2 * edge * wetland);
   const lakeInset = Math.min(14 - Math.abs(x + 7), 11.5 - Math.abs(z + 3));
   const jetty = Math.abs(x) < 1.8 && z > 3.5;
   const lakeDepth = jetty ? 0 : 1.65 * smooth(0, 2.5, lakeInset);
   const pondRadius = Math.hypot((x - 76) / 14, (z + 54) / 11);
   const pondDepth = 1.25 * (1 - smooth(0.78, 1, pondRadius));
   const channelDepth = 0.95 * (1 - smooth(0.7, 1.3, creekDistance(x, z)));
-  return height - Math.max(lakeDepth, channelDepth) - pondDepth;
+  const chapelShelf = (1 - smooth(7, 13, Math.abs(x + 43))) * (1 - smooth(8, 14, Math.abs(z - 16)));
+  const inland = height * (1 - chapelShelf) - Math.max(lakeDepth, channelDepth) - pondDepth;
+  const shore = coastline(x), coastal = smooth(82, shore - 8, z);
+  const beach = z <= shore ? 1.6 * (1 - smooth(shore - 9, shore, z)) : -2 * smooth(shore, shore + 10, z);
+  return inland * (1 - coastal) + beach * coastal;
 }
 export const trails: [number, number][][] = [
   [[-4, -25], [-30, -37], [-46, -51], [-53, -70], [-67, -88], [-89, -98]],

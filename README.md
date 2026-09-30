@@ -117,6 +117,20 @@ The lake and wetland now have translucent water, animated rippled reflections, s
 
 Fern Creek drops over a roughly nine-metre cliff of layered crags, mossy ledges, and firs. The falling curtain spills into a plunge pool with spray and expanding ripples, then a winding river carries foam into Willow Lake through an opening in the western shore. The creek assignment’s viewpoint frames the enlarged cliff and river. Fast shutters retain whitewater detail; the suggested half-second ND64 tripod exposure softens the flow while keeping the rock faces sharp. The river and cliff restrict walking, with dry banks available for exploration.
 
+## A living Willowbrook
+
+Six story locals now walk short, dry routes and pause to look around. Most are out from 07:00 to 21:00; Ida patrols the ridge from 18:00 to 06:00. Off-duty locals remain available for a quiet chat at their familiar meeting places. Their gold markers, proximity prompts, and discovered map markers follow their actual positions. Portrait subjects keep their assignment locations, with idle arm motion and more varied appearances. Characters have different builds, heights, skin tones, hair, trousers, dresses, scarves, glasses, hats, bags and work aprons.
+
+The southern neighborhood adds eight houses, rounded streets, sidewalks, a crosswalk, a shelter and lamps. Eight residents—including smaller and older-looking characters—walk the pavements with a dog. Three slow vehicles circulate by day; two park in driveways after 21:00, while the delivery van runs until midnight. Vehicles restrict walking and obstruct photographs only while their visible meshes are present. Street lights, home windows, chapel lighting and headlights come on at dusk.
+
+Five ducks paddle on the lake and settle near the bank at night. Two deer wander and graze in the western meadow, a fox comes out in the eastern woodland after 19:00, and six gulls circle the southern coast. Routines and animation sample absolute time, so motion accumulation can photograph them and restore the scene precisely afterward.
+
+A walkable chapel beside the wedding garden has pews, an altar, stained windows and a bell tower. The south edge of the map opens onto an ocean with a sandy beach, rolling foam, coastal rocks, driftwood and an overlook bench. Follow the path from the neighborhood to the shore. **Esc → World map** also has shortcuts to the chapel, neighborhood and beach overlook.
+
+Ambient audio is synthesized in the browser: wind, running water near the creek, surf near the coast, daytime bird calls, nighttime insects, passing engines, footsteps, shutter clicks and nearby chapel bells at 08:00, 12:00 and 18:00. Your first click or key press unlocks audio. **Esc → Sound** offers mute and volume controls, saved with the notebook. Sound fades out in menus, meditation, hidden tabs and when the window loses focus.
+
+These are lightweight procedural routines. Residents and wildlife use clock-based activity windows rather than a needs or event simulation; traffic is ambient, not drivable. Ocean surf and animal models are stylized, and sound is synthesized rather than recorded.
+
 ## First milestone
 
 - A connected town with six original photography locations, rolling hills, woodland and meadow trails, and a bird wetland, stylized lighting, shadows, animated water and a runner, a moving sun and moon, drifting clouds, and a 30-minute day/night cycle.
@@ -127,12 +141,15 @@ Fern Creek drops over a roughly nine-metre cliff of layered crags, mossy ledges,
 - Actual 3:2 image captures, simplified visual effects, photo review, downloads, and a persistent journal.
 - A map, travel shortcuts, keyboard aiming, and a performance setting.
 
-This is a foundation, not the finished game. Motion blur accumulates up to 33 scene samples over the selected shutter interval, with simulated handheld shake, runner tracking, flowing water, and a brief flash pulse. Long exposures render immediately rather than waiting for the shutter duration. Depth of field uses scene depth and a thin-lens blur radius, with a bounded disk kernel; transparent surfaces and blur around silhouettes remain approximations. Panning uses a switch, window reflections render the surrounding scene with simplified polarizer suppression, and star motion follows a simplified sky rotation. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, variable flash duration, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. Deeper NPC stories, staged events, manual focus controls, audio, full collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
+This is a foundation, not the finished game. Motion blur accumulates up to 33 scene samples over the selected shutter interval, with simulated handheld shake, runner tracking, flowing water, and a brief flash pulse. Long exposures render immediately rather than waiting for the shutter duration. Depth of field uses scene depth and a thin-lens blur radius, with a bounded disk kernel; transparent surfaces and blur around silhouettes remain approximations. Panning uses a switch, window reflections render the surrounding scene with simplified polarizer suppression, and star motion follows a simplified sky rotation. Studio softboxes use spot lights with shadows and inverse-square falloff; bounce lighting, true area-light shadows, variable flash duration, and high-speed sync are not simulated. The subject meter uses assignment light, distance, and a calibrated studio rig rather than integrating every surface, light angle, or obstruction; actual shading and shadows are rendered in the scene. The studio assignment reduces ambient scene lighting to make controlled lighting easier to see. Deeper NPC stories, staged events, manual focus controls, fuller collisions, and desktop packaging remain planned. Desktop keyboard/mouse is required for full exploration; responsive UI is not a complete mobile port.
 
 See [the development plan](docs/PLAN.md) for the full curriculum, milestones, technical direction, and validation approach.
 
 ## Source layout
 
+- `src/life.ts` / `src/world-life.ts` — scheduled routines, road routes, residents, traffic and wildlife.
+- `src/audio.ts` — gesture-unlocked synthesized ambience and spatial vehicle audio.
+- `src/church.ts` / `src/coast.ts` — wedding chapel, ocean, surf and coastal scenery.
 - `src/world.ts` — procedural scenery, lighting, subjects, and animation.
 - `src/missions.ts` — assignment curriculum and suggested settings.
 - `src/photography.ts` — pure exposure and assessment model.
