@@ -405,3 +405,48 @@ dialog { background:linear-gradient(145deg,#1a2229,var(--paper) 45%); border-rad
 .touch-walking .sneak-button span,.touch-walking .sneak-button kbd { display:none; }
 .touch-walking .npc-prompt { left:auto; right:max(16px,env(safe-area-inset-right)); bottom:max(28px,env(safe-area-inset-bottom)); transform:none; max-width:calc(100% - 172px); }
 @media(max-height:500px) { .walk-pad { width:108px; height:108px; } .touch-walking .sneak-button { bottom:calc(max(20px,env(safe-area-inset-bottom)) + 120px); } }
+
+/* Conversations keep the person and their surroundings in view. */
+dialog.conversation-dialog, dialog.story-dialog {
+  position:fixed; inset:auto 28px 28px auto; margin:0;
+  width:min(540px,46vw); max-width:calc(100vw - 32px); max-height:60dvh;
+  background:linear-gradient(125deg,#172129f5,#10181ff5);
+  border:1px solid #66746b; border-top:3px solid var(--accent);
+  box-shadow:0 12px 55px #0007;
+}
+dialog.conversation-dialog::backdrop, dialog.story-dialog::backdrop { background:#0001; backdrop-filter:none; }
+.conversation-dialog .modal-header, .story-dialog .modal-header { padding:18px 22px 13px; flex-shrink:0; }
+.conversation-dialog .modal-header h2, .story-dialog .modal-header h2 { font-size:29px; margin-top:4px; }
+.conversation-dialog .modal-header p { display:none; }
+.conversation-dialog .modal-body, .story-dialog .modal-body { padding:18px 22px; max-height:none; min-height:0; }
+.conversation-dialog .npc-dialogue { font:18px/1.65 Georgia,serif; margin:0 0 13px; }
+.dialogue-navigation { display:flex; align-items:center; gap:12px; margin:12px 0; }
+.dialogue-navigation span { color:var(--muted); font-size:10px; flex:1; }
+.conversation-questions { display:flex; flex-wrap:wrap; gap:7px; margin:16px 0 10px; }
+.conversation-questions button { text-align:left; line-height:1.5; padding:8px 10px; }
+.conversation-questions button[aria-pressed=true] { color:var(--accent); border-color:#edb45c88; background:var(--accent-soft); }
+.conversation-details { margin-top:14px; border-top:1px solid var(--line); padding-top:14px; }
+.conversation-details summary { cursor:pointer; color:var(--accent); font-size:11px; padding:4px 0; }
+.conversation-details[open] summary { margin-bottom:16px; }
+.conversation-dialog .mission-grid { grid-template-columns:1fr; margin-top:14px; }
+.conversation-dialog .assignment-card { padding:14px; }
+.conversation-dialog .review-actions { margin-top:16px; padding-top:14px; }
+.conversation-dialog .review-actions .discovery-note { display:none; }
+.conversation-dialog .living-status { margin-top:18px; }
+.story-dialog .story-scene { font-size:14px; margin:0; }
+.in-conversation .hud-actions, .in-conversation .camera-bar, .in-conversation .sneak-button,
+.in-conversation .viewfinder, .in-conversation .focus-control, .in-conversation .gradient-control,
+.in-conversation .lighting-panel, .in-conversation .capture-preview, .in-conversation .shot-guide { visibility:hidden; }
+@media(max-width:699px) {
+  dialog.conversation-dialog, dialog.story-dialog { inset:auto 12px 12px; width:calc(100vw - 24px); max-width:none; max-height:48dvh; }
+  .conversation-dialog .modal-header, .story-dialog .modal-header { padding:12px 16px 10px; }
+  .conversation-dialog .modal-header h2, .story-dialog .modal-header h2 { font-size:25px; }
+  .conversation-dialog .modal-body, .story-dialog .modal-body { padding:14px 16px; }
+  .conversation-dialog .npc-dialogue { font-size:16px; line-height:1.6; }
+}
+@media(max-height:500px) and (min-width:700px) {
+  dialog.conversation-dialog, dialog.story-dialog { inset:auto 16px 16px auto; max-height:85dvh; }
+}
+
+.conversation-dialog > .review-actions { flex-shrink:0; margin:0; padding:12px 22px; background:#10181f; }
+.conversation-coda { margin-bottom:16px; font-size:13px; line-height:1.7; color:var(--muted); }

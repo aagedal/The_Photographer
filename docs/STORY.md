@@ -19,6 +19,14 @@ The Assignments page presents the current chapter. First completions of main ass
 
 The bear is mentioned in the opening but cannot be pursued as a main assignment until the newspaper chapter is resolved. New notebooks require the boundary photograph and an explicit in-person handoff to June; taking either photograph alone does not finish the investigation. Completed assignments retain the evidence even if the original photographs leave the sixteen-frame journal. Notebooks from before this expansion that had already completed the town-hall meeting keep their bear route through repeated reloads. It also requires owned and equipped telephoto gear, at least 20 metres of space, adequate subject scale, a fast shutter, and no flash. The meeting requires a CPL, no flash, a steady shutter, useful exposure, and the overnight 22:00–02:00 window. The window uses the same planar reflection and polarizer suppression as the bakery.
 
+## Talking with the town
+
+In-person conversations now open in a compact panel beside a close view of the actual world character. On narrow screens, the panel sits below the speaker. The notebook, map, gallery and equipment pages retain their larger layouts; chapter updates use a smaller story card. Closing a conversation returns directly to the player’s original position, aim and equipped lens. World time and finances remain paused while reading.
+
+Long speeches have previous/continue controls. Mission briefs fold under “Assignments & next steps”; Arthur’s memories, four-horizon album and home purchase fold under “Stay for tea.” Primary handoffs remain visible, and conversation exit actions stay below the scrolling content. The separate conversation lens follows the speaker’s current routine position, including Arthur’s nested porch model and Ruth’s reversed workshop orientation. It chooses a clear front angle when a nearby building blocks the first view.
+
+Mara, Theo, June, Alma, Eli, Ida and Ruth each have two optional personal questions. Their answers connect the ridge steps, local paper, wedding, pottery, observatory and apprentices to Arthur and the player’s return. June and Mara acknowledge the published report; June also acknowledges the crew’s caption review. Questions can be revisited, never gate an assignment, and do not change saved milestones. The locals have smoother heads, visible eyes and open spectacle frames; Arthur’s rounded glasses now leave his eyes visible.
+
 ## Arthur’s four horizons
 
 Four optional landscapes connect the 520 m world to Arthur’s family history. They unlock together after the deer print is brought to his porch, and remain available after the main ending. The album counts persistent gallery prints rather than journal photographs; taking a picture without printing does not fill a page.

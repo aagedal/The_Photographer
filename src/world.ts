@@ -243,6 +243,12 @@ export function createWorld(): World {
   const sphere = (x: number, y: number, z: number, sx: number, sy: number, sz: number, color: string, parent: THREE.Object3D) => {
     const mesh = new THREE.Mesh(sphereGeo, material(color)); mesh.position.set(x, y, z); mesh.scale.set(sx, sy, sz); mesh.castShadow = true; parent.add(mesh); return mesh;
   };
+  const faceGeometry = new THREE.SphereGeometry(1, 24, 16);
+  const faceMaterials = new Map<string, THREE.MeshStandardMaterial>();
+  const faceMaterial = (skin: string) => {
+    if (!faceMaterials.has(skin)) faceMaterials.set(skin, new THREE.MeshStandardMaterial({color:skin, roughness:0.88}));
+    return faceMaterials.get(skin)!;
+  };
   const people: THREE.Group[] = [];
   const characters: { group: THREE.Group; arms: THREE.Group[]; legs: THREE.Group[] }[] = [];
   const locals = new Map<string, ReturnType<typeof person>>();
@@ -258,7 +264,15 @@ export function createWorld(): World {
     sphere(0, 1.1, 0, 0.31, 0.39, 0.21, shirt, g);
     box(0, 0.78, 0, 0.49, 0.13, 0.3, trousers, g);
     box(0, 1.46, 0, 0.15, 0.18, 0.15, skin, g);
-    sphere(0, 1.69, 0, 0.22, 0.27, 0.21, skin, g);
+    const face = new THREE.Mesh(faceGeometry, faceMaterial(skin));
+    face.position.set(0, 1.69, 0); face.scale.set(0.22, 0.27, 0.21);
+    face.castShadow = true; g.add(face);
+    for (const side of [-1, 1]) {
+      sphere(side * 0.218, 1.69, 0, 0.048, 0.073, 0.05, skin, g);
+      sphere(side * 0.08, 1.73, 0.192, 0.037, 0.026, 0.022, '#eee4cf', g);
+      sphere(side * 0.08, 1.73, 0.211, 0.021, 0.023, 0.009, '#405a50', g);
+      sphere(side * 0.075, 1.738, 0.218, 0.006, 0.007, 0.005, '#fff0d2', g);
+    }
     sphere(0, 1.88, -0.035, 0.235, 0.12, 0.215, hair, g);
     if (variant % 3 === 0) {
       for (const x of [-0.19, 0.19]) box(x, 1.66, -0.035, 0.08, 0.4, 0.25, hair, g);
@@ -268,7 +282,10 @@ export function createWorld(): World {
       sphere(0, 1.97, -0.04, 0.21, 0.1, 0.18, hair, g);
     }
     if (variant % 4 === 1) {
-      for (const x of [-0.08, 0.08]) box(x, 1.73, 0.211, 0.105, 0.075, 0.018, '#394d45', g);
+      for (const x of [-0.08, 0.08]) {
+        const glasses = new THREE.Mesh(new THREE.TorusGeometry(0.053, 0.008, 6, 18), material('#394d45'));
+        glasses.position.set(x, 1.73, 0.225); g.add(glasses);
+      }
       box(0, 1.73, 0.221, 0.065, 0.018, 0.02, '#c9c3ac', g);
     }
     if (variant % 5 === 3) {
@@ -279,7 +296,6 @@ export function createWorld(): World {
       box(0.14, 1.08, 0.23, 0.11, 0.37, 0.06, '#e0bd6e', g);
     }
     for (const a of [-0.08, 0.08]) {
-      box(a, 1.73, 0.194, 0.055, 0.035, 0.018, '#273c39', g);
       box(a, 1.8, 0.184, 0.07, 0.026, 0.025, hair, g);
     }
     sphere(0, 1.67, 0.224, 0.043, 0.06, 0.06, skin, g);

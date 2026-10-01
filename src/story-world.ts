@@ -122,7 +122,7 @@ export function createStoryPlaces(scene: THREE.Scene, solids: THREE.Object3D[]) 
   block(porch,1,1,2.6,1.1,1,0.16,'#8d6a4b',false);
   // Arthur has his own seated model: bent knees, cardigan, spectacles and a lap blanket.
   const arthur = new THREE.Group(); arthur.name = 'uncle-arthur'; arthur.position.set(1, 0.3, 3.05); porch.add(arthur);
-  const sphereGeometry = new THREE.SphereGeometry(1, 16, 12);
+  const sphereGeometry = new THREE.SphereGeometry(1, 24, 16);
   const oval = (x: number, y: number, z: number, sx: number, sy: number, sz: number, color: string, parent: THREE.Object3D = arthur) => {
     const mesh = new THREE.Mesh(sphereGeometry, material(color)); mesh.position.set(x,y,z); mesh.scale.set(sx,sy,sz); mesh.castShadow = mesh.receiveShadow = true; parent.add(mesh); return mesh;
   };
@@ -142,9 +142,11 @@ export function createStoryPlaces(scene: THREE.Scene, solids: THREE.Object3D[]) 
   oval(0, 1.79, -0.06, 0.235, 0.12, 0.2, '#d5d4c8');
   for (const side of [-1,1]) {
     oval(side*0.22, 1.61, 0.005, 0.055, 0.085, 0.05, '#d7b697');
-    oval(side*0.09, 1.64, 0.221, 0.058, 0.028, 0.012, '#3a403b');
-    block(arthur, side*0.095, 1.65, 0.233, 0.155, 0.085, 0.012, '#65716a', false);
-    block(arthur, side*0.095, 1.65, 0.242, 0.125, 0.055, 0.008, '#b3c3b5', false);
+    oval(side*0.09, 1.65, 0.214, 0.043, 0.025, 0.014, '#efe5ce');
+    oval(side*0.09, 1.65, 0.227, 0.018, 0.02, 0.007, '#3a403b');
+    oval(side*0.084, 1.657, 0.233, 0.005, 0.006, 0.004, '#fff0d2');
+    const glasses = new THREE.Mesh(new THREE.TorusGeometry(0.067, 0.009, 8, 20), material('#65716a'));
+    glasses.position.set(side*0.095, 1.65, 0.243); arthur.add(glasses);
     oval(side*0.09, 1.72, 0.207, 0.077, 0.018, 0.012, '#d5d4c8');
   }
   block(arthur, 0, 1.65, 0.25, 0.06, 0.015, 0.012, '#65716a', false);

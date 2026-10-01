@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { conversationTopics, dialoguePages, speakerObjectName, frameConversation } from './conversation.ts';
 import { missions, type Category, type Mission } from './missions.ts';
 import { assessPhoto, exposureStops, shutterLabel, type Assessment, type CameraSettings, type Framing } from './photography.ts';
 import { createWorld, subjectPosition } from './world.ts';
@@ -147,7 +148,10 @@ const tripod = new TripodState();
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let tripodSettle = 0;
 let previewTimer = 0;
-let modalView: 'menu' | 'page' = 'page';
+let modalView: 'menu' | 'page' | 'conversation' | 'story' = 'page';
+let conversationSpeaker: THREE.Object3D | undefined;
+let conversationFrame = '';
+const conversationCamera = new THREE.PerspectiveCamera(38, 1, 0.1, 1000);
 const options = (values: number[], label: (v: number) => string, selected: number) => values.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${label(v)}</option>`).join('');
 
 $('app').innerHTML = `
@@ -448,7 +452,7 @@ function finishMeditation() {
   world.setTime(clock.hour); world.update(elapsed, settings); renderer.shadowMap.needsUpdate = true;
   updateExposure(); syncTripod(); persist();
 }
-function leaveModal() { if (modalView === 'menu') modal.close(); else openPauseMenu(); }
+function leaveModal() { if (modalView === 'menu' || modalView === 'conversation' || modalView === 'story') modal.close(); else openPauseMenu(); }
 function toggleQuality() {
   lowQuality = !lowQuality;
   renderer.setPixelRatio(lowQuality ? 1 : Math.min(devicePixelRatio, 1.5));
@@ -855,6 +859,8 @@ function openStory() {
   const needsPrint = !save.story.deerShown ? !save.story.prints.some(p => p.missionId === 'intro-deer') : save.completed.includes('nature-bear') && !save.story.prints.some(p => p.missionId === 'nature-bear');
   const action = objective.action === 'mission' ? 'Accept this assignment' : objective.action === 'editor' ? 'Find June in the square' : needsPrint ? 'Visit the gallery' : 'Find Arthur’s porch';
   showModal(objective.title, `ARTHUR’S STORY · ${objective.chapter}`, 'A photographer finds a place in Willowbrook.', `<div class="story-scene"><p>${esc(objective.text)}</p><p class="discovery-note">${objective.action === 'editor' ? 'Bring the pictures to June in Morning Paper Square. Press R to talk, then leave the photographs with her.' : objective.action === 'mission' ? 'Follow the main story at your own pace. Side assignments help pay for gear and prints.' : 'The gallery and Arthur’s porch are marked in Esc → Explore. Press R when you arrive.'}</p><button class="primary" id="story-next">${action} ${icon('arrow')}</button></div>`);
+  modalView = 'story'; modal.classList.add('story-dialog');
+  $('close-modal').setAttribute('aria-label', 'Return to the town');
   $('story-next').onclick = () => {
     if ('missionId' in objective && objective.missionId) {
       save.discovered = storyDiscoveries(save.story, save.completed, save.discovered);
@@ -899,8 +905,14 @@ function openUncle(memoryId?: string) {
   const memory = arthurMemories.find(item => item.id === memoryId);
   const album = horizonAlbum(save.story);
   const price = COTTAGE_PRICE + save.story.rentArrears;
-  showModal(ending ? 'A little time together.' : 'Uncle Arthur', ending ? 'ARTHUR’S STORY · HOME, AT LAST' : 'ARTHUR’S PORCH', ending ? 'The photograph is home. So are you.' : 'The kettle is on. There is a chair for you.', `<p class="npc-dialogue">“${esc(line)}”</p>${ending ? '<p>You start to apologise for the years you let pass. Arthur shakes his head. “I let them pass, too.” You sit beside him as the light turns. There is no photograph to make, and nowhere else you need to be.</p>' : ''}<section class="arthur-memories"><h3>Stay for a cup of tea</h3><p class="discovery-note">There is time to talk. You can return to these conversations whenever you like.</p><div class="pause-actions">${arthurMemories.map(item => `<button class="secondary" data-memory="${item.id}" aria-pressed="${memoryId === item.id}">${esc(item.title)}${save.story.memories.includes(item.id) ? ' · Remembered' : ''}</button>`).join('')}</div>${memory ? `<p class="npc-dialogue">${esc(memory.text)}</p>` : ''}</section>${save.story.deerShown ? `<section class="horizon-album"><span class="eyebrow">AN ALBUM FOR ARTHUR · ${album.filter(p => p.printed).length} / 4 PRINTS</span><h3>Four places. A lifetime between them.</h3><p class="npc-dialogue">${esc(horizonAlbumDialogue(save.story))}</p><div class="pause-actions">${album.map(p => `<button class="secondary" data-horizon="${p.id}">${p.printed ? '✓ ' : ''}${p.name}</button>`).join('')}</div></section>` : ''}<section class="living-status"><h3>${save.story.home === 'cottage' ? 'A home of your own' : 'Settle into Willowbrook'}</h3><p>${save.story.home === 'cottage' ? 'Your garden cottage is on the southern street. You can keep photographing and running the gallery.' : `Your room costs $${ROOM_RENT} per game day after your first visit with the deer print. The garden cottage is available for $${COTTAGE_PRICE}, with no daily rent.${save.story.rentArrears ? ` Clear ${money(save.story.rentArrears)} in waiting rent as part of the purchase.` : ''}`}</p>${save.story.home === 'room' ? `<button class="secondary" id="buy-home" ${save.story.deerShown && balance(save.economy, save.completed) >= price ? '' : 'disabled'}>Buy garden cottage · ${money(price)}</button>` : ''}</section><div class="review-actions"><button class="secondary" id="uncle-gallery">View the gallery</button><button class="primary" id="uncle-next">${ending || save.story.reconciled ? 'Keep exploring' : 'Continue the story'} ${icon('arrow')}</button></div>`);
-  audio.speak('arthur', memory?.text ?? line);
+  showModal(ending ? 'A little time together.' : 'Uncle Arthur', ending ? 'ARTHUR’S STORY · HOME, AT LAST' : 'ARTHUR’S PORCH', ending ? 'The photograph is home. So are you.' : 'The kettle is on. There is a chair for you.', `<p class="npc-dialogue">“${esc(line)}”</p>${ending ? '<p class="conversation-coda">You start to apologise for the years you let pass. Arthur shakes his head. “I let them pass, too.” You sit beside him as the light turns. There is no photograph to make, and nowhere else you need to be.</p>' : ''}<section class="arthur-memories"><h3>Stay for a cup of tea</h3><p class="discovery-note">There is time to talk. You can return to these conversations whenever you like.</p><div class="pause-actions">${arthurMemories.map(item => `<button class="secondary" data-memory="${item.id}" aria-pressed="${memoryId === item.id}">${esc(item.title)}${save.story.memories.includes(item.id) ? ' · Remembered' : ''}</button>`).join('')}</div>${memory ? `<p class="npc-dialogue">${esc(memory.text)}</p>` : ''}</section>${save.story.deerShown ? `<section class="horizon-album"><span class="eyebrow">AN ALBUM FOR ARTHUR · ${album.filter(p => p.printed).length} / 4 PRINTS</span><h3>Four places. A lifetime between them.</h3><p class="npc-dialogue">${esc(horizonAlbumDialogue(save.story))}</p><div class="pause-actions">${album.map(p => `<button class="secondary" data-horizon="${p.id}">${p.printed ? '✓ ' : ''}${p.name}</button>`).join('')}</div></section>` : ''}<section class="living-status"><h3>${save.story.home === 'cottage' ? 'A home of your own' : 'Settle into Willowbrook'}</h3><p>${save.story.home === 'cottage' ? 'Your garden cottage is on the southern street. You can keep photographing and running the gallery.' : `Your room costs $${ROOM_RENT} per game day after your first visit with the deer print. The garden cottage is available for $${COTTAGE_PRICE}, with no daily rent.${save.story.rentArrears ? ` Clear ${money(save.story.rentArrears)} in waiting rent as part of the purchase.` : ''}`}</p>${save.story.home === 'room' ? `<button class="secondary" id="buy-home" ${save.story.deerShown && balance(save.economy, save.completed) >= price ? '' : 'disabled'}>Buy garden cottage · ${money(price)}</button>` : ''}</section><div class="review-actions"><button class="secondary" id="uncle-gallery">View the gallery</button><button class="primary" id="uncle-next">${ending || save.story.reconciled ? 'Keep exploring' : 'Continue the story'} ${icon('arrow')}</button></div>`);
+  if (memory) {
+    const memoryLine = modal.querySelector<HTMLElement>('.npc-dialogue')!;
+    memoryLine.textContent = memory.text; memoryLine.dataset.narrative = 'true';
+    modal.querySelector('.arthur-memories .npc-dialogue')?.remove();
+  }
+  beginConversation('arthur');
+  if (memory) modal.querySelector('.modal-header .eyebrow')!.textContent = `ARTHUR’S PORCH · ${memory.title}`;
   if ($('buy-home')) $('buy-home').onclick = () => {
     if (!nearStoryPlace(unclePlace, player.x, player.y, player.z)) return;
     const result = buyCottage(save.story, save.economy, save.completed);
@@ -909,7 +921,7 @@ function openUncle(memoryId?: string) {
   };
   modal.querySelectorAll<HTMLButtonElement>('[data-memory]').forEach(button => button.onclick = () => {
     save.story = rememberArthur(save.story, button.dataset.memory!); persist(); openUncle(button.dataset.memory);
-    modal.querySelector<HTMLButtonElement>(`[data-memory="${button.dataset.memory}"]`)?.focus();
+    modal.querySelector<HTMLElement>('.npc-dialogue')?.focus({preventScroll:true});
   });
   modal.querySelectorAll<HTMLButtonElement>('[data-horizon]').forEach(button => button.onclick = () => openLandmarkHistory(button.dataset.horizon!));
   $('uncle-gallery').onclick = () => openGallery();
@@ -918,6 +930,8 @@ function openUncle(memoryId?: string) {
 
 function showModal(title: string, eyebrow: string, subtitle: string, content: string, view: 'menu' | 'page' = 'page') {
   if (capturing) finishShooting();
+  conversationSpeaker = undefined;
+  modal.classList.remove('conversation-dialog', 'story-dialog'); stage.classList.remove('in-conversation');
   modalView = view; keys.clear(); drag = false; audio.silence();
   modal.innerHTML = `<div class="modal-header"><div><div class="eyebrow">${esc(eyebrow)}</div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" id="close-modal" aria-label="${view === 'menu' ? 'Resume game' : 'Back to pause menu'}">${icon('close')}</button></div>${view === 'menu' ? pauseNavigation() : ''}<div class="modal-body" ${view === 'menu' ? `id="pause-panel" role="tabpanel" aria-labelledby="tab-${pauseTab}"` : ''}>${content}</div>${view === 'menu' ? '<div class="pause-footer"><div><span id="menu-progress"></span><small id="save-status"></small></div><button class="primary" id="resume">Resume <kbd>Esc</kbd></button></div>' : ''}`;
   if (!modal.open) modal.showModal();
@@ -940,6 +954,57 @@ function showModal(title: string, eyebrow: string, subtitle: string, content: st
     $(`tab-${pauseTab}`).focus({ preventScroll: true });
   }
 }
+function beginConversation(speaker: string) {
+  modalView = 'conversation';
+  modal.classList.add('conversation-dialog'); stage.classList.add('in-conversation');
+  conversationSpeaker = world.scene.getObjectByName(speakerObjectName(speaker));
+  conversationFrame = '';
+  $('close-modal').setAttribute('aria-label', 'End conversation and return to the town');
+  const line = modal.querySelector<HTMLElement>('.npc-dialogue');
+  if (!line) return;
+  const narrative = line.dataset.narrative === 'true';
+  const original = narrative ? line.textContent ?? '' : line.textContent?.replace(/^“|”$/g, '') ?? '';
+  line.tabIndex = -1;
+  line.setAttribute('aria-live', 'polite'); line.setAttribute('aria-atomic', 'true');
+  const navigation = document.createElement('div'); navigation.className = 'dialogue-navigation';
+  navigation.innerHTML = '<button class="secondary" data-dialogue-back aria-label="Previous dialogue page">←</button><span data-dialogue-count></span><button class="secondary" data-dialogue-next>Continue →</button>';
+  line.after(navigation);
+  let pages: string[] = [], page = 0;
+  const paint = () => {
+    line.textContent = narrative ? pages[page] : `“${pages[page]}”`;
+    navigation.hidden = pages.length < 2;
+    navigation.querySelector('[data-dialogue-count]')!.textContent = `${page + 1} / ${pages.length}`;
+    (navigation.querySelector('[data-dialogue-back]') as HTMLButtonElement).disabled = page === 0;
+    (navigation.querySelector('[data-dialogue-next]') as HTMLButtonElement).disabled = page === pages.length - 1;
+    audio.speak(speaker, pages[page]);
+  };
+  const say = (text: string) => { pages = dialoguePages(text); if (!pages.length) pages = ['…']; page = 0; paint(); };
+  navigation.querySelector<HTMLButtonElement>('[data-dialogue-back]')!.onclick = () => { if (page > 0) { page--; paint(); } };
+  navigation.querySelector<HTMLButtonElement>('[data-dialogue-next]')!.onclick = () => { if (page < pages.length - 1) { page++; paint(); } };
+  const topics = conversationTopics(speaker, save.story);
+  if (topics.length) {
+    const questions = document.createElement('div'); questions.className = 'conversation-questions';
+    questions.setAttribute('role', 'group'); questions.setAttribute('aria-label', 'Ask a personal question');
+    questions.innerHTML = topics.map(topic => `<button class="secondary" data-topic="${topic.id}" aria-pressed="false">${esc(topic.question)}</button>`).join('') + '<button class="secondary" data-topic="brief" aria-pressed="true">About the photographs</button>';
+    navigation.after(questions);
+    questions.querySelectorAll<HTMLButtonElement>('[data-topic]').forEach(button => button.onclick = () => {
+      questions.querySelectorAll('[data-topic]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+      say(topics.find(topic => topic.id === button.dataset.topic)?.answer ?? original);
+    });
+  }
+  // Leave the spoken words in view; fold longer briefs and porch activities.
+  const body = modal.querySelector('.modal-body')!;
+  const extras = [...body.children].filter(item => item !== line && item !== navigation && !item.classList.contains('conversation-questions') && !item.classList.contains('review-actions') && !item.matches('button.primary, .conversation-coda') && !(speaker !== 'arthur' && item.classList.contains('pause-actions')));
+  if (extras.length) {
+    const details = document.createElement('details'); details.className = 'conversation-details';
+    details.innerHTML = `<summary>${speaker === 'arthur' ? 'Stay for tea · memories, album & home' : 'Assignments & next steps'}</summary>`;
+    extras[0].before(details); extras.forEach(item => details.append(item));
+  }
+  const footer = body.querySelector('.review-actions');
+  if (footer) modal.append(footer);
+  say(original);
+}
+
 function missionCard(m: Mission) {
   const ready = missionGearReady(m, save.economy);
   return `<button class="assignment-card ${ready ? '' : 'mission-locked'}" data-mission="${m.id}"><span class="eyebrow">${icon(categoryIcon[m.category])}${mainStoryIds.includes(m.id) ? 'Main story' : 'Side assignment'} · ${m.category} · ${esc(m.location)}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>${ready ? '' : '<p class="gear-requirement">Requires 200–600 mm lens · $480 · Visit camera store →</p>'}<span class="card-footer"><span>${save.completed.includes(m.id) ? '✓ Story told' : m.shots ? `${seriesCount(m,save.series,save.completed)}/${m.shots.length} views accepted` : m.timeWindow ? esc(m.timeWindow.label) : 'Any time'}</span><span>${save.completed.includes(m.id) ? 'Replay · no extra payment' : `${m.payment ? `${money(m.payment)} · ` : ''}${m.reward} XP →`}</span></span></button>`;
@@ -996,7 +1061,8 @@ function openWorkshop() {
   const ready = !shared && save.story.reportPublished && workshopMissionIds.every(id => save.story.prints.some(p => p.missionId === id));
   const line = workshopDialogue(save.story, save.completed);
   showModal(shared ? 'A place for every voice.' : 'Ruth', 'TIDEWRIGHT WORKSHOP · RUTH, NESSA & KIT', 'The smell of timber. A kettle on the bench. Three people keeping boats afloat.', `<p class="npc-dialogue">“${esc(line)}”</p>${save.story.deerShown ? `<div class="mission-grid">${missions.filter(m => workshopMissionIds.includes(m.id) && storyMissionUnlocked(m.id, save.story, save.completed)).map(missionCard).join('')}</div>${!storyMissionUnlocked('harbor-crew',save.story,save.completed) ? '<p class="discovery-note">The crew assignment opens after both views of Ruth’s portrait and June’s woodland report. Arthur’s story continues at your own pace.</p>' : ''}<p class="discovery-note">${workshopMissionIds.filter(id => save.story.prints.some(p => p.missionId === id)).length}/2 workshop photographs printed. Bring both prints here to check names and captions together.</p>${!shared ? `<button class="primary" id="share-workshop" ${ready ? '' : 'disabled'}>Check captions and share with June</button>` : '<p>Ruth writes: “Nessa and Kit, apprentice boatbuilders. Existing harbor lane; delivery bay suggested for review.” You all sign the back of the prints. June will publish the crew’s words beside their photographs.</p>'}` : ''}<div class="review-actions"><button class="secondary" id="workshop-gallery">Visit the gallery</button><button class="primary" id="leave-workshop">Keep exploring ${icon('arrow')}</button></div>`);
-  audio.speak('boatbuilder',line); wireMissionCards();
+  beginConversation('boatbuilder');
+  wireMissionCards();
   $('leave-workshop').onclick = () => modal.close();
   $('workshop-gallery').onclick = () => openGallery();
   if ($('share-workshop')) $('share-workshop').onclick = () => {
@@ -1018,13 +1084,13 @@ function talkToNPC() {
   const before = save.discovered.length;
   save.discovered = storyDiscoveries(save.story, save.completed, discoverNPC(save.discovered, npc)); persist();
   showModal(npc.name, npc.role.toUpperCase(), `${save.discovered.length - before ? `${save.discovered.length - before} new stories added to your notebook` : 'A familiar face in Willowbrook'}`, `<p class="npc-dialogue">“${esc(npc.missions.some(id => storyMissionUnlocked(id, save.story, save.completed)) ? localStoryDialogue(npc.id, save.story, save.completed, npc.dialogue) : 'Welcome to Willowbrook. Settle in and show Arthur your first photograph. We’ll have work for you as the town gets to know you.')}”</p>${npc.id === 'editor' && !save.story.reportPublished && save.completed.includes('news-townhall') && save.completed.includes('news-boundary') ? '<div class="pause-actions"><button class="primary" id="deliver-report">Leave both photographs with June</button></div>' : ''}<div class="mission-grid">${missions.filter(m => (npc.missions as readonly string[]).includes(m.id) && storyMissionUnlocked(m.id, save.story, save.completed)).map(missionCard).join('')}</div><div class="review-actions"><span class="discovery-note">These stories stay in your notebook for later.</span><button class="primary" id="leave-npc">Keep exploring ${icon('arrow')}</button></div>`);
-  audio.speak(npc.id, modal.querySelector('.npc-dialogue')?.textContent ?? '');
+  beginConversation(npc.id);
   wireMissionCards(); $('leave-npc').onclick = () => modal.close();
   if ($('deliver-report')) $('deliver-report').onclick = () => {
     if (nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id))?.id !== 'editor') return;
     save.story = publishReport(save.story, save.completed); persist();
     showModal('The whole picture', 'JUNE · THE WILLOWBROOK PAPER', 'Later, after June checks the register and asks Vale for a response.', `<p class="npc-dialogue">“${esc(localStoryDialogue('editor', save.story, save.completed, ''))}”</p><p>The new edition is on the noticeboard in the square. The woodland planning notice now lists the public hearing. Mara has news of Arthur’s bear.</p><button class="primary" id="report-next">Back to Arthur’s story ${icon('arrow')}</button>`);
-    audio.speak('editor', localStoryDialogue('editor', save.story, save.completed, ''));
+    beginConversation('editor');
     $('report-next').onclick = openStory;
   };
 }
@@ -1269,7 +1335,7 @@ $('menu-button').onclick = () => openPauseMenu();
 $('help-button').onclick = openHelp;
 modal.addEventListener('cancel', e => { e.preventDefault(); leaveModal(); });
 modal.addEventListener('click', e => { if (e.target === modal) { const r = modal.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) leaveModal(); } });
-modal.addEventListener('close', () => { if (!modal.open && openingStep === null) audio.stopSpeaking(); keys.clear(); drag = false; renderer.domElement.focus({ preventScroll: true }); });
+modal.addEventListener('close', () => { if (!modal.open) { conversationSpeaker = undefined; modal.classList.remove('conversation-dialog', 'story-dialog'); stage.classList.remove('in-conversation'); } if (!modal.open && openingStep === null) audio.stopSpeaking(); keys.clear(); drag = false; renderer.domElement.focus({ preventScroll: true }); });
 document.addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const key = e.key.toLowerCase();
@@ -1404,13 +1470,22 @@ function animate(now: number) {
   if (now - lastMeterTime > 150) {
     updateExposure(); if (cameraMode) updateFocus(); renderer.shadowMap.needsUpdate = true; lastMeterTime = now;
   }
-  if (cameraMode && openingStep === null) viewfinderRenderer.render(renderer, world.scene, camera, { aperture: settings.aperture, focalLength, focusDistance, filter: settings.filter, gradPosition: settings.gradPosition });
+  if (conversationSpeaker && modal.open) {
+    const { width, height } = stage.getBoundingClientRect();
+    const frame = `${width}-${height}`;
+    if (frame !== conversationFrame) {
+      world.scene.updateMatrixWorld(true);
+      frameConversation(conversationCamera, conversationSpeaker, width, height, world.solids);
+      conversationFrame = frame;
+    }
+    renderer.render(world.scene, conversationCamera);
+  } else if (cameraMode && openingStep === null) viewfinderRenderer.render(renderer, world.scene, camera, { aperture: settings.aperture, focalLength, focusDistance, filter: settings.filter, gradPosition: settings.gradPosition });
   else renderer.render(world.scene, camera);
-  if (!reducedMotion.matches && viewfinder.transitioning && openingStep === null) {
+  if (!conversationSpeaker && !reducedMotion.matches && viewfinder.transitioning && openingStep === null) {
     cameraView.update(viewfinder.progress, camera.aspect);
     renderer.autoClear = false; renderer.clearDepth(); renderer.render(cameraView.scene, cameraView.camera); renderer.autoClear = true;
   }
-  if (!reducedMotion.matches && (tripod.transitioning || tripodSettle > 0)) {
+  if (!conversationSpeaker && !reducedMotion.matches && (tripod.transitioning || tripodSettle > 0)) {
     tripodView.update(tripod.progress, tripod.transitioning ? 1 : tripodSettle / 0.18, camera.aspect);
     renderer.autoClear = false; renderer.clearDepth(); renderer.render(tripodView.scene, tripodView.camera); renderer.autoClear = true;
   }
