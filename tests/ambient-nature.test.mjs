@@ -8,7 +8,7 @@ const settings={filter:'none',shutter:1/125};
 test('ambient vegetation leaves trails clear and rabbits remain on dry walkable ground',()=>{
   const world=createWorld(),grass=world.scene.getObjectByName('wind-meadow-grass'),matrix=new THREE.Matrix4(),position=new THREE.Vector3(),batches=[];
   grass.traverse(mesh=>{if(mesh.isInstancedMesh)batches.push(mesh);});
-  assert.ok(batches.reduce((count,mesh)=>count+mesh.count,0)>=5000);
+  assert.equal(batches.reduce((count,mesh)=>count+mesh.count,0),19500);
   for(const mesh of batches)for(let i=0;i<mesh.count;i++){mesh.getMatrixAt(i,matrix);position.setFromMatrixPosition(matrix);assert.ok(distanceToTrail(position.x,position.z)>2.59);assert.ok(terrainHeight(position.x,position.z)>=0);}
   for(let time=0;time<120;time+=0.7){world.setTime(15);world.update(time,settings);for(let i=0;i<7;i++){const rabbit=world.scene.getObjectByName(`meadow-rabbit-${i}`);assert.ok(world.canWalk(rabbit.position.x,rabbit.position.z),`rabbit ${i} leaves dry ground`);assert.ok(rabbit.position.y>=terrainHeight(rabbit.position.x,rabbit.position.z)-0.001);}}
 });

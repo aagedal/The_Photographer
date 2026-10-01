@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { createWorld } from '../src/world.ts';
 import { terrainHeight } from '../src/terrain.ts';
+import { reflectionRefreshInterval } from '../src/render-quality.ts';
+import { createGpuTimer } from '../src/gpu-timer.ts';
 const world=createWorld();
 const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
 renderer.setSize(1200,750);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
@@ -27,6 +29,7 @@ const views: {name:string;hour:number;position:[number,number,number];target:[nu
   {name:'Tree bases · hillside',hour:15,position:[hillTree.x+2.5,terrainHeight(hillTree.x+2.5,hillTree.z+3)+0.7,hillTree.z+3],target:[hillTree.x,terrainHeight(hillTree.x,hillTree.z)+0.3,hillTree.z]},
   {name:'Lakeside',hour:15,position:[-15,2,20],target:[-6,2,-10]},
   {name:'Meadow',hour:15,position:[-62,terrainHeight(-62,54)+1.7,54],target:[-74,terrainHeight(-74,61)+0.7,61]},
+  {name:'Grass close-up',hour:15,position:[-70,terrainHeight(-70,54)+0.45,54],target:[-73,terrainHeight(-73,57)+0.3,57]},
   {name:'Garden',hour:16,position:[-27,1.7,34],target:[-24,1.5,25]},
   {name:'Harbor',hour:17,position:[45,2.5,76],target:[45,2.2,86]},
   {name:'Arthur',hour:17,position:[-23,terrainHeight(-23,55)+1.7,55],target:[-22,terrainHeight(-23,49)+1.8,52]},
@@ -37,26 +40,72 @@ let time=24,animated=false;
 function render(){world.update(time,{filter:'none',shutter:1/125});renderer.info.reset();renderer.render(world.scene,camera);document.querySelector('#status')!.textContent=`${renderer.info.render.calls} draw calls · ${renderer.info.render.triangles.toLocaleString()} triangles · t=${time.toFixed(2)} s`;}
 function select(view:typeof views[number]){world.setTime(view.hour);camera.position.set(...view.position);camera.lookAt(...view.target);render();}
 views.forEach(view=>{const button=document.createElement('button');button.textContent=view.name;button.onclick=()=>select(view);document.querySelector('#views')!.append(button);});
+const grass=world.scene.getObjectByName('wind-meadow-grass')!;
+document.querySelector<HTMLButtonElement>('#grass')!.onclick=event=>{
+  grass.visible=!grass.visible;(event.target as HTMLButtonElement).textContent=grass.visible?'Grass: on':'Grass: off';render();
+};
+document.querySelector<HTMLButtonElement>('#lens')!.onclick=event=>{
+  camera.fov=camera.fov===58?18:58;camera.updateProjectionMatrix();
+  (event.target as HTMLButtonElement).textContent=camera.fov===58?'Lens: wide':'Lens: telephoto';render();
+};
 document.querySelector<HTMLButtonElement>('#animate')!.onclick=event=>{animated=!animated;(event.target as HTMLButtonElement).textContent=animated?'Pause':'Animate';};
 document.querySelector<HTMLButtonElement>('#measure')!.onclick=async()=>{
   animated=false;
   document.querySelector<HTMLButtonElement>('#animate')!.textContent='Animate';
   const button=document.querySelector<HTMLButtonElement>('#measure')!;button.disabled=true;
-  const lines=['Average submitted work over 60 live frames at the selected viewpoint (includes reflections).'];
+  const percentile=(samples:number[],fraction:number)=>{
+    if(!samples.length)return 'unavailable';
+    const sorted=[...samples].sort((a,b)=>a-b);return `${sorted[Math.min(sorted.length-1,Math.floor(sorted.length*fraction))].toFixed(2)} ms`;
+  };
+  const lines=[`60 samples at 1200 × 750 · ${grass.visible?'grass on':'grass off'} · ${camera.fov}° FOV · includes reflection/shadow passes.`,
+    'Reflection/shadow workload uses a fixed 60 Hz simulation; timings are measured on this device.',
+    'CPU measures render submission, not GPU completion. Frame intervals include display scheduling.'];
+  document.querySelectorAll<HTMLButtonElement>('#views button,#grass,#lens,#animate').forEach(control=>control.disabled=true);
+  let timer=createGpuTimer(renderer.getContext() as WebGL2RenderingContext);
   renderer.shadowMap.autoUpdate=false;
-  for(const [label,interval,shadows] of [['Balanced',0,true],['Mobile balanced',66,true],['Performance',100,false]] as const){
+  try {
+  for(const [label,interval,shadows] of [
+    ['Full refresh reference',0,true],
+    ['Balanced',reflectionRefreshInterval(false,false),true],
+    ['Mobile balanced',reflectionRefreshInterval(false,true),true],
+    ['Performance',reflectionRefreshInterval(true,false),false],
+  ] as const){
+    // Never attribute delayed queries from the preceding profile to this one.
+    timer.dispose();timer=createGpuTimer(renderer.getContext() as WebGL2RenderingContext);
     renderer.shadowMap.enabled=shadows;world.prepareRender();
     let calls=0,triangles=0;
-    for(let frame=0;frame<60;frame++){
-      world.update(time+frame/60,{filter:'none',shutter:1/125});world.prepareRender(frame*1000/60,interval);
-      renderer.shadowMap.needsUpdate=frame%10===0;renderer.info.reset();renderer.render(world.scene,camera);
-      calls+=renderer.info.render.calls;triangles+=renderer.info.render.triangles;
-      if(frame%5===4)await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+    const cpu:number[]=[],gpu:number[]=[],frames:number[]=[];
+    // Compile programs and populate reflection textures before measuring.
+    for(let warm=0;warm<6;warm++){
+      world.update(time,{filter:'none',shutter:1/125});renderer.shadowMap.needsUpdate=true;renderer.render(world.scene,camera);
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
     }
-    lines.push(`${label}: ${Math.round(calls/60)} draw calls · ${Math.round(triangles/60).toLocaleString()} triangles`);
+    timer.poll();
+    let previousFrame=performance.now();
+    for(let frame=0;frame<60;frame++){
+      const now=await new Promise<number>(resolve=>requestAnimationFrame(resolve));
+      frames.push(now-previousFrame);previousFrame=now;
+      world.update(time+frame/60,{filter:'none',shutter:1/125});world.prepareRender(frame*1000/60,interval);
+      renderer.shadowMap.needsUpdate=frame%10===0;renderer.info.reset();
+      gpu.push(...timer.poll());timer.begin();const start=performance.now();
+      try{renderer.render(world.scene,camera);}finally{timer.end();}
+      cpu.push(performance.now()-start);
+      calls+=renderer.info.render.calls;triangles+=renderer.info.render.triangles;
+    }
+    for(let drain=0;drain<8;drain++){
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));gpu.push(...timer.poll());
+    }
+    lines.push(`${label}: ${Math.round(calls/60)} draw calls · ${Math.round(triangles/60).toLocaleString()} triangles`,
+      `  CPU p50 / p95: ${percentile(cpu,0.5)} / ${percentile(cpu,0.95)}`,
+      `  GPU p50 / p95: ${percentile(gpu,0.5)} / ${percentile(gpu,0.95)} (${gpu.length} samples)`,
+      `  Frame interval p50 / p95: ${percentile(frames.slice(1),0.5)} / ${percentile(frames.slice(1),0.95)}`);
+    document.querySelector('#workload')!.textContent=lines.join('\n');
   }
-  document.querySelector('#workload')!.textContent=lines.join('\n');
+  } finally {
+  timer.dispose();
   world.prepareRender();renderer.shadowMap.enabled=true;renderer.shadowMap.autoUpdate=true;render();
+  document.querySelectorAll<HTMLButtonElement>('#views button,#grass,#lens,#animate').forEach(control=>control.disabled=false);
   button.disabled=false;
+  }
 };
 let previous=performance.now();function frame(now:number){if(animated){time+=Math.min(0.05,(now-previous)/1000);render();}previous=now;requestAnimationFrame(frame);}requestAnimationFrame(frame);select(views[0]);

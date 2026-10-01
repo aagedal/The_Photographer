@@ -5,6 +5,7 @@ import { creekDistance } from './creek.ts';
 import { regionalLandmarks } from './landmarks.ts';
 import { isActiveHour } from './life.ts';
 import { partitionScenery } from './scenery-batches.ts';
+import { partitionGrass, GRASS_REFERENCE_PROJECTION } from './grass-detail.ts';
 
 const seed = (n: number) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
 const TAU = Math.PI * 2;
@@ -16,14 +17,25 @@ export function createAmbientNature(scene: THREE.Scene, canWalk: (x: number, z: 
   const grassMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, side: THREE.DoubleSide });
   grassMaterial.onBeforeCompile = shader => {
     shader.uniforms.natureTime = wind;
-    shader.vertexShader = 'uniform float natureTime;\n' + shader.vertexShader;
+    shader.vertexShader = 'uniform float natureTime;\nattribute float grassRank;\nvarying float grassCoverage;\n' + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
       vec3 meadowOrigin = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
       float gust = sin(natureTime * 1.3 + meadowOrigin.x * 0.19 + meadowOrigin.z * 0.13);
-      transformed.x += gust * position.y * position.y * 0.24;
-      transformed.z += sin(natureTime * 0.9 + meadowOrigin.z * 0.22) * position.y * position.y * 0.12;`);
+      transformed.x += gust * position.y * position.y * 0.10;
+      transformed.z += sin(natureTime * 0.9 + meadowOrigin.z * 0.22) * position.y * position.y * 0.05;
+      float grassDistance = length((modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz)
+        * ${GRASS_REFERENCE_PROJECTION.toFixed(8)} / max(0.001, projectionMatrix[1][1]);
+      float density = (1.0 - smoothstep(18.0, 42.0, grassDistance)) * 0.65
+        + (1.0 - smoothstep(42.0, 80.0, grassDistance)) * 0.25
+        + (1.0 - smoothstep(80.0, 120.0, grassDistance)) * 0.1;
+      grassCoverage = density <= 0.0 ? 0.0 : smoothstep(grassRank - 0.03, grassRank + 0.03, density);`);
+    shader.fragmentShader = 'varying float grassCoverage;\n' + shader.fragmentShader;
+    // Screen-door coverage avoids transparent layers and softens density changes.
+    shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+      float grassDither = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+      if (grassCoverage <= grassDither) discard;`);
   };
-  grassMaterial.customProgramCacheKey = () => 'meadow-wind-v1';
+  grassMaterial.customProgramCacheKey = () => 'meadow-wind-detail-v2';
   // Three tapered blades per tuft, sharing one instanced draw call.
   const bladeVertices: number[] = [];
   for (let i = 0; i < 3; i++) {
@@ -34,9 +46,9 @@ export function createAmbientNature(scene: THREE.Scene, canWalk: (x: number, z: 
   const sites: [number, number][] = [];
   // Keep pavement, buildings, water and assignment sightlines clear. Plants
   // are decorative and never introduce hidden collision boxes on walking routes.
-  for (let i = 0; i < 20000 && sites.length < 6500; i++) {
-    const x = i < 2400 ? -86 + seed(i + 8200) * 35 : i < 3800 ? 52 + seed(i + 8200) * 38 : -215 + seed(i + 8200) * 430;
-    const z = i < 2400 ? 36 + seed(i + 19200) * 32 : i < 3800 ? -25 + seed(i + 19200) * 52 : -220 + seed(i + 19200) * 310;
+  for (let i = 0; i < 60000 && sites.length < 19500; i++) {
+    const x = i < 7200 ? -86 + seed(i + 8200) * 35 : i < 11400 ? 52 + seed(i + 8200) * 38 : -215 + seed(i + 8200) * 430;
+    const z = i < 7200 ? 36 + seed(i + 19200) * 32 : i < 11400 ? -25 + seed(i + 19200) * 52 : -220 + seed(i + 19200) * 310;
     const town = x > -46 && x < 58 && z > -42 && z < 79;
     if (town || z > coastline(x)-13 || terrainHeight(x,z)<0 || distanceToTrail(x,z)<2.6 || creekDistance(x,z)<3 || !canWalk(x,z)) continue;
     if (Math.hypot((x-76)/17,(z+54)/14)<1 || regionalLandmarks.some(p=>Math.hypot(x-p.x,z-p.z)<22)) continue;
@@ -46,10 +58,10 @@ export function createAmbientNature(scene: THREE.Scene, canWalk: (x: number, z: 
   const colour = new THREE.Color();
   sites.forEach(([x,z],i) => {
     dummy.position.set(x,terrainHeight(x,z)-0.035,z); dummy.rotation.set(0,seed(i+93)*TAU,0);
-    const size = 0.25+seed(i+85)*0.65; dummy.scale.set(0.7+seed(i)*0.8,size,0.7+seed(i)*0.8); dummy.updateMatrix(); grass.setMatrixAt(i,dummy.matrix);
+    const size = 0.12+seed(i+85)*0.23; dummy.scale.set(0.7+seed(i)*0.8,size,0.7+seed(i)*0.8); dummy.updateMatrix(); grass.setMatrixAt(i,dummy.matrix);
     colour.set(i%3===0?'#b5ad71':i%3===1?'#77945a':'#8fa766'); grass.setColorAt(i,colour);
   });
-  group.add(partitionScenery(grass, 48));
+  group.add(partitionGrass(grass));
   const shrub = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),new THREE.MeshStandardMaterial({color:'#ffffff',roughness:1,flatShading:true}),180);
   shrub.name='woodland-understory'; shrub.receiveShadow=true; shrub.castShadow=true;
   for (let i=0;i<180;i++) {

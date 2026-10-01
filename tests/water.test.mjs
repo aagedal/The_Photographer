@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { createWorld } from '../src/world.ts';
 import { terrainHeight } from '../src/terrain.ts';
 import { isolateReflections } from '../src/water.ts';
+import { reflectionRefreshInterval } from '../src/render-quality.ts';
 
 test('fish stay under the surface and above the basin, with continuous rewindable swimming', () => {
   const world = createWorld(), fish = [];
@@ -61,4 +62,20 @@ test('mobile reflections refresh on schedule while every capture sample stays cu
   controller.prepare();surface.onBeforeRender();surface.onBeforeRender();assert.equal(renders,4);
   draw(68);assert.equal(renders,5,'live view refreshes after shutter restoration');
   draw(0);assert.equal(renders,6,'a restarted clock never freezes the reflection');
+});
+
+test('desktop reflections refresh at 30 Hz and captures bypass every live quality interval', () => {
+  assert.equal(reflectionRefreshInterval(false, false), 33);
+  assert.equal(reflectionRefreshInterval(false, true), 66);
+  assert.equal(reflectionRefreshInterval(true, false), 100);
+  for (const interval of [33, 66, 100]) {
+    const surface = new THREE.Mesh(); let renders = 0;
+    surface.onBeforeRender = () => renders++;
+    const controller = isolateReflections([surface]);
+    controller.prepare(0, interval); surface.onBeforeRender();
+    controller.prepare(16, interval); surface.onBeforeRender(); assert.equal(renders, 1);
+    controller.prepare(interval, interval); surface.onBeforeRender(); assert.equal(renders, 2);
+    controller.prepare(); surface.onBeforeRender(); surface.onBeforeRender(); assert.equal(renders, 4);
+    controller.prepare(interval + 1, interval); surface.onBeforeRender(); assert.equal(renders, 5);
+  }
 });

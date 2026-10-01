@@ -10,6 +10,8 @@ import { exposureSamples, cameraShake, handheldWobble } from './motion.ts';
 import { createPhotoRenderer } from './photo-renderer.ts';
 import { createViewfinderRenderer } from './depth-of-field.ts';
 import { FocusState, focusDistanceAt, focusPosition, focusLabel, subjectInFocus } from './focus.ts';
+import { createFocusPicker } from './focus-picker.ts';
+import { reflectionRefreshInterval } from './render-quality.ts';
 import { filterCatalog, filterLabel, isFilterGear, gradientPosition, type FilterId } from './filters.ts';
 import { DAY_SECONDS, WorldClock, sampleSky, formatTime, missionAmbientEV, missionReferenceHour, isMissionTime, wrapHour } from './environment.ts';
 import { gearCatalog, money, normalizeCompleted, normalizeEconomy, ownsGear, equippedFilter, balance, earnedMoney, purchaseGear, completeMission, captureCount, focalRange, zoomFocal, fovForFocal, CaptureSequence, normalizeLens, type LensId, type Economy, type GearId } from './economy.ts';
@@ -234,6 +236,7 @@ renderer.domElement.classList.add('world'); renderer.domElement.tabIndex = 0;
 renderer.domElement.setAttribute('aria-label', 'Game world. WASD to walk, drag to look, Space to photograph.');
 stage.prepend(renderer.domElement);
 const world = createWorld();
+const focusPicker = createFocusPicker(world.scene);
 world.bearEncounter.bites = normalizeBearBites(save.bearBites);
 world.collectibles.setFound(save.collection.found);
 const photoRenderer = createPhotoRenderer();
@@ -742,12 +745,7 @@ function autofocus(frame: Framing): number {
   }
   // Looking away from the assignment focuses on the surface at the reticle.
   raycaster.setFromCamera(new THREE.Vector2(), camera); raycaster.far = camera.far;
-  const hit = raycaster.intersectObjects(world.scene.children, true).find(hit => {
-    if (!(hit.object instanceof THREE.Mesh)) return false;
-    for (let object: THREE.Object3D | null = hit.object; object; object = object.parent) if (!object.visible) return false;
-    const materials = Array.isArray(hit.object.material) ? hit.object.material : [hit.object.material];
-    return materials.some(material => material.depthWrite && material.opacity >= 0.9);
-  });
+  const hit = focusPicker.pick(raycaster);
   return hit ? Math.max(0.2, -hit.point.clone().applyMatrix4(camera.matrixWorldInverse).z) : 1e6;
 }
 
@@ -1646,7 +1644,7 @@ function animate(now: number) {
   if (now - lastMeterTime > 150) {
     updateExposure(); if (cameraMode) updateFocus(); renderer.shadowMap.needsUpdate = true; lastMeterTime = now;
   }
-  world.prepareRender(now, lowQuality ? 100 : mobileGraphics.matches ? 66 : 0);
+  world.prepareRender(now, reflectionRefreshInterval(lowQuality, mobileGraphics.matches));
   if (conversationSpeaker && modal.open) {
     const { width, height } = stage.getBoundingClientRect();
     const frame = `${width}-${height}`;
