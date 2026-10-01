@@ -16,6 +16,7 @@ import { regionalLandmarks } from './landmarks.ts';
 import type { DeerMood, WildlifeVisitor } from './wildlife.ts';
 import { createCameraStore } from './camera-store.ts';
 import { createStoryPlaces } from './story-world.ts';
+import { createHarbor } from './harbor.ts';
 import { sampleSky } from './environment.ts';
 import type { Mission } from './missions.ts';
 import { defaultStudioRig, lightNames, lightPosition, type StudioRig } from './lighting.ts';
@@ -25,6 +26,7 @@ export interface World {
   deerMood: (time: number) => DeerMood;
   opening: ReturnType<typeof createOpening>;
   storyPlaces: ReturnType<typeof createStoryPlaces>;
+  harbor: ReturnType<typeof createHarbor>;
   scene: THREE.Scene; subjects: Map<string, THREE.Object3D>; solids: THREE.Object3D[];
   update: (time: number, settings: { filter: string; shutter: number }, activityHour?: number) => void;
   setTime: (hour: number) => void;
@@ -176,7 +178,7 @@ export function createWorld(): World {
       if (Math.max(Math.abs(x), Math.abs(z)) < 52) x += x < 0 ? -55 : 55;
     }
     // Clear the trails, ridge viewpoint, and bird sightline.
-    if ((x > -46 && x < -28 && z > -51 && z < -32) || (x > -96 && x < -61 && z > -102 && z < -72) || (x > -2 && x < 10 && z > -43 && z < -27) || (x > -30 && x < 0 && z > 27 && z < 57) || (x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || regionalLandmarks.some(p => Math.hypot(x - p.x, z - p.z) < (p.id === 'viaduct' ? 65 : 38) || Math.hypot(x - p.viewpoint[0], z - p.viewpoint[1]) < 16) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 240 + seed(i) * 12; z = -240 + seed(i + 9) * 315; }
+    if ((x > -46 && x < -28 && z > -51 && z < -32) || (x > -96 && x < -61 && z > -102 && z < -72) || (x > -2 && x < 10 && z > -43 && z < -27) || (x > -30 && x < 0 && z > 27 && z < 57) || (x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || (x > 33 && x < 57 && z > 76 && z < 96) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || regionalLandmarks.some(p => Math.hypot(x - p.x, z - p.z) < (p.id === 'viaduct' ? 65 : 38) || Math.hypot(x - p.viewpoint[0], z - p.viewpoint[1]) < 16) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 240 + seed(i) * 12; z = -240 + seed(i + 9) * 315; }
     const ground = terrainHeight(x, z);
     const size = 0.8 + seed(i + 13) * 1.3;
     dummy.position.set(x, ground + size * 1.5, z); dummy.scale.set(0.35 * size, 3 * size, 0.35 * size); dummy.rotation.y = 0; dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
@@ -395,7 +397,8 @@ export function createWorld(): World {
   const maker = person(28, -26, '#b78568', scene, 5);
   box(0, 1.04, 0.225, 0.42, 0.57, 0.04, '#77917c', maker.group); subjects.set('Pottery maker', maker.focus);
   box(32, 0.6, -26, 1.1, 1.2, 1.1, '#e2d8be');
-  const vase = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.75, 8), material('#b47759')); vase.position.set(32, 1.55, -26); vase.castShadow = true; scene.add(vase); subjects.set('Terracotta vase', vase);
+  const vaseProfile = [[.2,-.375],[.28,-.34],[.35,-.19],[.36,-.08],[.3,.08],[.21,.19],[.17,.27],[.18,.34],[.23,.375],[.195,.375],[.15,.34],[.14,.27],[.18,.19],[.27,.08],[.32,-.08],[.3,-.19],[.24,-.3],[.02,-.3],[.02,-.375]];
+  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseProfile.map(([r,y])=>new THREE.Vector2(r,y)),48), material('#b47759')); vase.position.set(32, 1.55, -26); vase.castShadow = vase.receiveShadow = true; scene.add(vase); subjects.set('Terracotta vase', vase);
   const studioLights = lightNames.map(name => {
     const equipment = new THREE.Group(); equipment.name = `studio-${name}-equipment`; scene.add(equipment);
     const stand = box(0, 1.4, 0, 0.06, 2.8, 0.06, '#546458', equipment);
@@ -419,6 +422,7 @@ export function createWorld(): World {
   const townLife = createTownLife({ scene, solids, box, sphere, person, house, batchMeshes });
   const store = createCameraStore(scene, solids);
   const storyPlaces = createStoryPlaces(scene, solids);
+  const harbor = createHarbor(scene, solids, subjects);
   subjects.set('Woodland survey notice', storyPlaces.boundaryFocus);
   const regions = createRegionalLandmarks(scene, solids, subjects);
   const opening = createOpening(scene);
@@ -471,6 +475,9 @@ export function createWorld(): World {
   }
   for (const trail of trails) for (let i = 1; i < trail.length; i++) {
     const [x, z] = trail[i], y = terrainHeight(x, z);
+    // The harbor's short lanes use the workshop board; tall trail signs would
+    // stand between the crew and their portrait viewpoints.
+    if (x > 33 && x < 55 && z > 74 && z < 92) continue;
     box(x + 2.4, y + 1.1, z, 0.12, 2.2, 0.12, '#80694b');
     box(x + 2.4, y + 1.85, z, 1.35, 0.36, 0.13, '#e0cd99');
     box(x + 2.8, y + 1.85, z + 0.075, 0.24, 0.06, 0.03, '#647754');
@@ -558,7 +565,7 @@ export function createWorld(): World {
   batchMeshes(scene, new Set(solids));
   const staticSolidCount = solids.length;
   return {
-    opening, storyPlaces, scene, subjects, solids, traffic: townLife.traffic,
+    opening, storyPlaces, harbor, scene, subjects, solids, traffic: townLife.traffic,
     reactWildlife(time, visitor) { return townLife.reactWildlife(time, sky.hour, visitor, (x, z) => this.canWalk(x, z)); },
     deerMood: townLife.deerMood,
     npcPosition(id) { const p = locals.get(id)!.group.position; return [p.x, p.y, p.z]; },
@@ -590,6 +597,7 @@ export function createWorld(): World {
       runner.arms.forEach((arm, i) => { arm.rotation.x = -Math.sin(time * 9 + i * Math.PI) * 0.5; });
       townLife.update(time, poseHour);
       regions.update(time);
+      harbor.update(time);
       solids.splice(staticSolidCount, solids.length - staticSolidCount, ...townLife.dynamicSolids());
       coast.update(time, settings.filter, sky.daylight);
       bird.rotation.y = Math.sin(time * 0.9) * 0.32; birdHead.rotation.y = Math.sin(time * 1.7) * 0.25;
@@ -604,7 +612,7 @@ export function createWorld(): World {
       if (Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4) return false;
       if (z > coastline(x) - 1.2 && !opening.onDock(x, z)) return false;
       if (Math.hypot((x - 76) / 14, (z + 54) / 11) < 1) return false;
-      if (regions.blocksWalking(x, z)) return false;
+      if (regions.blocksWalking(x, z) || harbor.blocksWalking(x, z)) return false;
       if (creekDistance(x, z) < 1.08 || townLife.blocksWalking(x, z) || store.blocksWalking(x, z) || storyPlaces.blocksWalking(x, z)) return false;
       // The jetty is a narrow walkable exception inside the lake boundary.
       return !blockers.some(b => Math.abs(x - b.x) < b.w / 2 + 0.25 && Math.abs(z - b.z) < b.d / 2 + 0.25 && !(b.w === 28 && Math.abs(x) < 1.25 && z > 3.5));

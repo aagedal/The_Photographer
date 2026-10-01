@@ -11,8 +11,9 @@ export interface Story {
   version: 1; investigationVersion: 0 | 1; reportPublished: boolean; memories: string[]; deerShown: boolean; reconciled: boolean; exhibition: boolean;
   prints: GalleryPrint[]; day: number; home: 'room' | 'cottage'; rentArrears: number;
   legacyKnown: string[];
+  workshopMet: boolean; workshopShared: boolean;
 }
-export const freshStory = (): Story => ({ version: 1, investigationVersion: 1, reportPublished: false, memories: [], deerShown: false, reconciled: false, exhibition: false, prints: [], day: 1, home: 'room', rentArrears: 0, legacyKnown: [] });
+export const freshStory = (): Story => ({ version: 1, investigationVersion: 1, reportPublished: false, memories: [], deerShown: false, reconciled: false, exhibition: false, prints: [], day: 1, home: 'room', rentArrears: 0, legacyKnown: [], workshopMet: false, workshopShared: false });
 const integer = (raw: unknown, fallback = 0) => typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, Math.min(10000000, Math.floor(raw))) : fallback;
 export function normalizeStory(raw: unknown, completed: string[], known: string[] = []): Story {
   const data = raw && typeof raw === 'object' ? raw as Partial<Story> : {};
@@ -30,12 +31,16 @@ export function normalizeStory(raw: unknown, completed: string[], known: string[
   story.day = Math.max(1, integer(data.day, 1));
   story.home = data.home === 'cottage' ? 'cottage' : 'room';
   story.rentArrears = integer(data.rentArrears);
+  story.workshopMet = data.workshopMet === true || completed.includes('harbor-portrait');
+  story.workshopShared = data.workshopShared === true && story.reportPublished && workshopMissionIds.every(id => story.prints.some(p => p.missionId === id));
   return story;
 }
 export const mainStoryIds = ['intro-deer', 'wedding-1', 'wedding-2', 'sports-1', 'news-townhall', 'news-boundary', 'nature-bear'];
 export function storyMissionUnlocked(id: string, story: Story, completed: string[]) {
   if (completed.includes(id) || story.legacyKnown.includes(id)) return true;
   switch (id) {
+    case 'harbor-portrait': return story.deerShown && story.workshopMet;
+    case 'harbor-crew': return story.deerShown && story.workshopMet && story.reportPublished && completed.includes('harbor-portrait');
     case 'horizon-light': case 'horizon-stars': case 'horizon-stone': case 'horizon-wind': return story.deerShown;
     case 'intro-deer': return true;
     case 'nature-1': return completed.includes('intro-deer');
@@ -65,6 +70,7 @@ export function storyDiscoveries(story: Story, completed: string[], known: strin
   const objective = storyObjective(story, completed);
   const ids = [...known];
   if (story.deerShown) ids.push(...regionalLandmarks.map(place => place.mission));
+  if (story.workshopMet) ids.push(...workshopMissionIds);
   if ('missionId' in objective && objective.missionId && storyMissionUnlocked(objective.missionId, story, completed)) ids.push(objective.missionId);
   if (completed.includes('intro-deer')) ids.push('nature-1');
   // Older notebooks can take the new commission without losing their bear route.
@@ -120,6 +126,7 @@ export function rememberArthur(story: Story, id: string): Story {
 }
 export function localStoryDialogue(id: string, story: Story, completed: string[], fallback: string): string {
   if (id === 'editor') {
+    if (story.workshopShared) return 'Ruth checked the captions with her apprentices. Their proposal for a delivery bay will sit beside the woodland photographs in the next edition. It still needs costing and an access study. Now the hearing can ask how to keep both the path and the harbor working.';
     if (story.reportPublished) return 'The planning register confirmed the route; Vale says the meeting was preliminary. We printed both accounts and your photographs. The council has paused the proposal for an open hearing. People can ask their own questions now. That is what a local paper is for.';
     if (completed.includes('news-boundary')) return 'You have the meeting and the marked route. Leave both photographs with me and I will compare them with the public register, then ask Vale for a response. Readers need more than a suspicious window. They need to know what could change on their doorstep.';
     if (completed.includes('news-townhall')) return 'The photograph shows a meeting, not what they agreed. The planning register mentions an access road across the northern footpath. Photograph the survey boundary from the public trail. Let us find out what the proposal would change before we write the headline.';
@@ -130,6 +137,23 @@ export function localStoryDialogue(id: string, story: Story, completed: string[]
   if (id === 'coach' && completed.includes('sports-1')) return 'That picture is on our appeal poster now. Arthur kept those ridge steps safe for years. When he cannot get up there, we can do the carrying.';
   if (id === 'planner' && completed.includes('wedding-2')) return 'My father has asked for a copy of the family picture. He pretended he did not want one. Thank you for leaving room for him.';
   return fallback;
+}
+
+export const workshopMissionIds = ['harbor-portrait', 'harbor-crew'];
+export function meetWorkshop(story: Story): Story {
+  return story.deerShown && !story.workshopMet ? { ...story, workshopMet: true } : story;
+}
+export function shareWorkshop(story: Story): Story {
+  return story.workshopMet && story.reportPublished && workshopMissionIds.every(id => story.prints.some(p => p.missionId === id))
+    ? { ...story, workshopShared: true } : story;
+}
+export function workshopDialogue(story: Story, completed: string[]): string {
+  if (!story.deerShown) return 'Arthur’s family? He used to mend our ferry steps. Go and show him your first photograph. When you have settled in, come back. There is always another boat to mend.';
+  if (story.workshopShared) return 'Nessa says you made us look like people who know what they are doing. We do, mostly. June has our captions and the sketch now. The delivery bay may not work; we need someone to cost it. But we can go to the hearing with a question of our own, instead of waiting to be spoken for. Take Arthur a hello from all three of us.';
+  if (completed.includes('harbor-crew')) return 'That is all of us, and the boat. Kit wanted to be named as an apprentice, not a helper. Print both pictures and bring them here. We will check the names and captions together before June runs them. It is our work; we ought to have a say in how it is described.';
+  if (story.reportPublished && completed.includes('harbor-portrait')) return 'I read June’s report. I am glad the path is still open. Nessa asked why we cannot unload by the harbor lane instead. Kit drew a turning space on the back of a receipt. It needs checking, but it is worth asking. Would you photograph all three of us with the boat? We want people to see who will have to make either plan work.';
+  if (completed.includes('harbor-portrait')) return 'You showed the work and then came closer to see me. Thank you. The road would make deliveries easier; it would also cut the path Arthur maintained. I do not want to lose one part of home to keep another. June ought to hear from us when she knows more.';
+  return 'I am Ruth. Arthur taught me to sharpen that plane. We repair the ferry tenders here, but every timber delivery has to squeeze past the houses. The proposed road would help us. I still hate where they put it. Would you make a picture of me with this unfinished boat? Show the work, too. We can be glad of a job and still question the plan.';
 }
 
 export function horizonAlbum(story: Story) {

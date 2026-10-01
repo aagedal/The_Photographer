@@ -2,15 +2,24 @@ import type { FilterId } from './filters.ts';
 import { regionalLandmarks } from './landmarks.ts';
 import { terrainHeight } from './terrain.ts';
 export type Category = 'Nature' | 'Sports' | 'News' | 'Wedding' | 'Studio' | 'Astro';
-export type Technique = 'landscape' | 'water' | 'freeze' | 'pan' | 'glass' | 'news' | 'couple' | 'group' | 'portrait' | 'product' | 'stars' | 'trails' | 'bird' | 'wildlife' | 'meeting' | 'bear';
+export type Technique = 'landscape' | 'water' | 'freeze' | 'pan' | 'glass' | 'news' | 'couple' | 'group' | 'portrait' | 'environmental' | 'product' | 'stars' | 'trails' | 'bird' | 'wildlife' | 'meeting' | 'bear';
+export interface MissionShot {
+  id: string; title: string; description: string;
+  /** Horizontal camera distance and bearing around the assignment's position. */
+  view: { distance: [number, number]; angle: [number, number] };
+  overrides: Partial<Pick<Mission, 'subject' | 'technique' | 'contextSubjects' | 'viewpoint' | 'recommended' | 'lesson'>>;
+}
 export interface Mission {
   id: string; category: Category; title: string; description: string; lesson: string;
   technique: Technique; subject: string; location: string; ev: number;
   position: [number, number, number]; viewpoint: [number, number, number];
   timeWindow?: { start: number; end: number; preferred: number; label: string };
   requiredGear?: 'telephoto';
+  contextSubjects?: string[];
+  shots?: MissionShot[];
   reward: number; payment: number; recommended: { shutter: number; aperture: number; iso: number; filter: FilterId; tripod: boolean; panning: boolean; focalLength?: number };
 }
+
 const rec = (shutter: number, aperture: number, iso: number, filter: FilterId = 'none', tripod = false, panning = false) => ({ shutter, aperture, iso, filter, tripod, panning });
 export const missions: Mission[] = [
   { id: 'nature-1', timeWindow: { start: 16.5, end: 18, preferred: 17, label: 'Golden hour · 16:30–18:00' }, category: 'Nature', title: 'Chasing the golden hour', description: 'The lake is quiet, the light is warm. Make a photograph of the little lighthouse that feels like the end of a perfect day.', lesson: 'Start with a balanced exposure. Stop down to f/8 or smaller for a landscape with more depth in focus.', technique: 'landscape', subject: 'Lighthouse', location: 'Willow Lake', ev: 12, position: [-7, 4, -17], viewpoint: [1, 1.7, 13], reward: 120, payment: 120, recommended: rec(1 / 60, 8, 100) },
@@ -42,3 +51,19 @@ for (const place of regionalLandmarks) missions.push({
   viewpoint: [place.viewpoint[0], terrainHeight(place.viewpoint[0], place.viewpoint[1]) + 1.7, place.viewpoint[1]],
   reward: 140, payment: 100, recommended: rec(1 / 125, 8, 200),
 });
+
+missions.push({ id: 'harbor-portrait', category: 'News', title: 'The other end of the road', description: 'Ruth repairs the boats that bring Willowbrook home. She needs deliveries, but the proposed woodland road troubles her too. Meet her at Tidewright Workshop, then photograph her with the unfinished boat. Leave room for the work that explains why she is here.', lesson: 'An environmental portrait tells a story through a person and their surroundings. Use the 35 mm lens, f/8 or smaller and 1/125 s or faster. Include Ruth and the unfinished boat; a tight headshot leaves out half the story.', technique: 'environmental', subject: 'Ruth and her work', contextSubjects: ['Ruth the boatbuilder', 'Unfinished harbor boat'], location: 'Tidewright Workshop', ev: 12, position: [44.2, 2.3, 84.8], viewpoint: [45, 2.5, 75], reward: 160, payment: 120, recommended: rec(1 / 125, 8, 200) });
+missions.push({ id: 'harbor-crew', category: 'News', title: 'Room for a different answer', description: 'After June’s report, Ruth and her apprentices sketch a delivery bay by the existing harbor lane. It is an idea for the hearing, not an approved plan. Photograph all three with the boat they are repairing. Print both workshop photographs and bring them to Ruth before she shares their story with June.', lesson: 'Keep Ruth, Nessa and Kit in the same frame, with the unfinished boat. Stop down to f/8 or smaller and use a steady 1/125 s or faster. Context matters as much as a clear face.', technique: 'environmental', subject: 'Harbor repair crew', contextSubjects: ['Ruth the boatbuilder', 'Nessa the apprentice', 'Kit the apprentice', 'Unfinished harbor boat'], location: 'Tidewright Workshop', ev: 12, position: [45, 2.3, 84], viewpoint: [45, 2.5, 74.8], reward: 180, payment: 160, recommended: rec(1 / 125, 8, 200) });
+
+const ruthBrief = missions.find(m => m.id === 'harbor-portrait')!;
+ruthBrief.description += ' Make a two-picture story: her place in the workshop, then a closer portrait from the west side of the yard. Ruth wants readers to see a person as well as an argument.';
+ruthBrief.shots = [
+  { id: 'place', title: 'A place to work', description: 'From the lane in front of the workshop, stand 8–18 m back. Include Ruth and the full unfinished boat at f/8 or smaller.', view: { distance: [8,18], angle: [0,15] }, overrides: {} },
+  { id: 'person', title: 'The person behind the work', description: 'Move west and closer, 4–8 m from the middle of the yard and 25–75° around from the first view. Frame Ruth herself. Use f/2.8–f/5.6 to soften the background.', view: { distance: [4,8], angle: [25,75] }, overrides: { subject: 'Ruth the boatbuilder', technique: 'portrait', contextSubjects: undefined, viewpoint: [38.5,2.5,79.5], recommended: rec(1/250,4,100), lesson: 'Move your feet to change the angle. A closer portrait with a wider aperture makes Ruth the focus; the establishing frame already explains her work.' } },
+];
+const potteryBrief = missions.find(m => m.id === 'studio-2')!;
+potteryBrief.description += ' Deliver two views: the whole vase on its pedestal and a closer oblique view that brings out the rim and curve.';
+potteryBrief.shots = [
+  { id: 'whole', title: 'The whole form', description: 'Start in front of the pedestal, 6–10 m back. Keep the vase and its setting clear with f/8, low ISO and a tripod.', view: { distance: [6,10], angle: [0,15] }, overrides: {} },
+  { id: 'curve', title: 'Rim and curve', description: 'Pack the tripod and move to the right, 3–6 m away and 25–70° around the vase. Set the tripod again for a closer view of its form.', view: { distance: [3,6], angle: [25,70] }, overrides: { viewpoint: [33.8,1.7,-23.5], lesson: 'Changing position reveals a different side of the vase. Keep f/8 or smaller, ISO 100–200 and the tripod; zooming from the first position cannot replace this angle.' } },
+];

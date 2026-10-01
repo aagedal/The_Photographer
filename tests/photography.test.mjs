@@ -4,7 +4,7 @@ import { assessPhoto, cameraEV, exposureStops, filterStops } from '../src/photog
 import { missionReferenceHour, missionAmbientEV } from '../src/environment.ts';
 import { categories, missions } from '../src/missions.ts';
 
-const frame = { visible: true, distance: 20, centerOffset: 0.25, occluded: false };
+const frame = { visible: true, distance: 20, centerOffset: 0.25, occluded: false, contextVisible: true };
 const mission = id => missions.find(m => m.id === id);
 const standard = { shutter: 1 / 125, aperture: 8, iso: 100, filter: 'none', tripod: false, panning: false };
 
@@ -21,8 +21,8 @@ test('ND64 removes six stops; polarizer removes approximately one', () => {
   assert.equal(cameraEV({ ...standard, filter: 'nd6' }), cameraEV(standard) + 6);
 });
 test('the curriculum retains each discipline and adds a wildlife assignment', () => {
-  assert.equal(new Set(missions.map(m => m.id)).size, 21);
-  for (const c of categories) assert.equal(missions.filter(m => m.category === c).length, c === 'Nature' ? 9 : c === 'News' ? 4 : 2);
+  assert.equal(new Set(missions.map(m => m.id)).size, 23);
+  for (const c of categories) assert.equal(missions.filter(m => m.category === c).length, c === 'Nature' ? 9 : c === 'News' ? 6 : 2);
 });
 for (const m of missions) {
   test(`suggested settings complete ${m.id} when properly framed`, () => {

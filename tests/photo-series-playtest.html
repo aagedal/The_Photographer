@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Photo series playtest</title>
+<style>body{background:#17251e;color:#f5f1df;font:16px system-ui;padding:32px;max-width:760px}button{margin:8px;padding:16px;font:inherit}</style>
+<h1>Two views, one story</h1><p>Uses only the isolated <strong>photo-series</strong> notebook. Choose Suggested settings, raise the camera and take the first view. Review it, choose the next view, then Find the spot and apply its settings. Reload at any point to check receipts. The burst fixture tests repeated views.</p>
+<button id="harbor">Ruth’s two-view portrait</button><button id="pottery">Pottery’s two-view product brief</button><button id="burst">Ruth with burst camera</button><button id="resume">Resume isolated notebook</button>
+<script type="module">
+import {freshStory} from '../src/story.ts';import {normalizeEconomy} from '../src/economy.ts';import {missions} from '../src/missions.ts';
+function prepare(kind) {
+ const completed=['intro-deer','wedding-1','wedding-2','sports-1','news-townhall','news-boundary'];
+ const active=kind==='pottery'?'studio-2':'harbor-portrait',m=missions.find(m=>m.id===active);
+ const economy=normalizeEconomy(kind==='burst'?{gifted:['burst'],burstEnabled:true}:undefined,completed);
+ localStorage.setItem('the-photographer-playtest-photo-series-v1',JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:false,story:{...freshStory(),deerShown:true,reportPublished:true,workshopMet:true},position:[m.viewpoint[0],m.viewpoint[2]],hour:14,discovered:[...completed,active],completed,photos:[],active,economy,sound:{enabled:false,volume:.6},lens:'prime'}));
+ location.href='/?playtest=photo-series';
+}
+for(const kind of ['harbor','pottery','burst'])document.getElementById(kind).onclick=()=>prepare(kind);
+document.getElementById('resume').onclick=()=>location.href='/?playtest=photo-series';
+</script></html>

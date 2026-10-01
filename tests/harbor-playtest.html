@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Harbor story playtest</title>
+<style>body{background:#17251e;color:#f5f1df;font:16px system-ui;padding:32px;max-width:760px}button{margin:8px;padding:16px;font:inherit}</style>
+<h1>People, paths and livelihoods</h1><p>Only the isolated <strong>harbor-stories</strong> notebook is used. Meet Ruth, or take real photographs with Esc → Assignments → Suggested settings. The caption check fixture uses placeholder prints to inspect the closing scene.</p>
+<button id="meet">Meet Ruth</button><button id="portrait">Photograph Ruth</button><button id="crew">Photograph the crew</button><button id="share">Check captions with the crew</button>
+<script type="module">
+import {freshStory} from '../src/story.ts';import {normalizeEconomy} from '../src/economy.ts';import {missions} from '../src/missions.ts';
+const base=['intro-deer','wedding-1','wedding-2','sports-1','news-townhall','news-boundary'];
+function prepare(kind) {
+ const completed=[...base];if(kind==='crew'||kind==='share')completed.push('harbor-portrait');if(kind==='share')completed.push('harbor-crew');
+ const active=kind==='crew'?'harbor-crew':'harbor-portrait',mission=missions.find(m=>m.id===active);
+ const story={...freshStory(),deerShown:true,reportPublished:true,workshopMet:kind!=='meet'};
+ if(kind==='share') {const canvas=document.createElement('canvas');canvas.width=300;canvas.height=200;const ctx=canvas.getContext('2d');ctx.fillStyle='#6e8c80';ctx.fillRect(0,0,300,200);ctx.fillStyle='#eee2c7';ctx.font='20px Georgia';ctx.fillText('Workshop fixture',55,110);story.prints=['harbor-portrait','harbor-crew'].map(id=>({photoId:'fixture-'+id,missionId:id,image:canvas.toDataURL('image/jpeg')}));}
+ localStorage.setItem('the-photographer-playtest-harbor-stories-v1',JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:false,story,position:kind==='meet'||kind==='share'?[45,81]:[mission.viewpoint[0],mission.viewpoint[2]],hour:14,discovered:[...completed,active],completed,photos:[],active,economy:normalizeEconomy(undefined,completed),sound:{enabled:false,volume:0.6},lens:'prime'}));
+ location.href='/?playtest=harbor-stories';
+}
+for(const kind of ['meet','portrait','crew','share'])document.getElementById(kind).onclick=()=>prepare(kind);
+</script></html>

@@ -33,7 +33,8 @@ export function terrainHeight(x: number, z: number) {
   const inland = height * (1 - chapelShelf) - Math.max(lakeDepth, channelDepth) - pondDepth + outer * (westernHead + northernHeights + easternHill + outerRolling);
   const shore = coastline(x), coastal = smooth(82 - outer * 26, shore - 8, z);
   const beach = z <= shore ? 1.6 * (1 - smooth(shore - 9, shore, z)) : -2 * smooth(shore, shore + 10, z);
-  return inland * (1 - coastal) + beach * coastal;
+  const harborShelf = (1 - smooth(6, 11, Math.abs(x - 45))) * (1 - smooth(5, 9, Math.abs(z - 84)));
+  return (inland * (1 - coastal) + beach * coastal) * (1 - harborShelf) + 0.8 * harborShelf;
 }
 export const trails: [number, number][][] = [
   [[-4, -25], [-30, -37], [-46, -51], [-53, -70], [-67, -88], [-89, -98]],
@@ -44,6 +45,8 @@ export const trails: [number, number][][] = [
   [[105, -87], [129, -86], [145, -73], [160, -72], [160, -99]],
   [[43, 16], [76, 20], [105, 41], [138, 54], [148, 66], [165, 58], [181, 43]],
   [[105, 41], [119, 12], [135, -27], [140, -62], [129, -86]],
+  [[48, 61], [48, 76], [45, 81]],
+  [[45, 81], [38, 81], [38, 86], [24, 88], [8, 88]],
 ];
 export function distanceToTrail(x: number, z: number) {
   let distance = Infinity;

@@ -4,7 +4,7 @@ import { filterStops, graduatedStops, type FilterId } from './filters.ts';
 import { subjectInFocus, type FocusMode } from './focus.ts';
 export { filterStops } from './filters.ts';
 export interface CameraSettings { shutter: number; aperture: number; iso: number; filter: FilterId; gradPosition?: number; tripod: boolean; panning: boolean; flashPower?: number; focalLength?: number; focusDistance?: number; focusMode?: FocusMode }
-export interface Framing { visible: boolean; distance: number; centerOffset: number; occluded: boolean; subjectDepth?: number; wildlifeSpooked?: boolean }
+export interface Framing { visible: boolean; distance: number; centerOffset: number; occluded: boolean; subjectDepth?: number; wildlifeSpooked?: boolean; contextVisible?: boolean }
 export interface Feedback { label: string; passed: boolean; text: string }
 export interface Assessment { score: number; passed: boolean; exposureStops: number; feedback: Feedback[] }
 export const cameraEV = (s: CameraSettings, imageY = 0.5) => Math.log2(s.aperture ** 2 / s.shutter) - Math.log2(s.iso / 100) + filterStops(s.filter) + graduatedStops(s.filter, imageY, s.gradPosition);
@@ -50,6 +50,9 @@ export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing,
     case 'bird':
       add('Close-up', (s.focalLength ?? 35) >= 400 && (s.focalLength ?? 35) <= 600 && (s.focalLength ?? 35) / frame.distance >= 15, 'Your long lens brings the kingfisher’s plumage into the frame.', 'Equip the wildlife lens and zoom to 400–600 mm. Aim from the wetland trail, about 20–35 m from the perch.');
       add('Wildlife craft', s.shutter <= 1 / 1000 && s.aperture >= 5.6 && frame.distance >= 18, 'A fast shutter catches the detail while you give the bird space.', 'Use 1/1000 s or faster, f/5.6 or smaller, and keep at least 18 m away. Raise ISO to balance the exposure.'); break;
+    case 'environmental':
+      add('People and place', frame.contextVisible === true, 'The people and the unfinished boat share the frame. The work gives the portrait its meaning.', 'Step back and include everyone named in the brief with the unfinished boat. A tight portrait loses the context.');
+      add('Working depth', s.aperture >= 8 && (s.focalLength ?? 35) <= 50 && s.shutter <= 1 / 125, 'A wider view, smaller aperture and steady shutter keep the people and their work readable.', 'Use the 35 mm lens, f/8 or smaller and 1/125 s or faster. Raise ISO to keep a useful exposure.'); break;
     case 'landscape': add('Depth', s.aperture >= 8, 'Stopping down helps the landscape stay in focus.', 'Try f/8 or smaller (a larger f-number) to keep more of the landscape in focus.'); break;
     case 'water':
       add('Movement', s.shutter >= 0.25, 'The long exposure lets flowing water soften.', 'Try 1/4 second or longer to let the water move through the frame.');

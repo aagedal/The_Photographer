@@ -185,3 +185,23 @@ No native application or Linux browser run yet. Performance targets require prof
 - Wind and surf use layered colored noise with a crossfaded looping seam. Steps alternate gently in stereo, with different noise offsets, filter frequencies, weights and a low impact tone; sneak and run retain their different cadence and level.
 - All 138 Node tests and the production build pass, including seven new voice/routing/lifecycle checks. The existing bundle-size advisory remains. Nine real-browser OfflineAudioContext checks pass: seven character waveforms and cancellation before/during playback. At default volume, the measured voice RMS spans 0.0149–0.0177, peaks 0.0770–0.0898, and the largest consecutive sample change is 0.0120; ending/cancelled tails are silent. These signal checks do not replace perceptual listening.
 - Browser playtesting used only the separate audio-checks notebook. Arthur’s conversation, a selected memory, return to the pause menu and Mara’s dialogue opened without browser warnings/errors. The development-only /tests/audio.html page provides live auditions, rendered voice samples, and isolated game fixtures; the player’s normal notebook is untouched.
+
+
+## Harbor stories · 1 October 2026
+
+- All 150 Node tests pass, including six new harbor checks: optional progression and first meeting, printed-photo handoff and repeated save migration, context and technique failures, actual full-boat/person framing across portrait and wide viewports, missing/hidden/blocked/cropped subjects, walkable harbor corridors and reversible character animation.
+- Strict TypeScript and the production build pass. The existing large-bundle advisory remains.
+- Browser playtesting used the isolated `harbor-stories` notebook. Met Ruth, completed real environmental portrait and crew captures at 100/100, earned $120 and $160 once, printed both at the gallery for $10 total, returned to Ruth for the caption review, and reloaded into the completed harbor story. The newspaper follow-up and Arthur’s new dialogue were inspected; no browser console warnings or errors appeared.
+- Visual inspection led to a wider harbor yard, clear portrait viewpoints, crew facing the camera, and moving trail signs out of the composition. The new models and open hull were inspected in the viewfinder and saved crew photograph.
+- Saved evidence: `docs/harbor-crew.jpg`, `docs/harbor-crew-review.jpg`, and `docs/harbor-story-ending.jpg`. Development-only `/tests/harbor-playtest.html` provides isolated meeting, real-capture and caption-review fixtures.
+- This expansion does not establish hardware performance targets or simulate an approved road alternative.
+
+
+## Photo sets and perspectives · 1 October 2026
+
+- All 156 Node tests pass. Six new series checks cover either capture order, deferred and once-only payment, failed views and repeated bursts, three-view briefs, normalization and receipt recovery, journal eviction and reloads, legacy completed commissions, disjoint perspective checks, and walkable/clear/focused viewpoints across portrait and wide sensor crops.
+- Strict TypeScript and the production build pass. The existing large-bundle advisory remains.
+- Browser verification used only the isolated `photo-series` notebook via `/tests/photo-series-playtest.html`. Ruth’s establishing burst produced three usable frames and exactly one accepted view, with no new commission ($900 remained). The receipt and selected next view survived reload. A second-view burst from the same position scored 80/100 and did not fill the set. Moving to the west viewpoint produced 100/100, completed 2/2, and paid $120 exactly once ($1020 total). The completed set and workshop unlock survived reload.
+- Both pottery views were captured with the tripod at 100/100. The closer oblique view paid $150 after the set completed; reload preserved 2/2 and $1050 total. Completed-view selection and replay controls were inspected. The revised curved vase and open rim were visually inspected. No browser warnings or errors were observed.
+- Saved evidence: `docs/photo-series-progress.jpg` (accepted 1/2, unpaid), `docs/photo-series-complete.jpg` (both required workshop views), and `docs/photo-series-pottery.jpg` (2/2, 100/100 and $150 paid). Automated tests cover receipt retention after journal eviction and the metadata retained by storage fallback; actual browser quota exhaustion was not induced.
+- Perspective checks use horizontal camera distance and bearing around a shared assignment anchor. Vertical viewpoint differences are not currently separate requirements. The gallery continues to hang one representative frame per completed assignment.

@@ -3,6 +3,7 @@
 interface Voice { pitch: number; resonance: number; pace: number }
 const voices: Record<string, Voice> = {
   arthur: { pitch: 118, resonance: 0.84, pace: 0.92 },
+  boatbuilder: { pitch: 164, resonance: 0.91, pace: 0.94 },
   ranger: { pitch: 196, resonance: 1.06, pace: 1.04 },
   coach: { pitch: 144, resonance: 0.94, pace: 1.16 },
   editor: { pitch: 177, resonance: 1.02, pace: 1.12 },

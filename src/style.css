@@ -199,6 +199,15 @@ dialog { display:flex; flex-direction:column; } dialog:not([open]) { display:non
 .mission-sections span { display:inline-block; font-size:9px; padding:2px 6px; margin-left:7px; border-radius:10px; background:var(--surface-hover); }
 .mission-badge { display:inline-flex; gap:5px; align-items:center; background:var(--accent-soft); padding:6px 9px; border-radius:5px; font-size:9px; color:var(--success); margin-bottom:12px; }
 .mission-badge.complete { background:var(--surface); color:var(--muted); }
+.shot-checklist { margin-top:18px; }
+.shot-checklist > p { font-size:11px; line-height:1.6; color:var(--muted); margin-bottom:10px; }
+.shot-brief { display:flex; width:100%; align-items:flex-start; gap:12px; text-align:left; padding:13px; margin-top:8px; border:1px solid var(--line); background:var(--surface); border-radius:4px; }
+button.shot-brief:hover,button.shot-brief[aria-pressed="true"] { border-color:var(--accent); background:var(--surface-hover); }
+.shot-brief strong { display:block; font-size:12px; }
+.shot-brief small { display:block; color:var(--muted); font-size:11px; line-height:1.6; margin-top:6px; }
+.shot-number { color:var(--accent); font-size:16px; min-width:17px; }
+.shot-status { color:var(--success); font-size:9px; margin-left:auto; flex-shrink:0; }
+.shot-guide { position:absolute; top:78px; right:24px; max-width:calc(100% - 48px); background:var(--hud); color:var(--ink); border:1px solid var(--line); padding:10px 12px; border-radius:4px; font-size:10px; text-align:left; }
 .mission-badge svg { width:13px; height:13px; }
 .notebook-hint { padding:20px 0 0; }
 .empty .secondary { margin-top:18px; }

@@ -55,11 +55,12 @@ export function createStoryPlaces(scene: THREE.Scene, solids: THREE.Object3D[]) 
   block(paper, 0, 1.7, 0, 2.9, 1.85, 0.17, '#5b7065');
   block(paper, 0, 2.7, 0, 3.2, 0.12, 0.8, '#687a6c', false);
   const updatePaper = sign(paper, 'willowbrook-paper-front-page', 0, 1.7, 0.095, 2.7, 1.65);
-  let published: boolean | undefined;
-  const setReportPublished = (value: boolean) => {
-    if (published === value) return; published = value;
+  let published: string | undefined;
+  const setReportPublished = (value: boolean, harborShared = false) => {
+    const state = `${value}-${harborShared}`;
+    if (published === state) return; published = state;
     updateBoundary(value ? 'PUBLIC HEARING · ROUTE UNDER REVIEW' : 'PUBLIC PLANNING NOTICE', value ? ['Woodland access road proposal paused.', 'The existing footpath remains open.', 'Residents invited to an open hearing.', 'Survey markers retained for review.', 'Please keep to the public trail.'] : ['Proposed northern access road', 'Consultation boundary · WB / 24', 'Orange ribbons mark the surveyed route.', 'Existing public footpath remains open.', 'Plans available in Morning Paper Square.']);
-    updatePaper('THE WILLOWBROOK PAPER', value ? ['WOODLAND ROAD PLAN PAUSED', 'Photographs bring the route into view.', 'Public register confirms the proposal.', 'Vale: “The route is preliminary.”', 'Council announces an open hearing.', 'Reporting: June · Photographs: you'] : ['THE PATH WE SHARE', 'Running club raises funds for ridge steps.', 'Arthur’s old route needs a little care.', 'Planning notices available at the hall.', 'Speak to June in the square.']);
+    updatePaper('THE WILLOWBROOK PAPER', value && harborShared ? ['PEOPLE, PATHS AND LIVELIHOODS', 'Road proposal awaits an open hearing.', 'Harbor crew suggests a delivery bay.', 'Access and costs still need checking.', 'Ruth, Nessa and Kit tell their story.', 'Reporting: June · Photographs: you'] : value ? ['WOODLAND ROAD PLAN PAUSED', 'Photographs bring the route into view.', 'Public register confirms the proposal.', 'Vale: “The route is preliminary.”', 'Council announces an open hearing.', 'Reporting: June · Photographs: you'] : ['THE PATH WE SHARE', 'Running club raises funds for ridge steps.', 'Arthur’s old route needs a little care.', 'Planning notices available at the hall.', 'Speak to June in the square.']);
   };
   setReportPublished(false);
   const gallery = new THREE.Group(); gallery.name = 'willowbrook-gallery'; gallery.position.set(galleryPlace.x,terrainHeight(galleryPlace.x,galleryPlace.z),galleryPlace.z); scene.add(gallery);
@@ -104,6 +105,12 @@ export function createStoryPlaces(scene: THREE.Scene, solids: THREE.Object3D[]) 
     face.position.set(side * 2.8, y, -2.38); gallery.add(face); frames.push(face);
   }
   const galleryLamp = new THREE.PointLight('#ffe5b4',14,9); galleryLamp.position.set(0,3,0); gallery.add(galleryLamp);
+  // The two harbor stories hang inside the lintel, facing into the room.
+  for (const x of [-0.9,0.9]) {
+    block(gallery,x,3.45,-2.45,1.62,0.83,0.1,'#70543e',false);
+    const face=new THREE.Mesh(new THREE.PlaneGeometry(1.45,0.7),new THREE.MeshBasicMaterial({color:'#d5cab2'}));
+    face.position.set(x,3.45,-2.38); gallery.add(face); frames.push(face);
+  }
   const porch = new THREE.Group(); porch.name='arthur-home'; porch.position.set(unclePlace.x,terrainHeight(unclePlace.x,unclePlace.z),unclePlace.z); scene.add(porch);
   block(porch,0,1.7,0,6,3.4,4,'#d9c5a1'); block(porch,0,3.5,0,6.6,0.3,4.6,'#8c7054',false);
   block(porch,0,0.15,3,6,0.3,2,'#ae9270',false);
