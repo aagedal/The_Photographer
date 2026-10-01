@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createWaterSurface } from './water.ts';
+import { distanceToArrivalRoute } from './arrival-route.ts';
 import { coastline, terrainHeight } from './terrain.ts';
 
 export function createCoast(scene: THREE.Scene) {
@@ -25,10 +26,11 @@ export function createCoast(scene: THREE.Scene) {
     const wings=[-1,1].map(side=>{const wing=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.035,0.17),material);wing.position.x=side*0.27;group.add(wing);return wing;});
     return {group,wings};
   });
-  const rocks=new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1,0),new THREE.MeshStandardMaterial({color:'#8d9386',flatShading:true,roughness:1}),22);
+  const rocks=new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1,0),new THREE.MeshStandardMaterial({color:'#8d9386',flatShading:true,roughness:1}),44);
   rocks.name='coastal-rocks';rocks.castShadow=true;rocks.receiveShadow=true;scene.add(rocks);
-  for(let i=0;i<22;i++) {
-    const x=-120+i*11.4,z=coastline(x)+4+Math.sin(i*7)*3;dummy.position.set(x,0.1,z);dummy.rotation.set(0,i*1.9,0);dummy.scale.set(0.8+i%3*0.4,0.7+i%4*0.3,1.1);dummy.updateMatrix();rocks.setMatrixAt(i,dummy.matrix);
+  for(let i=0;i<44;i++) {
+    const x=-250+i*11.4,z=coastline(x)+4+Math.sin(i*7)*3;dummy.position.set(x,0.1,z);dummy.rotation.set(0,i*1.9,0);const clear = distanceToArrivalRoute(x,z) < 7 || (Math.abs(x-8)<5 && z<110);
+    dummy.scale.set(clear ? 0 : 0.8+i%3*0.4,clear ? 0 : 0.7+i%4*0.3,clear ? 0 : 1.1);dummy.updateMatrix();rocks.setMatrixAt(i,dummy.matrix);
   }
   // A pale footpath joins the neighborhood to the beach overlook.
   const pathVertices:number[]=[];
@@ -60,7 +62,7 @@ export function createCoast(scene: THREE.Scene) {
     update(time:number,filter:string,daylight:number) {
       ocean.update(time,filter,daylight);foamMaterial.opacity=0.15+daylight*0.32;
       for(let i=0;i<120;i++) {
-        const x=-150+(i%40)*7.7,phase=((time*0.15+Math.floor(i/40)*0.33)%1+1)%1;
+        const x=-260+(i%40)*13.3,phase=((time*0.15+Math.floor(i/40)*0.33)%1+1)%1;
         dummy.position.set(x,0.14,coastline(x)+1+(1-phase)*10);dummy.rotation.set(-Math.PI/2,0,0.025*Math.sin(i));dummy.scale.set(4.5+Math.sin(i)*1.8,0.08+Math.sin(phase*Math.PI)*0.25,1);dummy.updateMatrix();foam.setMatrixAt(i,dummy.matrix);
       }
       foam.instanceMatrix.needsUpdate=true;

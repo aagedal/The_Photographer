@@ -19,6 +19,21 @@ The Assignments page presents the current chapter. First completions of main ass
 
 The bear is mentioned in the opening but cannot be pursued as a main assignment until the newspaper chapter is resolved. New notebooks require the boundary photograph and an explicit in-person handoff to June; taking either photograph alone does not finish the investigation. Completed assignments retain the evidence even if the original photographs leave the sixteen-frame journal. Notebooks from before this expansion that had already completed the town-hall meeting keep their bear route through repeated reloads. It also requires owned and equipped telephoto gear, at least 20 metres of space, adequate subject scale, a fast shutter, and no flash. The meeting requires a CPL, no flash, a steady shutter, useful exposure, and the overnight 22:00–02:00 window. The window uses the same planar reflection and polarizer suppression as the bakery.
 
+## Arthur’s four horizons
+
+Four optional landscapes connect the 520 m world to Arthur’s family history. They unlock together after the deer print is brought to his porch, and remain available after the main ending. The album counts persistent gallery prints rather than journal photographs; taking a picture without printing does not fill a page.
+
+| Place | Shared history | Landscape |
+| --- | --- | --- |
+| Bracken Head Light · Western headland | The player’s mother counted the light’s flashes from the ferry; Arthur brought flasks to the keeper | A 32 m tower, lantern balcony and keeper’s cottage |
+| Northstar Observatory · Northern heights | A cloudy meteor shower became an afternoon with the child asleep on a coat; Arthur helped rebuild the roof | A ribbed silver dome, observation slit and annex |
+| Hollowstone Viaduct · Eastern valley | Childhood echoes under the arches; the railway carried clay used by Eli’s grandfather | Five open stone arches, masonry details and abandoned rails |
+| Briar Hill Windmill · Eastern uplands | Alma’s family shared bread and jam on the hill, when Willowbrook was becoming home | A tapered mill, slowly turning sails and old bakery |
+
+Each commission pays $100 once and uses the starter lens and f/8 or smaller. The gallery holds all twenty-one assignment prints. Arthur shares partial-album dialogue as the player brings photographs home, then a complete-album scene about imagining the player in places he can no longer reach. This does not replace the bear reconciliation or impose a deadline. Local history boards use R; Arthur’s porch also links to each history and commission.
+
+The ferry’s 34-second approach travels more than 210 m along a curved channel. Coastal rocks are generated outside a shared route clearance, including the final berth. The camera first reveals the western light, then the observatory above the woods, and finally the town. Three letter captions introduce returning home, remembered light, and the four old journeys. Skipping reaches the same arrival dock; reduced motion uses a stationary berth view.
+
 ## Making a living
 
 Successful photographs can be printed at the gallery entrance. Printing and hanging are one interaction. Ordinary prints cost $5. The deer and bear prints cost nothing, so either story delivery remains possible with an empty wallet. Each mission has one saved print; different burst frames or replays do not increase the exhibition count. Gallery prints retain their image independently of the sixteen-photo journal.
@@ -35,6 +50,8 @@ The story uses captioned dialogue and notebook scenes. The new places, bear and 
 
 ## Verification
 
-All 123 automated tests pass. Story tests cover the chapter chain, printing and return visits, gated side jobs, legacy discovery, distinct exhibition subjects, daily income/rent/arrears, housing and purchase persistence, bear safety and gear, overnight window photography, gallery/porch/newspaper/boundary access, investigation delivery and save migration, memory persistence, and deterministic bear motion. The development-only `tests/story-playtest.html` fixture prepares the isolated `story-review` notebook for an actual deer capture, leaving the normal player notebook untouched.
+The automated suite passes, including the four-landmark expansion checks. Story tests cover the chapter chain, printing and return visits, gated side jobs, legacy discovery, distinct exhibition subjects, daily income/rent/arrears, housing and purchase persistence, bear safety and gear, overnight window photography, gallery/porch/newspaper/boundary access, investigation delivery and save migration, memory persistence, and deterministic bear motion. The development-only `tests/story-playtest.html` fixture prepares the isolated `story-review` notebook for an actual deer capture, leaving the normal player notebook untouched.
 
 The development-only `tests/story-expansion.html` fixture prepares the isolated `story-expansion` notebook for the woodland photograph, June handoff, or Arthur’s porch. Browser verification completed a real boundary capture at 100/100 with its $140 reward, delivered the photographs to June, reloaded into the bear chapter, inspected the changed physical newspaper, and read a saved Arthur memory. Normal player progress is untouched.
+
+The development-only `tests/landmark-playtest.html` fixture uses the isolated `four-horizons` notebook for arrival, scenic viewpoints and the completed album. Expansion tests sweep the boat’s full hull against every coastal rock and the dock, verify water-channel clearance and journey length, sample all connected trails for walkability and slope, raycast each assignment view, check album save migration, and rewind the animated sails. Browser verification inspects the arrival and new scenery, completes an actual viaduct photograph, and checks the map and porch album.

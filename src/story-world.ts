@@ -95,6 +95,14 @@ export function createStoryPlaces(scene: THREE.Scene, solids: THREE.Object3D[]) 
     face.position.set(side*3.78,y,z); face.rotation.y=-side*Math.PI/2; gallery.add(face); frames.push(face);
   }
   frames.push(extraFrame);
+  for (const x of [-2.8, 2.8]) block(gallery, x, 1.9, -2.5, 1.9, 3.1, 0.16, '#e8dfc9');
+  // The four regional journeys have their own album wall beside the entrance.
+  for (let i = 0; i < 4; i++) {
+    const side = i < 2 ? -1 : 1, y = i % 2 ? 1.25 : 2.7;
+    block(gallery, side * 2.8, y, -2.45, 1.62, 1.07, 0.1, '#70543e', false);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(1.45, 0.93), new THREE.MeshBasicMaterial({ color: '#d5cab2' }));
+    face.position.set(side * 2.8, y, -2.38); gallery.add(face); frames.push(face);
+  }
   const galleryLamp = new THREE.PointLight('#ffe5b4',14,9); galleryLamp.position.set(0,3,0); gallery.add(galleryLamp);
   const porch = new THREE.Group(); porch.name='arthur-home'; porch.position.set(unclePlace.x,terrainHeight(unclePlace.x,unclePlace.z),unclePlace.z); scene.add(porch);
   block(porch,0,1.7,0,6,3.4,4,'#d9c5a1'); block(porch,0,3.5,0,6.6,0.3,4.6,'#8c7054',false);

@@ -11,6 +11,8 @@ import { createTownLife } from './world-life.ts';
 import { createChurch } from './church.ts';
 import { createCoast } from './coast.ts';
 import { createOpening } from './opening.ts';
+import { createRegionalLandmarks } from './landmark-world.ts';
+import { regionalLandmarks } from './landmarks.ts';
 import type { DeerMood, WildlifeVisitor } from './wildlife.ts';
 import { createCameraStore } from './camera-store.ts';
 import { createStoryPlaces } from './story-world.ts';
@@ -37,7 +39,7 @@ export interface World {
 export function createWorld(): World {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#d6ddca');
-  scene.fog = new THREE.Fog('#d6ddca', 85, 300);
+  scene.fog = new THREE.Fog('#d6ddca', 160, 720);
   const subjects = new Map<string, THREE.Object3D>();
   const solids: THREE.Object3D[] = [];
   const blockers: { x: number; z: number; w: number; d: number }[] = [];
@@ -80,7 +82,7 @@ export function createWorld(): World {
   const sun = new THREE.DirectionalLight('#ffe4ad', 3.5);
   sun.name = 'sun-light'; sun.position.set(-32, 45, 24); sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -145, right: 145, top: 145, bottom: -145, near: 1, far: 350 });
+  Object.assign(sun.shadow.camera, { left: -300, right: 300, top: 300, bottom: -300, near: 1, far: 1000 });
   sun.shadow.bias = -0.001; sun.shadow.normalBias = 0.035;
   scene.add(sun, sun.target);
   const moon = new THREE.DirectionalLight('#a5badd', 0); moon.name = 'moon-light'; scene.add(moon, moon.target);
@@ -97,7 +99,7 @@ export function createWorld(): World {
   const skyLightColour = new THREE.Color('#e6edd4'), sunWarmColour = new THREE.Color('#ffad71');
   const darkCloud = new THREE.Color('#293b50'), whiteCloud = new THREE.Color('#eef3e3'), sunsetCloud = new THREE.Color('#edc4a0');
   // Shared primitive geometry keeps the scenery inexpensive and deliberately chunky.
-  const terrain = new THREE.PlaneGeometry(WORLD_HALF * 2, WORLD_HALF * 2, 130, 130);
+  const terrain = new THREE.PlaneGeometry(WORLD_HALF * 2, WORLD_HALF * 2, 260, 260);
   terrain.rotateX(-Math.PI / 2);
   const positions = terrain.getAttribute('position');
   const colours: number[] = [];
@@ -153,14 +155,14 @@ export function createWorld(): World {
   for (const x of [-1.6, 1.6]) for (const z of [3.6, 8, 12]) box(x, 0.5, z, 0.2, 1.6, 0.2, '#795b3e');
   // Low-poly mountains create a layered skyline without texture maps.
   for (let i = 0; i < 14; i++) {
-    const x = -170 + i * 26;
+    const x = -300 + i * 46;
     const h = 20 + seed(i + 24) * 27;
-    const mountain = cone(x, h / 2 - 2, -175 - seed(i) * 30, 21, h, i % 2 ? '#93aaa0' : '#829d91', 5);
+    const mountain = cone(x, h / 2 - 2, -310 - seed(i) * 45, 21, h, i % 2 ? '#93aaa0' : '#829d91', 5);
     mountain.castShadow = false;
     const cap = cone(x, h - 5, mountain.position.z, 5.4, 10, '#d2d9c7', 5); cap.castShadow = false;
   }
   // Trees are instanced: hundreds of silhouettes, only three draw calls.
-  const treeCount = 520;
+  const treeCount = 1700;
   const trunks = new THREE.InstancedMesh(cube, material('#766345'), treeCount);
   const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), material('#456950'), treeCount);
   const tips = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 5), material('#5c8057'), treeCount);
@@ -170,11 +172,11 @@ export function createWorld(): World {
     if (i < 100) { x = -50 + seed(i + 900) * 100; z = -35 - seed(i + 102) * 25; }
     else if (i < 150) { x = i % 2 ? -37 - seed(i) * 14 : 42 + seed(i) * 10; z = -25 + seed(i + 92) * 72; }
     else {
-      x = -125 + seed(i + 1900) * 250; z = -125 + seed(i + 1920) * 250;
+      x = -252 + seed(i + 1900) * 504; z = -252 + seed(i + 1920) * 344;
       if (Math.max(Math.abs(x), Math.abs(z)) < 52) x += x < 0 ? -55 : 55;
     }
     // Clear the trails, ridge viewpoint, and bird sightline.
-    if ((x > -46 && x < -28 && z > -51 && z < -32) || (x > -96 && x < -61 && z > -102 && z < -72) || (x > -2 && x < 10 && z > -43 && z < -27) || (x > -30 && x < 0 && z > 27 && z < 57) || (x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 115 + seed(i) * 9; z = -120 + seed(i + 9) * 240; }
+    if ((x > -46 && x < -28 && z > -51 && z < -32) || (x > -96 && x < -61 && z > -102 && z < -72) || (x > -2 && x < 10 && z > -43 && z < -27) || (x > -30 && x < 0 && z > 27 && z < 57) || (x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || regionalLandmarks.some(p => Math.hypot(x - p.x, z - p.z) < (p.id === 'viaduct' ? 65 : 38) || Math.hypot(x - p.viewpoint[0], z - p.viewpoint[1]) < 16) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 240 + seed(i) * 12; z = -240 + seed(i + 9) * 315; }
     const ground = terrainHeight(x, z);
     const size = 0.8 + seed(i + 13) * 1.3;
     dummy.position.set(x, ground + size * 1.5, z); dummy.scale.set(0.35 * size, 3 * size, 0.35 * size); dummy.rotation.y = 0; dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
@@ -309,7 +311,7 @@ export function createWorld(): World {
       sphere(0, 1.91, 0, 0.25, 0.13, 0.24, index === 0 ? '#b6ac78' : '#d3a46c', character.group);
       if (index === 0) box(0, 1.86, 0.06, 0.64, 0.045, 0.47, '#b6ac78', character.group);
     }
-    const marker = cone(0, 2.7 / character.group.scale.y, 0, 0.12, 0.26, '#f0cd76', 4, character.group); marker.rotation.z = Math.PI; marker.name = `npc-marker-${npc.id}`;
+    const marker = cone(0, 2.7 / character.group.scale.y, 0, 0.12, 0.26, '#f0cd76', 4, character.group); marker.rotation.z = Math.PI; marker.name = `npc-marker-${npc.id}`; marker.visible = false;
   }
   // Sports: a moving subject on a visible terracotta running track.
   box(29, 0.04, 5, 20, 0.13, 17, '#be8865'); box(29, 0.13, 5, 13, 0.04, 10, '#92a26c');
@@ -418,6 +420,7 @@ export function createWorld(): World {
   const store = createCameraStore(scene, solids);
   const storyPlaces = createStoryPlaces(scene, solids);
   subjects.set('Woodland survey notice', storyPlaces.boundaryFocus);
+  const regions = createRegionalLandmarks(scene, solids, subjects);
   const opening = createOpening(scene);
   const deer = scene.getObjectByName('meadow-deer-0')!;
   const deerFocus = new THREE.Object3D(); deerFocus.position.set(0, 1, 0); deer.add(deerFocus); subjects.set('Meadow deer', deerFocus);
@@ -485,14 +488,14 @@ export function createWorld(): World {
       box(x + side * w * 0.37, h * 0.6, z + d / 2 + 0.09, 0.24, h * 0.29, 0.1, '#7a8c76');
     }
   }
-  const flowers = new THREE.InstancedMesh(sphereGeo, material('#d7bc8e'), 300);
-  const stones = new THREE.InstancedMesh(sphereGeo, material('#919582'), 120);
-  for (const [mesh, count] of [[flowers, 300], [stones, 120]] as const) {
+  const flowers = new THREE.InstancedMesh(sphereGeo, material('#d7bc8e'), 900);
+  const stones = new THREE.InstancedMesh(sphereGeo, material('#919582'), 400);
+  for (const [mesh, count] of [[flowers, 900], [stones, 400]] as const) {
     for (let i = 0; i < count; i++) {
-      const x = -120 + seed(i + count * 7) * 240, z = -120 + seed(i + count * 9) * 240;
+      const x = -250 + seed(i + count * 7) * 500, z = -250 + seed(i + count * 9) * 340;
       const inTown = Math.max(Math.abs(x), Math.abs(z)) < 45;
       dummy.position.set(x, terrainHeight(x, z) + (mesh === flowers ? 0.16 : 0.22), z);
-      const scale = inTown || Math.hypot(x - 76, z + 54) < 20 ? 0 : (mesh === flowers ? 0.15 : 0.35 + seed(i) * 0.7);
+      const scale = inTown || distanceToTrail(x, z) < 3 || regionalLandmarks.some(p => Math.hypot(x - p.x, z - p.z) < 65) || Math.hypot(x - 76, z + 54) < 20 ? 0 : (mesh === flowers ? 0.15 : 0.35 + seed(i) * 0.7);
       dummy.scale.set(scale, scale * 0.6, scale); dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
     }
     mesh.receiveShadow = true; scene.add(mesh);
@@ -511,12 +514,12 @@ export function createWorld(): World {
     sun.intensity = sky.sunStrength * (studioMode ? 0.25 : 3.5);
     sun.color.set('#ffe4ad').lerp(sunWarmColour, sky.warmth);
     moon.intensity = sky.night * (studioMode ? 0.03 : 0.22);
-    sun.position.set(...sky.sunPosition); moon.position.copy(sun.position).multiplyScalar(-1);
-    sunDisc.position.copy(sun.position); moonDisc.position.copy(moon.position);
+    sun.position.set(...sky.sunPosition).multiplyScalar(6); moon.position.copy(sun.position).multiplyScalar(-1);
+    sunDisc.position.set(...sky.sunPosition); moonDisc.position.copy(sunDisc.position).multiplyScalar(-1);
     sunDisc.visible = sky.elevation > -0.03; moonDisc.visible = sky.elevation < 0.03;
     skyColour.copy(nightColour).lerp(dayColour, sky.daylight).lerp(sunsetColour, sky.warmth * 0.65);
     (scene.background as THREE.Color).copy(skyColour);
-    (scene.fog as THREE.Fog).color.copy(skyColour); (scene.fog as THREE.Fog).near = 65 + sky.daylight * 25;
+    (scene.fog as THREE.Fog).color.copy(skyColour); (scene.fog as THREE.Fog).near = 120 + sky.daylight * 60;
     stars.rotation.y = sky.hour / 24 * Math.PI * 2; stars.visible = sky.night > 0.01; (stars.material as THREE.PointsMaterial).opacity = sky.night * (1 - sky.cloudCover * 0.45);
     cloudColour.copy(darkCloud).lerp(whiteCloud, sky.daylight).lerp(sunsetCloud, sky.warmth * 0.6);
     cloudMaterial.color.copy(cloudColour);
@@ -586,6 +589,7 @@ export function createWorld(): World {
       });
       runner.arms.forEach((arm, i) => { arm.rotation.x = -Math.sin(time * 9 + i * Math.PI) * 0.5; });
       townLife.update(time, poseHour);
+      regions.update(time);
       solids.splice(staticSolidCount, solids.length - staticSolidCount, ...townLife.dynamicSolids());
       coast.update(time, settings.filter, sky.daylight);
       bird.rotation.y = Math.sin(time * 0.9) * 0.32; birdHead.rotation.y = Math.sin(time * 1.7) * 0.25;
@@ -600,6 +604,7 @@ export function createWorld(): World {
       if (Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4) return false;
       if (z > coastline(x) - 1.2 && !opening.onDock(x, z)) return false;
       if (Math.hypot((x - 76) / 14, (z + 54) / 11) < 1) return false;
+      if (regions.blocksWalking(x, z)) return false;
       if (creekDistance(x, z) < 1.08 || townLife.blocksWalking(x, z) || store.blocksWalking(x, z) || storyPlaces.blocksWalking(x, z)) return false;
       // The jetty is a narrow walkable exception inside the lake boundary.
       return !blockers.some(b => Math.abs(x - b.x) < b.w / 2 + 0.25 && Math.abs(z - b.z) < b.d / 2 + 0.25 && !(b.w === 28 && Math.abs(x) < 1.25 && z > 3.5));

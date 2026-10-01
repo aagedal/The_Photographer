@@ -1,4 +1,6 @@
 import type { FilterId } from './filters.ts';
+import { regionalLandmarks } from './landmarks.ts';
+import { terrainHeight } from './terrain.ts';
 export type Category = 'Nature' | 'Sports' | 'News' | 'Wedding' | 'Studio' | 'Astro';
 export type Technique = 'landscape' | 'water' | 'freeze' | 'pan' | 'glass' | 'news' | 'couple' | 'group' | 'portrait' | 'product' | 'stars' | 'trails' | 'bird' | 'wildlife' | 'meeting' | 'bear';
 export interface Mission {
@@ -31,3 +33,12 @@ missions.push({ id: 'news-townhall', category: 'News', title: 'Behind closed doo
 missions.push({ id: 'nature-bear', category: 'Nature', title: 'One last wild thing', description: 'Uncle Arthur remembers a rare pale bear in the northern woods. Mara has found its clearing. Bring home a photograph from the marked overlook, without approaching or disturbing it. You need the 200–600 mm wildlife lens before accepting this assignment.', lesson: 'Stay at least 20 m away. Equip the wildlife lens at 200–600 mm, use 1/500 s or faster and keep the flash off. The photograph is a gift, not a trophy.', technique: 'bear', requiredGear: 'telephoto', subject: 'Pale woodland bear', location: 'Northern bear clearing', ev: 12, position: [-88, 10, -91], viewpoint: [-66, 1.7, -77], reward: 320, payment: 0, recommended: { ...rec(1 / 500, 5.6, 400), focalLength: 250 } });
 
 missions.push({ id: 'news-boundary', category: 'News', title: 'The line on the map', description: 'June has found a public proposal for a road through the northern woodland. Follow the ridge trail to the orange survey ribbons. Photograph the planning notice with the old footpath and trees around it, showing what the proposal would change. Then take both pictures to June in the square.', lesson: 'A useful documentary photograph includes context. Use the 35 mm lens and f/8 or smaller to keep the notice and its surroundings in focus. A photograph raises questions; June checks the public record before publishing.', technique: 'landscape', subject: 'Woodland survey notice', location: 'Northern footpath boundary', ev: 12, position: [-40, 5, -45], viewpoint: [-34, 1.7, -37], reward: 180, payment: 140, recommended: rec(1 / 125, 8, 200) });
+
+for (const place of regionalLandmarks) missions.push({
+  id: place.mission, category: 'Nature', title: ({ 'sea-light': 'The light that brought us home', observatory: 'A roof open to the sky', viaduct: 'What the valley kept', windmill: 'The hill where we waited' })[place.id],
+  description: place.description, lesson: 'Arthur’s four horizons: make a landscape at f/8 or smaller. Keep the landmark and its surroundings in the frame. Print each photograph at the gallery, then visit Arthur to share the album.',
+  technique: 'landscape', subject: place.name, location: place.name, ev: 12,
+  position: [place.x, terrainHeight(place.x, place.z) + place.height * 0.47, place.z],
+  viewpoint: [place.viewpoint[0], terrainHeight(place.viewpoint[0], place.viewpoint[1]) + 1.7, place.viewpoint[1]],
+  reward: 140, payment: 100, recommended: rec(1 / 125, 8, 200),
+});

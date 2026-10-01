@@ -3,6 +3,10 @@ import { graduatedStops } from './filters.ts';
 
 export const FLASH_GUIDE_NUMBER = 24;
 export const FLASH_SYNC_SPEED = 1 / 250;
+// Includes the open-front studio, the assistant, and both assignment viewpoints.
+export function atStudio(x: number, y: number, z: number) {
+  return Math.hypot(x - 30, y - 1.7, z + 25) < 14;
+}
 export type LightName = 'key' | 'fill' | 'rim';
 export interface StudioLightSettings { enabled: boolean; power: number; angle: number; distance: number; height: number; colour: 'daylight' | 'warm' | 'cool' }
 export type StudioRig = Record<LightName, StudioLightSettings>;

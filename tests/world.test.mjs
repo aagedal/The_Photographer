@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createWorld, subjectPosition } from '../src/world.ts';
+import { WORLD_HALF } from '../src/terrain.ts';
 import { missions } from '../src/missions.ts';
 
 test('every travel viewpoint is walkable and provides a clear view of its subject', () => {
@@ -24,7 +25,7 @@ test('every travel viewpoint is walkable and provides a clear view of its subjec
 });
 test('world boundaries and lake restrict movement while the jetty stays walkable', () => {
   const world = createWorld();
-  assert.equal(world.canWalk(130, 0), false);
+  assert.equal(world.canWalk(WORLD_HALF, 0), false);
   assert.equal(world.canWalk(-7, -3), false);
   assert.equal(world.canWalk(0, 5), true);
   assert.equal(world.canWalk(8, 16), true);

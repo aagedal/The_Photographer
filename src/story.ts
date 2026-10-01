@@ -1,3 +1,4 @@
+import { regionalLandmarks } from './landmarks.ts';
 import { missions } from './missions.ts';
 import { balance, type Economy } from './economy.ts';
 
@@ -35,6 +36,7 @@ export const mainStoryIds = ['intro-deer', 'wedding-1', 'wedding-2', 'sports-1',
 export function storyMissionUnlocked(id: string, story: Story, completed: string[]) {
   if (completed.includes(id) || story.legacyKnown.includes(id)) return true;
   switch (id) {
+    case 'horizon-light': case 'horizon-stars': case 'horizon-stone': case 'horizon-wind': return story.deerShown;
     case 'intro-deer': return true;
     case 'nature-1': return completed.includes('intro-deer');
     case 'wedding-1': case 'studio-1': case 'studio-2': return story.deerShown;
@@ -62,6 +64,7 @@ export function storyObjective(story: Story, completed: string[]) {
 export function storyDiscoveries(story: Story, completed: string[], known: string[]) {
   const objective = storyObjective(story, completed);
   const ids = [...known];
+  if (story.deerShown) ids.push(...regionalLandmarks.map(place => place.mission));
   if ('missionId' in objective && objective.missionId && storyMissionUnlocked(objective.missionId, story, completed)) ids.push(objective.missionId);
   if (completed.includes('intro-deer')) ids.push('nature-1');
   // Older notebooks can take the new commission without losing their bear route.
@@ -127,4 +130,16 @@ export function localStoryDialogue(id: string, story: Story, completed: string[]
   if (id === 'coach' && completed.includes('sports-1')) return 'That picture is on our appeal poster now. Arthur kept those ridge steps safe for years. When he cannot get up there, we can do the carrying.';
   if (id === 'planner' && completed.includes('wedding-2')) return 'My father has asked for a copy of the family picture. He pretended he did not want one. Thank you for leaving room for him.';
   return fallback;
+}
+
+export function horizonAlbum(story: Story) {
+  return regionalLandmarks.map(place => ({ ...place, printed: story.prints.some(print => print.missionId === place.mission) }));
+}
+export function horizonAlbumDialogue(story: Story) {
+  const count = horizonAlbum(story).filter(place => place.printed).length;
+  return count === 4
+    ? '“All four. I thought I wanted to see how the places had changed.” Arthur lays the prints in a row. “But you’ve been there now. When you tell me about the wind on that hill, I can picture you in it. That’s better than keeping everything the way it was.” You leave the album within reach of his chair.'
+    : count > 0
+      ? 'Arthur studies the prints slowly. “It’s strange how a place keeps going while you’re away. Tell me what you heard there.” He is interested in the walk as much as the photograph. There are still more pages for the album, whenever you feel like going.'
+      : 'Arthur pulls four faded postcards from a tin: Bracken Head Light, Northstar Observatory, Hollowstone Viaduct and Briar Hill Windmill. “I used to think I would take you round them again. Perhaps you can take me, in pictures.” There is no deadline. The four landscape commissions are now in your notebook; print them at the gallery and bring the stories home.';
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultStudioRig, normalizeStudioRig, lightPosition, studioExposureOffset, flashExposure, flashRenderIntensity, subjectExposureStops } from '../src/lighting.ts';
+import { defaultStudioRig, normalizeStudioRig, atStudio, lightPosition, studioExposureOffset, flashExposure, flashRenderIntensity, subjectExposureStops } from '../src/lighting.ts';
 import { assessPhoto, exposureStops } from '../src/photography.ts';
 import { missions } from '../src/missions.ts';
 import { createWorld } from '../src/world.ts';
@@ -79,4 +79,9 @@ test('lighting saves tolerate older or malformed data and remain independent', (
   const clamped = normalizeStudioRig({ key: { power: 100, distance: -8, height: NaN, enabled: false, colour: 'unknown' } });
   assert.equal(clamped.key.power, 2); assert.equal(clamped.key.distance, 1); assert.equal(clamped.key.height, 2.8); assert.equal(clamped.key.colour, 'daylight');
   clamped.fill.power = 0; assert.equal(defaultStudioRig().fill.power, 0.5);
+});
+
+test('studio proximity includes working positions and excludes remote or elevated players', () => {
+  for (const [x, y, z] of [[30, 1.7, -25], [23, 1.7, -18], [28, 1.7, -16], [32, 1.7, -19]]) assert.equal(atStudio(x, y, z), true);
+  for (const [x, y, z] of [[8, 1.7, 94], [30, 1.7, 5], [44, 1.7, -25], [30, 16, -25]]) assert.equal(atStudio(x, y, z), false);
 });

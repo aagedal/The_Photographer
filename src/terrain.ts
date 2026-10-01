@@ -1,6 +1,6 @@
 import { creekDistance } from './creek.ts';
 
-export const WORLD_HALF = 130;
+export const WORLD_HALF = 260;
 export const coastline = (x: number) => 98 + Math.sin(x * 0.045) * 3 + Math.sin(x * 0.1) * 1.5;
 const smooth = (a: number, b: number, value: number) => {
   const t = Math.max(0, Math.min(1, (value - a) / (b - a)));
@@ -24,8 +24,14 @@ export function terrainHeight(x: number, z: number) {
   const pondDepth = 1.25 * (1 - smooth(0.78, 1, pondRadius));
   const channelDepth = 0.95 * (1 - smooth(0.7, 1.3, creekDistance(x, z)));
   const chapelShelf = (1 - smooth(7, 13, Math.abs(x + 43))) * (1 - smooth(8, 14, Math.abs(z - 16)));
-  const inland = height * (1 - chapelShelf) - Math.max(lakeDepth, channelDepth) - pondDepth;
-  const shore = coastline(x), coastal = smooth(82, shore - 8, z);
+  // New outer country rises gently, leaving the familiar town and original trails intact.
+  const outer = smooth(112, 145, Math.max(Math.abs(x), Math.abs(z)));
+  const westernHead = 14 * Math.exp(-(((x + 184) / 42) ** 2) - ((z - 62) / 43) ** 2);
+  const northernHeights = 30 * Math.exp(-(((x + 143) / 65) ** 2) - ((z + 183) / 68) ** 2);
+  const easternHill = 18 * Math.exp(-(((x - 181) / 48) ** 2) - ((z - 33) / 48) ** 2);
+  const outerRolling = 3 + Math.sin(x * 0.025) * Math.cos(z * 0.022) * 2;
+  const inland = height * (1 - chapelShelf) - Math.max(lakeDepth, channelDepth) - pondDepth + outer * (westernHead + northernHeights + easternHill + outerRolling);
+  const shore = coastline(x), coastal = smooth(82 - outer * 26, shore - 8, z);
   const beach = z <= shore ? 1.6 * (1 - smooth(shore - 9, shore, z)) : -2 * smooth(shore, shore + 10, z);
   return inland * (1 - coastal) + beach * coastal;
 }
@@ -33,6 +39,11 @@ export const trails: [number, number][][] = [
   [[-4, -25], [-30, -37], [-46, -51], [-53, -70], [-67, -88], [-89, -98]],
   [[43, 16], [55, 3], [57, -18], [63, -32], [59, -53], [60, -69], [86, -75], [105, -87]],
   [[-35, 25], [-48, 39], [-64, 58], [-82, 72], [-99, 49], [-78, 19], [-48, 15]],
+  [[-82, 72], [-114, 76], [-135, 81], [-156, 79], [-177, 78]],
+  [[-89, -98], [-106, -119], [-111, -146], [-127, -160], [-143, -170]],
+  [[105, -87], [129, -86], [145, -73], [160, -72], [160, -99]],
+  [[43, 16], [76, 20], [105, 41], [138, 54], [148, 66], [165, 58], [181, 43]],
+  [[105, 41], [119, 12], [135, -27], [140, -62], [129, -86]],
 ];
 export function distanceToTrail(x: number, z: number) {
   let distance = Infinity;
