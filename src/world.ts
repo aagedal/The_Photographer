@@ -174,7 +174,7 @@ export function createWorld(): World {
       if (Math.max(Math.abs(x), Math.abs(z)) < 52) x += x < 0 ? -55 : 55;
     }
     // Clear the trails, ridge viewpoint, and bird sightline.
-    if ((x > -96 && x < -61 && z > -102 && z < -72) || (x > -2 && x < 10 && z > -43 && z < -27) || (x > -30 && x < 0 && z > 27 && z < 57) || (x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 115 + seed(i) * 9; z = -120 + seed(i + 9) * 240; }
+    if ((x > -46 && x < -28 && z > -51 && z < -32) || (x > -96 && x < -61 && z > -102 && z < -72) || (x > -2 && x < 10 && z > -43 && z < -27) || (x > -30 && x < 0 && z > 27 && z < 57) || (x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 115 + seed(i) * 9; z = -120 + seed(i + 9) * 240; }
     const ground = terrainHeight(x, z);
     const size = 0.8 + seed(i + 13) * 1.3;
     dummy.position.set(x, ground + size * 1.5, z); dummy.scale.set(0.35 * size, 3 * size, 0.35 * size); dummy.rotation.y = 0; dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
@@ -417,6 +417,7 @@ export function createWorld(): World {
   const townLife = createTownLife({ scene, solids, box, sphere, person, house, batchMeshes });
   const store = createCameraStore(scene, solids);
   const storyPlaces = createStoryPlaces(scene, solids);
+  subjects.set('Woodland survey notice', storyPlaces.boundaryFocus);
   const opening = createOpening(scene);
   const deer = scene.getObjectByName('meadow-deer-0')!;
   const deerFocus = new THREE.Object3D(); deerFocus.position.set(0, 1, 0); deer.add(deerFocus); subjects.set('Meadow deer', deerFocus);

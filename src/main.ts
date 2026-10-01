@@ -21,8 +21,8 @@ import { movementSpeed } from './wildlife.ts';
 import { openingScenes, arrivalPosition } from './opening.ts';
 import { cameraStore, atCameraStore } from './camera-store.ts';
 import { notebookMissions, type MissionSection } from './notebook.ts';
-import { freshStory, normalizeStory, storyMissionUnlocked, storyDiscoveries, storyObjective, mainStoryIds, printPhoto, visitUncle, startExhibition, settleDays, buyCottage, PRINT_PRICE, EXHIBITION_DAILY, ROOM_RENT, COTTAGE_PRICE, type Story } from './story.ts';
-import { galleryPlace, unclePlace, nearStoryPlace } from './story-world.ts';
+import { freshStory, normalizeStory, storyMissionUnlocked, storyDiscoveries, storyObjective, mainStoryIds, printPhoto, visitUncle, startExhibition, settleDays, buyCottage, PRINT_PRICE, EXHIBITION_DAILY, ROOM_RENT, COTTAGE_PRICE, publishReport, arthurMemories, rememberArthur, localStoryDialogue, type Story } from './story.ts';
+import { galleryPlace, unclePlace, paperPlace, boundaryPlace, nearStoryPlace } from './story-world.ts';
 import './style.css';
 
 const paths: Record<string, string> = {
@@ -256,6 +256,7 @@ function toast(message: string) {
 }
 function persist() {
   save.discovered = storyDiscoveries(save.story, save.completed, save.discovered);
+  world.storyPlaces.setReportPublished(save.story.reportPublished);
   save.position = [player.x, player.z];
   save.focus = { mode: focus.mode, distance: focus.distance };
   save.sound = { enabled: audio.enabled, volume: audio.volume };
@@ -392,7 +393,7 @@ function toggleSneak() {
   $('sneak-label').textContent = sneaking ? 'Sneaking' : 'Sneak';
 }
 function updateClockCue() {
-  $('location-title').textContent = nearStoryPlace(galleryPlace, player.x, player.y, player.z) ? galleryPlace.name : nearStoryPlace(unclePlace, player.x, player.y, player.z) ? unclePlace.name : Math.hypot(player.x - arrivalPosition[0], player.z - arrivalPosition[1]) < 10 ? 'Arrival dock' : atCameraStore(player.x, player.y, player.z) ? cameraStore.name : player.z > 84 ? 'Southern shore' : player.z >= 31 && player.z < 80 && player.x > -15 && player.x < 57 ? 'South neighborhood' : player.x < -35 && player.x > -53 && player.z > 7 && player.z < 39 ? 'Wedding chapel' : activeMission.location;
+  $('location-title').textContent = nearStoryPlace(galleryPlace, player.x, player.y, player.z) ? galleryPlace.name : nearStoryPlace(unclePlace, player.x, player.y, player.z) ? unclePlace.name : nearStoryPlace(paperPlace, player.x, player.y, player.z) ? paperPlace.name : Math.hypot(player.x - 18, player.z + 4) < 12 ? 'Morning Paper Square' : Math.hypot(player.x - arrivalPosition[0], player.z - arrivalPosition[1]) < 10 ? 'Arrival dock' : atCameraStore(player.x, player.y, player.z) ? cameraStore.name : player.z > 84 ? 'Southern shore' : player.z >= 31 && player.z < 80 && player.x > -15 && player.x < 57 ? 'South neighborhood' : player.x < -35 && player.x > -53 && player.z > 7 && player.z < 39 ? 'Wedding chapel' : activeMission.location;
   if (save.completed.includes(activeMission.id)) $('subject-cue').textContent = `${storyObjective(save.story, save.completed).title} · Esc → Assignments`;
   if (activeMission.id === 'intro-deer' && !save.completed.includes('intro-deer')) {
     const deer = subjectPosition(world, activeMission), distance = Math.round(deer.distanceTo(player)), mood = world.deerMood(elapsed);
@@ -805,13 +806,14 @@ function advanceWorldTime(hours: number) {
 function openStory() {
   const objective = storyObjective(save.story, save.completed);
   const needsPrint = !save.story.deerShown ? !save.story.prints.some(p => p.missionId === 'intro-deer') : save.completed.includes('nature-bear') && !save.story.prints.some(p => p.missionId === 'nature-bear');
-  const action = objective.action === 'mission' ? 'Accept this assignment' : needsPrint ? 'Visit the gallery' : 'Find Arthur’s porch';
-  showModal(objective.title, `ARTHUR’S STORY · ${objective.chapter}`, 'A photographer finds a place in Willowbrook.', `<div class="story-scene"><p>${esc(objective.text)}</p><p class="discovery-note">${objective.action === 'mission' ? 'Follow the main story at your own pace. Side assignments help pay for gear and prints.' : 'The gallery and Arthur’s porch are marked in Esc → Explore. Press R when you arrive.'}</p><button class="primary" id="story-next">${action} ${icon('arrow')}</button></div>`);
+  const action = objective.action === 'mission' ? 'Accept this assignment' : objective.action === 'editor' ? 'Find June in the square' : needsPrint ? 'Visit the gallery' : 'Find Arthur’s porch';
+  showModal(objective.title, `ARTHUR’S STORY · ${objective.chapter}`, 'A photographer finds a place in Willowbrook.', `<div class="story-scene"><p>${esc(objective.text)}</p><p class="discovery-note">${objective.action === 'editor' ? 'Bring the pictures to June in Morning Paper Square. Press R to talk, then leave the photographs with her.' : objective.action === 'mission' ? 'Follow the main story at your own pace. Side assignments help pay for gear and prints.' : 'The gallery and Arthur’s porch are marked in Esc → Explore. Press R when you arrive.'}</p><button class="primary" id="story-next">${action} ${icon('arrow')}</button></div>`);
   $('story-next').onclick = () => {
     if ('missionId' in objective && objective.missionId) {
       save.discovered = storyDiscoveries(save.story, save.completed, save.discovered);
       if (selectMission(missions.find(m => m.id === objective.missionId)!)) { modal.close(); toast('Story assignment accepted. Esc → Assignments for directions and settings.'); }
-    } else if (needsPrint) openGallery();
+    } else if (objective.action === 'editor') findJune();
+    else if (needsPrint) openGallery();
     else openPauseMenu('explore');
   };
 }
@@ -841,20 +843,25 @@ function openGallery(topLevel = false) {
     toast(['intro-deer', 'nature-bear'].includes(photo.missionId) ? 'Your print is on the gallery wall. Bring Arthur the story at his porch.' : 'Printed and hung in your gallery.');
   });
 }
-function openUncle() {
+function openUncle(memoryId?: string) {
   const before = save.story;
   save.story = visitUncle(save.story, save.completed); persist();
   const ending = !before.reconciled && save.story.reconciled;
   const first = !before.deerShown && save.story.deerShown;
-  const line = ending ? 'There it is. Just as I remember. You came all this way for a photograph, but you stayed. I’m glad we have this time together. Sit with me a while.' : first ? 'Look at that deer. You waited, and you let it be itself. You always had an eye for things. Alma stopped by your exhibition wall; she has a wedding coming up and wants to meet our new photographer.' : save.story.reconciled ? 'I keep your bear beside my chair. Tell me what you saw today.' : !save.story.deerShown ? 'I would love to see your first photograph. Print the deer at the gallery, then come sit with me. The bear can wait until you have a long lens.' : 'I hear the town is getting to know you. Take your time with the bear. It’s the time with you that matters most.';
+  const line = ending ? 'There it is. Just as I remember. You came all this way for a photograph, but you stayed. I’m glad we have this time together. Sit with me a while.' : first ? 'Look at that deer. You waited, and you let it be itself. You always had an eye for things. Alma stopped by your exhibition wall; she has a wedding coming up and wants to meet our new photographer.' : save.story.reconciled ? 'I keep your bear beside my chair. Tell me what you saw today.' : !save.story.deerShown ? 'I would love to see your first photograph. Print the deer at the gallery, then come sit with me. The bear can wait until you have a long lens.' : save.story.reportPublished ? 'June brought the paper. The path is still there, for now. Your mother would have gone to that hearing with a flask and a hundred questions. Take your time with the bear. I would rather have you here than a perfect photograph.' : save.completed.includes('news-townhall') ? 'June told me about the road proposal. Your mother and I kept that footpath clear for years. Go and look at it before you decide what the meeting means. People deserve the whole picture.' : 'I hear the town is getting to know you. Do you remember that camera I sent? I hoped you would bring it home one day. The bear can wait. Tell me about your day.';
+  const memory = arthurMemories.find(item => item.id === memoryId);
   const price = COTTAGE_PRICE + save.story.rentArrears;
-  showModal(ending ? 'A little time together.' : 'Uncle Arthur', ending ? 'ARTHUR’S STORY · HOME, AT LAST' : 'ARTHUR’S PORCH', ending ? 'The photograph is home. So are you.' : 'The kettle is on. There is a chair for you.', `<p class="npc-dialogue">“${esc(line)}”</p>${ending ? '<p>You sit beside Arthur as the light turns. There is no photograph to make, and nowhere else you need to be.</p>' : ''}<section class="living-status"><h3>${save.story.home === 'cottage' ? 'A home of your own' : 'Settle into Willowbrook'}</h3><p>${save.story.home === 'cottage' ? 'Your garden cottage is on the southern street. You can keep photographing and running the gallery.' : `Your room costs $${ROOM_RENT} per game day after your first visit with the deer print. The garden cottage is available for $${COTTAGE_PRICE}, with no daily rent.${save.story.rentArrears ? ` Clear ${money(save.story.rentArrears)} in waiting rent as part of the purchase.` : ''}`}</p>${save.story.home === 'room' ? `<button class="secondary" id="buy-home" ${save.story.deerShown && balance(save.economy, save.completed) >= price ? '' : 'disabled'}>Buy garden cottage · ${money(price)}</button>` : ''}</section><div class="review-actions"><button class="secondary" id="uncle-gallery">View the gallery</button><button class="primary" id="uncle-next">${ending || save.story.reconciled ? 'Keep exploring' : 'Continue the story'} ${icon('arrow')}</button></div>`);
+  showModal(ending ? 'A little time together.' : 'Uncle Arthur', ending ? 'ARTHUR’S STORY · HOME, AT LAST' : 'ARTHUR’S PORCH', ending ? 'The photograph is home. So are you.' : 'The kettle is on. There is a chair for you.', `<p class="npc-dialogue">“${esc(line)}”</p>${ending ? '<p>You start to apologise for the years you let pass. Arthur shakes his head. “I let them pass, too.” You sit beside him as the light turns. There is no photograph to make, and nowhere else you need to be.</p>' : ''}<section class="arthur-memories"><h3>Stay for a cup of tea</h3><p class="discovery-note">There is time to talk. You can return to these conversations whenever you like.</p><div class="pause-actions">${arthurMemories.map(item => `<button class="secondary" data-memory="${item.id}" aria-pressed="${memoryId === item.id}">${esc(item.title)}${save.story.memories.includes(item.id) ? ' · Remembered' : ''}</button>`).join('')}</div>${memory ? `<p class="npc-dialogue">${esc(memory.text)}</p>` : ''}</section><section class="living-status"><h3>${save.story.home === 'cottage' ? 'A home of your own' : 'Settle into Willowbrook'}</h3><p>${save.story.home === 'cottage' ? 'Your garden cottage is on the southern street. You can keep photographing and running the gallery.' : `Your room costs $${ROOM_RENT} per game day after your first visit with the deer print. The garden cottage is available for $${COTTAGE_PRICE}, with no daily rent.${save.story.rentArrears ? ` Clear ${money(save.story.rentArrears)} in waiting rent as part of the purchase.` : ''}`}</p>${save.story.home === 'room' ? `<button class="secondary" id="buy-home" ${save.story.deerShown && balance(save.economy, save.completed) >= price ? '' : 'disabled'}>Buy garden cottage · ${money(price)}</button>` : ''}</section><div class="review-actions"><button class="secondary" id="uncle-gallery">View the gallery</button><button class="primary" id="uncle-next">${ending || save.story.reconciled ? 'Keep exploring' : 'Continue the story'} ${icon('arrow')}</button></div>`);
   if ($('buy-home')) $('buy-home').onclick = () => {
     if (!nearStoryPlace(unclePlace, player.x, player.y, player.z)) return;
     const result = buyCottage(save.story, save.economy, save.completed);
     if (!result.ok) return;
     save.story = result.story; save.economy = result.economy; persist(); openUncle(); toast('The garden cottage is yours. Find it on the map.');
   };
+  modal.querySelectorAll<HTMLButtonElement>('[data-memory]').forEach(button => button.onclick = () => {
+    save.story = rememberArthur(save.story, button.dataset.memory!); persist(); openUncle(button.dataset.memory);
+    modal.querySelector<HTMLButtonElement>(`[data-memory="${button.dataset.memory}"]`)?.focus();
+  });
   $('uncle-gallery').onclick = () => openGallery();
   $('uncle-next').onclick = () => { if (save.story.reconciled) modal.close(); else openStory(); };
 }
@@ -904,26 +911,47 @@ function openBoard() {
   if ($('choose-available')) $('choose-available').onclick = () => { missionSection = 'available'; openBoard(); };
   wireMissionCards(); $('story-details').onclick = openStory;
 }
+function findJune() {
+  const [x,,z] = world.npcPosition('editor');
+  const spot = [[x + 2.5,z],[x - 2.5,z],[x,z + 2.5],[x,z - 2.5]].find(([px,pz]) => world.canWalk(px,pz));
+  if (!spot) { openPauseMenu('explore'); return; }
+  requestTripod(false, true); player.set(spot[0], world.groundHeight(...spot as [number, number]) + 1.7, spot[1]);
+  const direction = new THREE.Vector3(x, world.groundHeight(x,z) + 1.5, z).sub(player);
+  yaw = Math.atan2(-direction.x, -direction.z); pitch = Math.atan2(direction.y, Math.hypot(direction.x,direction.z));
+  setCameraMode(false); modal.close(); persist(); toast('June is here. Press R to leave the photographs with her.');
+}
+function openPaper() {
+  showModal('The Willowbrook Paper', 'MORNING PAPER SQUARE', save.story.reportPublished ? 'The town is asking its own questions.' : 'A small paper, read by the people in its photographs.', save.story.reportPublished
+    ? '<h3>Woodland road proposal paused for public hearing</h3><p>Photographs of an after-hours meeting and the marked route led residents to ask how the proposed road would affect the northern footpath. June checked the public planning register and sought a response from Councillor Vale.</p><p>Vale describes the route as preliminary. The council will hold an open hearing before deciding; the existing public footpath remains open. The proposal has not been cancelled.</p><p class="discovery-note">Reporting by June · Photographs by Willowbrook’s newest neighbour</p>'
+    : '<h3>The path we share</h3><p>The running club is raising funds to repair the ridge steps that Arthur maintained for years. Theo says volunteers will carry the materials uphill this spring.</p><p>The public planning register lists a proposed northern access road. Plans can be inspected at the town hall. June welcomes questions in the square.</p>');
+}
 function talkToNPC() {
   if (modal.open || capturing || meditation || tripod.transitioning) return;
   if (atCameraStore(player.x, player.y, player.z)) { openGearShop(); return; }
   if (nearStoryPlace(galleryPlace, player.x, player.y, player.z)) { openGallery(); return; }
   if (nearStoryPlace(unclePlace, player.x, player.y, player.z)) { openUncle(); return; }
+  if (nearStoryPlace(paperPlace, player.x, player.y, player.z)) { openPaper(); return; }
   const npc = nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id));
   if (!npc) return;
   const before = save.discovered.length;
   save.discovered = storyDiscoveries(save.story, save.completed, discoverNPC(save.discovered, npc)); persist();
-  showModal(npc.name, npc.role.toUpperCase(), `${save.discovered.length - before ? `${save.discovered.length - before} new stories added to your notebook` : 'A familiar face in Willowbrook'}`, `<p class="npc-dialogue">“${esc(npc.missions.some(id => storyMissionUnlocked(id, save.story, save.completed)) ? npc.dialogue : 'Welcome to Willowbrook. Settle in and show Arthur your first photograph. We’ll have work for you as the town gets to know you.')}”</p><div class="mission-grid">${missions.filter(m => (npc.missions as readonly string[]).includes(m.id) && storyMissionUnlocked(m.id, save.story, save.completed)).map(missionCard).join('')}</div><div class="review-actions"><span class="discovery-note">These stories stay in your notebook for later.</span><button class="primary" id="leave-npc">Keep exploring ${icon('arrow')}</button></div>`);
+  showModal(npc.name, npc.role.toUpperCase(), `${save.discovered.length - before ? `${save.discovered.length - before} new stories added to your notebook` : 'A familiar face in Willowbrook'}`, `<p class="npc-dialogue">“${esc(npc.missions.some(id => storyMissionUnlocked(id, save.story, save.completed)) ? localStoryDialogue(npc.id, save.story, save.completed, npc.dialogue) : 'Welcome to Willowbrook. Settle in and show Arthur your first photograph. We’ll have work for you as the town gets to know you.')}”</p>${npc.id === 'editor' && !save.story.reportPublished && save.completed.includes('news-townhall') && save.completed.includes('news-boundary') ? '<div class="pause-actions"><button class="primary" id="deliver-report">Leave both photographs with June</button></div>' : ''}<div class="mission-grid">${missions.filter(m => (npc.missions as readonly string[]).includes(m.id) && storyMissionUnlocked(m.id, save.story, save.completed)).map(missionCard).join('')}</div><div class="review-actions"><span class="discovery-note">These stories stay in your notebook for later.</span><button class="primary" id="leave-npc">Keep exploring ${icon('arrow')}</button></div>`);
   wireMissionCards(); $('leave-npc').onclick = () => modal.close();
+  if ($('deliver-report')) $('deliver-report').onclick = () => {
+    if (nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id))?.id !== 'editor') return;
+    save.story = publishReport(save.story, save.completed); persist();
+    showModal('The whole picture', 'JUNE · THE WILLOWBROOK PAPER', 'Later, after June checks the register and asks Vale for a response.', `<p class="npc-dialogue">“${esc(localStoryDialogue('editor', save.story, save.completed, ''))}”</p><p>The new edition is on the noticeboard in the square. The woodland planning notice now lists the public hearing. Mara has news of Arthur’s bear.</p><button class="primary" id="report-next">Back to Arthur’s story ${icon('arrow')}</button>`);
+    $('report-next').onclick = openStory;
+  };
 }
 function updateNPCPrompt() {
   const npc: NPC | undefined = nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id));
   const prompt = $('npc-prompt');
   const storeNearby = atCameraStore(player.x, player.y, player.z);
-  const storyPlace = nearStoryPlace(galleryPlace, player.x, player.y, player.z) ? galleryPlace : nearStoryPlace(unclePlace, player.x, player.y, player.z) ? unclePlace : undefined;
+  const storyPlace = nearStoryPlace(galleryPlace, player.x, player.y, player.z) ? galleryPlace : nearStoryPlace(unclePlace, player.x, player.y, player.z) ? unclePlace : nearStoryPlace(paperPlace, player.x, player.y, player.z) ? paperPlace : undefined;
   prompt.hidden = (!npc && !storeNearby && !storyPlace) || modal.open || capturing || tripod.transitioning || !!meditation;
   if (storeNearby) { prompt.dataset.npc = 'camera-store'; prompt.innerHTML = `<kbd>R</kbd> Browse the camera store <small>${cameraStore.name} · Lenses, filters & cameras</small>`; return; }
-  if (storyPlace) { prompt.dataset.npc = storyPlace.name; prompt.innerHTML = `<kbd>R</kbd> ${storyPlace === galleryPlace ? 'Visit the gallery' : 'Sit with Uncle Arthur'} <small>${storyPlace === galleryPlace ? 'Prints & exhibitions' : 'A little time together'}</small>`; return; }
+  if (storyPlace) { prompt.dataset.npc = storyPlace.name; prompt.innerHTML = `<kbd>R</kbd> ${storyPlace === galleryPlace ? 'Visit the gallery' : storyPlace === paperPlace ? 'Read the local paper' : 'Sit with Uncle Arthur'} <small>${storyPlace === galleryPlace ? 'Prints & exhibitions' : storyPlace === paperPlace ? 'The town’s latest news' : 'A little time together'}</small>`; return; }
   const promptKey = npc ? `${npc.id}-${localActivity(npc.id, clock.hour)}` : '';
   if (npc && prompt.dataset.npc !== promptKey) { prompt.dataset.npc = promptKey; prompt.innerHTML = `<kbd>R</kbd> Talk to ${esc(npc.name)} <small>${esc(npc.role)} · ${esc(localActivity(npc.id, clock.hour))}</small>`; }
 }
@@ -968,15 +996,17 @@ function drawMap(canvas: HTMLCanvasElement) {
     if (!npc.missions.some(id => save.discovered.includes(id))) continue;
     const [x,,z] = world.npcPosition(npc.id); ctx.beginPath(); ctx.arc(mx(x), mz(z), 4, 0, Math.PI * 2); ctx.fillStyle = '#b08b46'; ctx.fill(); ctx.fillText(npc.name, mx(x), mz(z) - 9);
   }
-  for (const place of [galleryPlace, unclePlace]) { ctx.fillStyle = '#8c6486'; ctx.fillRect(mx(place.x)-4, mz(place.z)-4, 8, 8); ctx.fillText(place.name, mx(place.x), mz(place.z)-10); }
+  for (const place of [galleryPlace, unclePlace, paperPlace]) { ctx.fillStyle = '#8c6486'; ctx.fillRect(mx(place.x)-4, mz(place.z)-4, 8, 8); ctx.fillText(place.name, mx(place.x), mz(place.z)-10); }
   ctx.fillStyle = '#3b7e87'; ctx.fillRect(mx(cameraStore.x) - 4, mz(cameraStore.z) - 4, 8, 8); ctx.fillText('Camera store', mx(cameraStore.x), mz(cameraStore.z) - 10);
   const target = subjectPosition(world, activeMission); ctx.beginPath(); ctx.arc(mx(target.x),mz(target.z),5,0,Math.PI * 2);ctx.fillStyle='#dab955';ctx.fill();
   ctx.save(); ctx.translate(mx(player.x),mz(player.z));ctx.rotate(-yaw);
   ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fillStyle='#314e40';ctx.fill();ctx.restore();
 }
 const landmarks = [
+  { id: 'paper', name: paperPlace.name, x: paperPlace.entrance[0], z: paperPlace.entrance[1], target: [paperPlace.x, 1.7, paperPlace.z] },
+  { id: 'boundary', name: boundaryPlace.name, x: boundaryPlace.entrance[0], z: boundaryPlace.entrance[1], target: [boundaryPlace.x, terrainHeight(boundaryPlace.x, boundaryPlace.z) + 1.6, boundaryPlace.z] },
   { id: 'gallery', name: galleryPlace.name, x: galleryPlace.entrance[0], z: galleryPlace.entrance[1], target: [galleryPlace.x, 2, galleryPlace.z] },
-  { id: 'uncle', name: unclePlace.name, x: unclePlace.entrance[0], z: unclePlace.entrance[1], target: [unclePlace.x, 2, unclePlace.z] },
+  { id: 'uncle', name: unclePlace.name, x: unclePlace.entrance[0], z: unclePlace.entrance[1], target: [unclePlace.x + 1, terrainHeight(unclePlace.x, unclePlace.z) + 1.6, unclePlace.z + 3] },
   { id: 'room', name: 'Your town room', x: 4, z: 56, target: [4, 2, 48] },
   { id: 'cottage', name: 'Garden cottage', x: 40, z: 65, target: [40, 2, 71] },
   { id: 'camera-store', name: cameraStore.name, x: cameraStore.entrance[0], z: cameraStore.entrance[1], target: [cameraStore.x, 2, cameraStore.z] },
@@ -1143,6 +1173,7 @@ renderer.domElement.addEventListener('wheel', e => {
 renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); keys.clear(); toast('Graphics were interrupted. Reload to return to your saved journal.'); });
 
 world.storyPlaces.displayPrints(save.story.prints);
+world.storyPlaces.setReportPublished(save.story.reportPublished);
 world.setTime(clock.hour); applyStudioRig(); world.update(0, settings); world.scene.updateMatrixWorld(true);
 faceSubject(activeMission); renderMission(); syncSettings(); updateProgress(); resize(); updateLensLabel();
 renderer.shadowMap.needsUpdate = true;

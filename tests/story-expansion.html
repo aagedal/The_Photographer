@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><title>Woodland story playtest</title>
+<style>body{background:#17251e;color:#f5f1df;font:16px system-ui;padding:32px;max-width:760px}button{margin:8px;padding:16px;font:inherit}</style>
+<h1>Woodland story playtest</h1>
+<p>These fixtures use only the <strong>story-expansion</strong> notebook. The player's normal notebook is untouched. The boundary fixture requires a real photograph; use Esc → Assignments → Suggested settings before shooting.</p>
+<button id="boundary">Prepare woodland photograph</button>
+<button id="delivery">Prepare June handoff</button>
+<button id="porch">Visit Arthur's new porch</button>
+<script type="module">
+import { freshStory } from '../src/story.ts';
+import { normalizeEconomy } from '../src/economy.ts';
+const completed=['intro-deer','wedding-1','wedding-2','sports-1','news-townhall'];
+function prepare(position, done=completed) {
+  localStorage.setItem('the-photographer-playtest-story-expansion-v1',JSON.stringify({
+    version:1, filterShopVersion:1, openingSeen:true, walkingIntroduction:false,
+    story:{...freshStory(),deerShown:true}, position, hour:14,
+    discovered:[...done,'news-boundary'],completed:done,photos:[],active:'news-boundary',
+    economy:normalizeEconomy(undefined,done),sound:{enabled:false,volume:0.6}
+  }));
+  location.href='/?playtest=story-expansion';
+}
+document.querySelector('#boundary').onclick=()=>prepare([-34,-37]);
+document.querySelector('#delivery').onclick=()=>prepare([20.5,-6],[...completed,'news-boundary']);
+document.querySelector('#porch').onclick=()=>prepare([-23,55]);
+</script>
+</html>

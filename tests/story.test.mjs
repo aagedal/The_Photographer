@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { freshStory, normalizeStory, storyMissionUnlocked, storyDiscoveries, storyObjective, printPhoto, visitUncle, startExhibition, settleDays, buyCottage } from '../src/story.ts';
+import { freshStory, normalizeStory, storyMissionUnlocked, storyDiscoveries, storyObjective, printPhoto, visitUncle, startExhibition, settleDays, buyCottage, publishReport, rememberArthur, arthurMemories, localStoryDialogue } from '../src/story.ts';
 import { normalizeEconomy, balance, purchaseGear, completeMission } from '../src/economy.ts';
 import { missions } from '../src/missions.ts';
 import { assessPhoto } from '../src/photography.ts';
 import { createWorld, subjectPosition } from '../src/world.ts';
-import { galleryPlace, unclePlace, nearStoryPlace } from '../src/story-world.ts';
+import { galleryPlace, unclePlace, paperPlace, boundaryPlace, nearStoryPlace } from '../src/story-world.ts';
 const photo = (id, passed = true) => ({id:`photo-${id}`,missionId:id,image:'data:image/jpeg;base64,abc',result:{passed}});
 const emptyKit = () => normalizeEconomy(undefined, []);
 
@@ -31,7 +31,13 @@ test('the complete story requires a deer print, town reputation, safe bear photo
   assert.equal(storyMissionUnlocked('news-townhall',story,completed),false);
   completed.push('sports-1'); assert.equal(storyObjective(story,completed).missionId,'news-townhall');
   assert.equal(storyMissionUnlocked('nature-bear',story,completed),false);
-  completed.push('news-townhall'); assert.equal(storyObjective(story,completed).missionId,'nature-bear');
+  completed.push('news-townhall'); assert.equal(storyObjective(story,completed).missionId,'news-boundary');
+  assert.equal(storyMissionUnlocked('nature-bear',story,completed),false);
+  assert.deepEqual(publishReport(story,completed),story,'a meeting alone is not enough');
+  completed.push('news-boundary'); assert.equal(storyObjective(story,completed).action,'editor');
+  assert.equal(storyMissionUnlocked('nature-bear',story,completed),false,'take the evidence to June');
+  story=publishReport(story,completed);
+  assert.equal(storyObjective(story,completed).missionId,'nature-bear');
   const bought = purchaseGear(economy,completed,'telephoto');
   assert.equal(bought.ok,true,'main commissions alone fund the required lens and CPL'); economy=bought.economy;
   assert.equal(purchaseGear(economy,completed,'cpl').ok,true);
@@ -115,7 +121,7 @@ test('the bear rejects close approaches, short lenses, blur and flash; meeting n
 });
 test('gallery and uncle entrances are reachable and night windows reduce glare with CPL', () => {
   const world=createWorld();
-  for (const place of [galleryPlace,unclePlace]) {
+  for (const place of [galleryPlace,unclePlace,paperPlace,boundaryPlace]) {
     const [x,z]=place.entrance,y=world.groundHeight(x,z)+1.7;
     assert.equal(world.canWalk(x,z),true,place.name);
     assert.equal(nearStoryPlace(place,x,y,z),true);
@@ -130,4 +136,48 @@ test('gallery and uncle entrances are reachable and night windows reduce glare w
   const position=subjectPosition(world,bear).toArray(); world.update(15,{filter:'none',shutter:1/125});world.update(12,{filter:'none',shutter:1/125});
   assert.deepEqual(subjectPosition(world,bear).toArray(),position);
   world.setTime(12);assert.equal(world.scene.getObjectByName('councillor-vale').visible,false);
+});
+
+test('previous notebooks keep their bear route across repeated migrations', () => {
+  const completed = ['intro-deer','wedding-1','wedding-2','sports-1','news-townhall'];
+  const original = { version:1, deerShown:true, legacyKnown:[] };
+  let migrated = normalizeStory(original,completed,['nature-bear']);
+  assert.equal(migrated.reportPublished,true);
+  assert.equal(storyObjective(migrated,completed).missionId,'nature-bear');
+  assert.equal(storyMissionUnlocked('nature-bear',migrated,completed),true);
+  assert.ok(storyDiscoveries(migrated,completed,[]).includes('news-boundary'),'the expanded commission is optional for old notebooks');
+  for (let i=0;i<3;i++) { migrated=normalizeStory(JSON.parse(JSON.stringify(migrated)),completed); assert.equal(migrated.reportPublished,true); }
+  const fresh = normalizeStory({...freshStory(),deerShown:true,reportPublished:true},completed);
+  assert.equal(fresh.reportPublished,false,'new notebooks require the corroborating photograph');
+  assert.equal(storyObjective(fresh,completed).missionId,'news-boundary');
+  assert.equal(normalizeStory({...original,deerShown:true},['intro-deer']).reportPublished,false);
+});
+test('Arthur memories are optional, deduplicated and persist without advancing commissions or finances', () => {
+  let story = freshStory();
+  for (const memory of arthurMemories) {
+    story=rememberArthur(story,memory.id);
+    assert.deepEqual(rememberArthur(story,memory.id),story);
+    assert.equal(storyObjective(story,[]).missionId,'intro-deer');
+  }
+  assert.equal(story.memories.length,3);
+  assert.equal(story.day,1); assert.equal(story.deerShown,false);
+  assert.deepEqual(rememberArthur(story,'unknown'),story);
+  assert.deepEqual(normalizeStory({...story,memories:[...story.memories,'unknown','bear',null]},[]),story);
+  assert.match(localStoryDialogue('editor',{...story,reportPublished:true},[],''),/preliminary/);
+  assert.match(localStoryDialogue('ranger',story,['news-townhall'],''),/orange ribbons/);
+});
+test('the investigation changes notices without closing the public trail or hiding the survey subject', () => {
+  const world=createWorld(); const mission=missions.find(m=>m.id==='news-boundary');
+  world.scene.updateMatrixWorld(true);
+  const before=subjectPosition(world,mission).toArray();
+  world.storyPlaces.setReportPublished(true);
+  assert.deepEqual(subjectPosition(world,mission).toArray(),before);
+  assert.ok(world.scene.getObjectByName('woodland-planning-notice'));
+  assert.ok(world.scene.getObjectByName('willowbrook-paper-front-page'));
+  const arthur=world.scene.getObjectByName('uncle-arthur');
+  assert.ok(arthur); assert.ok(arthur.children.length<20,'rounded Arthur detail is batched');
+  for (const published of [false,true]) {
+    world.storyPlaces.setReportPublished(published);
+    for (const place of [paperPlace,boundaryPlace]) assert.equal(world.canWalk(...place.entrance),true);
+  }
 });
