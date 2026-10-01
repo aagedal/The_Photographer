@@ -57,15 +57,34 @@ export function createWaterSurface(geometry: THREE.BufferGeometry, x: number, y:
 // Reflectors must not recursively render one another or reuse an active texture.
 // Limit each surface to a single reflected scene pass, including the window.
 export function isolateReflections(reflectors: Reflector[]) {
+  let frameTime: number | undefined, interval = 0;
+  const refreshed = new Map<Reflector, number>();
   for (const reflector of reflectors) {
     const renderReflection = reflector.onBeforeRender;
     reflector.onBeforeRender = function (...args) {
+      // Capture samples always refresh. Live mobile frames can reuse the
+      // projective texture briefly; the ripple shader still animates.
+      const [, scene] = args;
+      if (scene?.overrideMaterial) return;
+      const last = refreshed.get(reflector);
+      if (frameTime !== undefined && last !== undefined && frameTime >= last && frameTime - last < interval) return;
       const visibility = reflectors.map(surface => surface.visible);
       reflectors.forEach(surface => { if (surface !== reflector) surface.visible = false; });
-      try { renderReflection.apply(this, args); }
+      try {
+        renderReflection.apply(this, args);
+        if (frameTime !== undefined) refreshed.set(reflector, frameTime);
+      }
       finally { reflectors.forEach((surface, index) => { surface.visible = visibility[index]; }); }
     };
   }
+  return {
+    prepare(timeMs?: number, refreshIntervalMs = 0) {
+      frameTime = timeMs; interval = Math.max(0, refreshIntervalMs);
+      // Shutter sampling must refresh the reflected world at every instant.
+      // Clear its history so the following live frame refreshes as well.
+      if (timeMs === undefined || interval === 0) refreshed.clear();
+    },
+  };
 }
 
 export function createFishSchool(x: number, surfaceY: number, z: number, radiusX: number, radiusZ: number, count: number, name: string) {

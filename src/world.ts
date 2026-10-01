@@ -27,6 +27,9 @@ import { BearEncounter } from './bear.ts';
 import { createHospital } from './hospital.ts';
 import type { Mission } from './missions.ts';
 import { defaultStudioRig, lightNames, lightPosition, type StudioRig } from './lighting.ts';
+import { createBuildingSurfaces, gabledRoof } from './building-surfaces.ts';
+import { partitionScenery } from './scenery-batches.ts';
+import { createGroundSurfaces } from './ground-surfaces.ts';
 
 export interface World {
   bearEncounter: BearEncounter;
@@ -45,6 +48,7 @@ export interface World {
   traffic: THREE.Object3D[];
   canWalk: (x: number, z: number) => boolean;
   groundHeight: (x: number, z: number) => number;
+  prepareRender: (timeMs?: number, reflectionIntervalMs?: number) => void;
 }
 
 export function createWorld(): World {
@@ -55,6 +59,9 @@ export function createWorld(): World {
   const solids: THREE.Object3D[] = [];
   const blockers: { x: number; z: number; w: number; d: number }[] = [];
   const mats = new Map<string, THREE.MeshStandardMaterial>();
+  const buildingSurfaces = createBuildingSurfaces();
+  const groundSurfaces = createGroundSurfaces();
+  const staticGroups: THREE.Object3D[] = [];
   const material = (color: string) => {
     if (!mats.has(color)) mats.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.88, flatShading: true }));
     return mats.get(color)!;
@@ -71,11 +78,13 @@ export function createWorld(): World {
   };
   const seed = (n: number) => { const a = Math.sin(n * 127.1 + 311.7) * 43758.5453; return a - Math.floor(a); };
   // Preserve facial detail without paying one draw call for every eye and seam.
-  const batchMeshes = (parent: THREE.Object3D, exclude: Set<THREE.Object3D> = new Set()) => {
+  const batchMeshes = (parent: THREE.Object3D, exclude: Set<THREE.Object3D> = new Set(), tileSize = Infinity) => {
     const batches = new Map<string, THREE.Mesh[]>();
     for (const child of parent.children) {
       if (!(child instanceof THREE.Mesh) || child instanceof THREE.InstancedMesh || exclude.has(child) || child.name === 'rolling-terrain' || !(child.material instanceof THREE.MeshStandardMaterial) || child.material instanceof THREE.MeshPhysicalMaterial) continue;
-      const key = `${child.material.uuid}-${child.castShadow}-${child.receiveShadow}`;
+      // Keep distant town details from expanding a batch's culling bounds
+      // across the whole map. Animated joints and collision meshes stay separate.
+      const key = `${child.material.uuid}-${child.castShadow}-${child.receiveShadow}-${Math.floor(child.position.x / tileSize)}-${Math.floor(child.position.z / tileSize)}`;
       if (!batches.has(key)) batches.set(key, []);
       batches.get(key)!.push(child);
     }
@@ -122,18 +131,21 @@ export function createWorld(): World {
     const colour = grass.clone().lerp(highland, Math.min(1, height / 20));
     if (height < -0.1 || Math.hypot((x - 76) / 14, (z + 54) / 11) < 0.9) colour.lerp(lakebed, Math.min(1, Math.max(0, -height) + 0.6));
     colour.multiplyScalar(0.94 + seed(i + 308) * 0.12);
-    if (distanceToTrail(x, z) < 1.6) colour.copy(pathColour);
+    // Feather the trail shoulders into the grass rather than a hard colour step.
+    const trailBlend = 1 - THREE.MathUtils.smoothstep(distanceToTrail(x, z), 0.85, 2.15);
+    colour.lerp(pathColour, trailBlend);
     if (z > coastline(x) - 12) colour.copy(z > coastline(x) ? seabed : sand);
     colours.push(colour.r, colour.g, colour.b);
   }
   terrain.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3)); terrain.computeVertexNormals();
   const land = new THREE.Mesh(terrain, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
   land.name = 'rolling-terrain'; land.receiveShadow = true; scene.add(land); solids.push(land);
+  groundSurfaces.apply(land, 'earth', undefined, true);
   box(0, -5, 0, WORLD_HALF * 2, 4, WORLD_HALF * 2, '#a99778');
-  box(0, -0.01, 16, 90, 0.08, 3.2, '#c3b694');
-  box(15, 0, -11, 3.6, 0.08, 56, '#c3b694');
-  box(-22, 0, 25, 29, 0.09, 3, '#c3b694');
-  box(-4, 0, -25, 2.5, 0.08, 25, '#b0a686');
+  groundSurfaces.apply(box(0, -0.01, 16, 90, 0.08, 3.2, '#c3b694'), 'gravel', '#c3b694');
+  groundSurfaces.apply(box(15, 0, -11, 3.6, 0.08, 56, '#c3b694'), 'gravel', '#c3b694');
+  groundSurfaces.apply(box(-22, 0, 25, 29, 0.09, 3, '#c3b694'), 'gravel', '#c3b694');
+  groundSurfaces.apply(box(-4, 0, -25, 2.5, 0.08, 25, '#b0a686'), 'gravel', '#b0a686');
   // A turquoise lake, a shoreline made from simple blocks, and a wooden jetty.
   const lake = createWaterSurface(new THREE.PlaneGeometry(28, 23), -7, 0.11, -3, 'lake');
   scene.add(lake.tint, lake.reflection);
@@ -177,6 +189,7 @@ export function createWorld(): World {
   const trunks = new THREE.InstancedMesh(cube, material('#766345'), treeCount); trunks.name = 'forest-trunks';
   const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 8), material('#456950'), treeCount);
   const tips = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 8), material('#5c8057'), treeCount);
+  crowns.name = 'forest-crowns'; tips.name = 'forest-tips';
   const dummy = new THREE.Object3D();
   for (let i = 0; i < treeCount; i++) {
     let x: number, z: number;
@@ -203,7 +216,7 @@ export function createWorld(): World {
   // Instance colours supply the leaf palette without multiplying a dark green base.
   (crowns.material as THREE.MeshStandardMaterial).color.set('#ffffff');
   (tips.material as THREE.MeshStandardMaterial).color.set('#ffffff');
-  for (const m of [trunks, crowns, tips]) { m.castShadow = true; m.receiveShadow = true; scene.add(m); }
+  for (const m of [trunks, crowns, tips]) { m.castShadow = true; m.receiveShadow = true; scene.add(partitionScenery(m)); }
   // Broadleaf trees by the lake and in the wedding garden.
   const broadleafSites = [[-17, 13, 1.2], [9, 11, 1.1], [-28, 18, 1], [-32, 30, 1.3], [-15, 31, 0.9], [20, -8, 0.8], [-15, -21, 1.2]];
   const broadleafTrunks = new THREE.InstancedMesh(cube, material('#776249'), broadleafSites.length);
@@ -219,27 +232,55 @@ export function createWorld(): World {
   }
   // Far shoreline houses.
   const house = (x: number, z: number, w: number, h: number, d: number, color: string) => {
-    const g = new THREE.Group(); g.position.set(x, terrainHeight(x, z), z); scene.add(g);
-    box(0, h / 2, 0, w, h, d, color, g, true);
-    const roof = cone(0, h + 0.8, 0, 1, 2, '#926952', 4, g); roof.rotation.y = Math.PI / 4; roof.scale.set(w / 1.3, 1, d / 1.3);
+    const g = new THREE.Group(); g.name = 'timber-house'; g.position.set(x, terrainHeight(x, z), z); scene.add(g); staticGroups.push(g);
+    box(0, h / 2, 0, w, h, d, color, g, true).material = buildingSurfaces.wall(color);
+    const rise = Math.min(2, w * 0.28);
+    const roof = new THREE.Mesh(gabledRoof(w + 0.7, d + 0.7, rise), buildingSurfaces.roof);
+    roof.position.y = h; roof.castShadow = roof.receiveShadow = true; g.add(roof);
+    const gables = new THREE.BufferGeometry();
+    gables.setAttribute('position', new THREE.Float32BufferAttribute([
+      -w/2,0,d/2, w/2,0,d/2, 0,rise,d/2,
+      w/2,0,-d/2, -w/2,0,-d/2, 0,rise,-d/2,
+    ],3));
+    gables.setAttribute('uv', new THREE.Float32BufferAttribute([0,0,1,0,0.5,1,1,0,0,0,0.5,1],2)); gables.computeVertexNormals();
+    const gable = new THREE.Mesh(gables, buildingSurfaces.wall(color)); gable.position.y = h; gable.castShadow = true; g.add(gable);
     for (const side of [-1, 1]) for (const x of [-w * 0.22, w * 0.22]) {
-      box(x, h * 0.6, side * (d / 2 + 0.02), w * 0.22, h * 0.25, 0.07, '#bdd4cb', g);
-      box(x, h * 0.6, side * (d / 2 + 0.065), 0.045, h * 0.25, 0.035, '#69795d', g);
+      const ww = w * 0.22, wh = h * 0.25;
+      box(x, h * 0.6, side * (d / 2 + 0.035), ww + 0.18, wh + 0.18, 0.1, '#58655e', g);
+      box(x, h * 0.6, side * (d / 2 + 0.09), ww, wh, 0.025, '#bdd4cb', g).material = buildingSurfaces.window;
+      for (const edge of [-1,1]) {
+        box(x + edge * (ww / 2 + 0.045), h * 0.6, side * (d / 2 + 0.12), 0.09, wh + 0.18, 0.065, '#eee2c9', g);
+        box(x, h * 0.6 + edge * (wh / 2 + 0.045), side * (d / 2 + 0.12), ww + 0.18, 0.09, 0.065, '#eee2c9', g);
+      }
+      box(x, h * 0.6, side * (d / 2 + 0.12), 0.045, wh, 0.035, '#eee2c9', g);
+      box(x, h * 0.6, side * (d / 2 + 0.12), ww, 0.045, 0.035, '#eee2c9', g);
+      box(x, h * 0.6 - wh / 2 - 0.12, side * (d / 2 + 0.18), ww + 0.28, 0.1, 0.25, '#eee2c9', g);
     }
     box(0, h * 0.25, d / 2 + 0.03, 0.9, h / 2, 0.08, '#69795d', g);
     // Timber siding, foundation, ridge trim and a doorstep add scale at walking distance.
-    box(0, 0.12, 0, w + 0.12, 0.24, d + 0.12, '#a89d87', g);
-    for (let y = 0.55; y < h; y += 0.38) for (const side of [-1, 1])
-      box(0, y, side * (d / 2 + 0.025), w, 0.018, 0.025, '#b4a58b', g);
+    box(0, 0.12, 0, w + 0.12, 0.24, d + 0.12, '#a89d87', g).material = buildingSurfaces.foundation;
+    for (const side of [-1,1]) box(side * (w / 2 + 0.1), h - 0.03, 0, 0.16, 0.18, d + 0.6, '#eee2c9', g);
     for (const side of [-1, 1]) box(side * (w / 2 - 0.045), h / 2, d / 2 + 0.065, 0.09, h, 0.06, '#eee2c9', g);
     box(0, 0.14, d / 2 + 0.5, 1.5, 0.24, 0.85, '#b1a38a', g);
     box(0.3, h * 0.25, d / 2 + 0.08, 0.035, 0.1, 0.035, '#d8b875', g);
+    const halfRoof = (w + 0.7) / 2, slope = Math.atan2(rise, halfRoof);
+    for (const end of [-1, 1]) for (const side of [-1, 1]) {
+      const fascia = box(side * halfRoof / 2, h + rise / 2, end * (d / 2 + 0.36), Math.hypot(halfRoof, rise), 0.12, 0.12, '#eee2c9', g);
+      fascia.rotation.z = -side * slope;
+    }
+    box(0, h + rise + 0.025, 0, 0.16, 0.12, d + 0.85, '#685d53', g);
+    const chimneyX = -w * 0.25, chimneyZ = -d * 0.22;
+    box(chimneyX, h + rise * 0.78, chimneyZ, 0.65, 1.35, 0.65, '#a89d87', g).material = buildingSurfaces.foundation;
+    box(chimneyX, h + rise * 0.78 + 0.72, chimneyZ, 0.8, 0.13, 0.8, '#807a6c', g);
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.19, 0.34, 10, 1, true), material('#ad785d'));
+    pot.position.set(chimneyX, h + rise * 0.78 + 0.95, chimneyZ); pot.castShadow = true; g.add(pot);
     blockers.push({ x, z, w, d }); return g;
   };
   house(4, -22, 6, 4.5, 5, '#e4ceb0'); house(-19, -25, 5, 3.5, 5, '#ceb195');
   house(22, -36, 6, 5, 5, '#c6c8b0'); house(40, -14, 6, 4, 6, '#d4baa0');
   // Lighthouse is the first assignment's unmistakable landmark.
   const lighthouse = new THREE.Group(); lighthouse.position.set(-7, 0, -17); scene.add(lighthouse);
+  staticGroups.push(lighthouse);
   box(0, 0.3, 0, 5, 0.6, 5, '#b0a48a', lighthouse);
   box(0, 3.8, 0, 2.8, 7, 2.8, '#f0e6c9', lighthouse);
   box(0, 4, 0, 2.84, 1.2, 2.84, '#b77157', lighthouse);
@@ -260,6 +301,7 @@ export function createWorld(): World {
   // Benches, reeds, flowers, boulders, and paths give the world human scale.
   const bench = (x: number, z: number, rotation = 0) => {
     const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = rotation; scene.add(g);
+    staticGroups.push(g);
     box(0, 0.7, 0, 2.4, 0.15, 0.7, '#967d53', g); box(0, 1.1, -0.3, 2.4, 0.65, 0.1, '#967d53', g);
     for (const a of [-0.85, 0.85]) box(a, 0.35, 0, 0.15, 0.7, 0.55, '#536153', g);
   };
@@ -455,7 +497,7 @@ export function createWorld(): World {
     head.castShadow = false;
     // Shared scene materials are immutable; each lamp gets its own emissive face.
     head.material = new THREE.MeshStandardMaterial({color:'#f1e8d3',emissive:'#fff2d8',emissiveIntensity:0.4,roughness:0.7});
-    const light = new THREE.SpotLight('#fff2d8', 0, 0, Math.PI / 3, 0.7, 2);
+    const light = new THREE.SpotLight('#fff2d8', 0, 24, Math.PI / 3, 0.7, 2);
     light.name = `studio-${name}`; light.castShadow = true; light.shadow.mapSize.set(512, 512);
     light.shadow.bias = -0.001; light.shadow.normalBias = 0.04;
     scene.add(light, light.target);
@@ -466,6 +508,7 @@ export function createWorld(): World {
   cameraFlash.shadow.bias = -0.001; cameraFlash.shadow.normalBias = 0.025; cameraFlash.visible = false;
   scene.add(cameraFlash, cameraFlash.target);
   const church = createChurch(scene, box, solids, blockers);
+  staticGroups.push(scene.getObjectByName('wedding-chapel')!);
   const coast = createCoast(scene);
   const townLife = createTownLife({ scene, solids, box, sphere, person, house, batchMeshes });
   const store = createCameraStore(scene, solids);
@@ -504,7 +547,7 @@ export function createWorld(): World {
   // A wetland, bird perch and raised hide make the long-lens assignment a real place.
   const pondGeometry = new THREE.CircleGeometry(1, 48); pondGeometry.scale(14, 11, 1);
   const pond = createWaterSurface(pondGeometry, 76, 1.28, -54, 'wetland'); scene.add(pond.tint, pond.reflection);
-  isolateReflections([coast.reflection, reflection, hallReflection, lake.reflection, pond.reflection, creek.river.reflection]);
+  const reflections = isolateReflections([coast.reflection, reflection, hallReflection, lake.reflection, pond.reflection, creek.river.reflection]);
   const bird = new THREE.Group(); bird.name = 'kingfisher'; bird.position.set(76, 3.6, -54); scene.add(bird);
   box(76, 2.35, -54, 0.18, 2.25, 0.18, '#80684d'); box(76, 3.39, -54, 1.6, 0.12, 0.17, '#80684d');
   sphere(0, 0, 0, 0.15, 0.23, 0.29, '#397f96', bird);
@@ -549,6 +592,7 @@ export function createWorld(): World {
   }
   const flowers = new THREE.InstancedMesh(sphereGeo, material('#d7bc8e'), 900);
   const stones = new THREE.InstancedMesh(sphereGeo, material('#919582'), 400);
+  flowers.name = 'scattered-flowers'; stones.name = 'scattered-stones';
   for (const [mesh, count] of [[flowers, 900], [stones, 400]] as const) {
     for (let i = 0; i < count; i++) {
       const x = -250 + seed(i + count * 7) * 500, z = -250 + seed(i + count * 9) * 340;
@@ -557,7 +601,7 @@ export function createWorld(): World {
       const scale = inTown || distanceToTrail(x, z) < 3 || regionalLandmarks.some(p => Math.hypot(x - p.x, z - p.z) < 65) || Math.hypot(x - 76, z + 54) < 20 ? 0 : (mesh === flowers ? 0.15 : 0.35 + seed(i) * 0.7);
       dummy.scale.set(scale, scale * 0.6, scale); dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
     }
-    mesh.receiveShadow = true; scene.add(mesh);
+    mesh.receiveShadow = true; scene.add(partitionScenery(mesh));
   }
   const canWalk = (x: number, z: number) => {
     if (Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4) return false;
@@ -602,7 +646,7 @@ export function createWorld(): World {
     skyDome.setTime(sky.daylight, sky.warmth, skyColour, sky.sunPosition);
     parkLamps.forEach(lamp => { lamp.intensity = 3 * (1 - sky.daylight); });
     material('#e8d6a4').emissive.set('#ffce81'); material('#e8d6a4').emissiveIntensity = 1 - sky.daylight;
-    material('#bdd4cb').emissive.set('#ffc078'); material('#bdd4cb').emissiveIntensity = (1 - sky.daylight) * 0.8;
+    buildingSurfaces.window.emissiveIntensity = (1 - sky.daylight) * 0.8;
     const meeting = sky.hour >= 22 || sky.hour < 2;
     vale.group.visible = developer.group.visible = papers.visible = meeting; hallLamp.intensity = meeting ? 12 : 0;
     townLife.setTime(sky.hour, 1 - sky.daylight); church.setTime(1 - sky.daylight);
@@ -625,6 +669,7 @@ export function createWorld(): World {
       item.head.position.y = y; item.head.lookAt(...focus);
       item.light.position.set(x, y, z); item.light.target.position.set(...focus);
       item.light.intensity = config.enabled ? config.power * 65 : 0;
+      item.light.visible = config.enabled && config.power > 0;
       const colour = config.colour === 'warm' ? '#ffc283' : config.colour === 'cool' ? '#b2ceff' : '#fff2df';
       item.light.color.set(colour);
       const face = item.head.material as THREE.MeshStandardMaterial;
@@ -632,10 +677,21 @@ export function createWorld(): World {
     }
   };
   setStudioRig(defaultStudioRig(), [28, 1.35, -26], false);
-  batchMeshes(scene, new Set(solids));
+  const protectedMeshes = new Set(solids);
+  protectedMeshes.add(papers);
+  // Keep each road's named bounds available for hospital/sidewalk clearance checks.
+  scene.traverse(object => { if (object.name.startsWith('neighborhood-')) protectedMeshes.add(object); });
+  staticGroups.push(scene.getObjectByName('bus-shelter')!);
+  staticGroups.forEach(group => batchMeshes(group, protectedMeshes));
+  batchMeshes(scene, protectedMeshes, 32);
+  // Three includes visible lights in every lit material, even at zero intensity.
+  // Keep daytime lamps and disabled equipment out of those fragment shaders.
+  const localLights: (THREE.PointLight | THREE.SpotLight)[] = [];
+  scene.traverse(object => { if (object instanceof THREE.PointLight || object instanceof THREE.SpotLight) localLights.push(object); });
   const staticSolidCount = solids.length;
   return {
     opening, storyPlaces, harbor, collectibles, bearEncounter, scene, subjects, solids, traffic: townLife.traffic,
+    prepareRender(timeMs, interval = 0) { reflections.prepare(timeMs, interval); },
     reactWildlife(time, visitor) { return townLife.reactWildlife(time, sky.hour, visitor, (x, z) => this.canWalk(x, z)); },
     deerMood: townLife.deerMood,
     npcPosition(id) { const p = locals.get(id)!.group.position; return [p.x, p.y, p.z]; },
@@ -687,6 +743,7 @@ export function createWorld(): World {
       // A CPL suppresses reflected light without removing the window itself.
       reflectionMaterial.uniforms.strength.value = settings.filter === 'cpl' ? 0.06 : 0.6;
       hallReflectionMaterial.uniforms.strength.value = settings.filter === 'cpl' ? 0.06 : 0.6;
+      localLights.forEach(light => { light.visible = light.intensity > 0.01; });
     },
     canWalk,
   };

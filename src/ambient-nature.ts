@@ -4,6 +4,7 @@ import { coastline, distanceToTrail, terrainHeight } from './terrain.ts';
 import { creekDistance } from './creek.ts';
 import { regionalLandmarks } from './landmarks.ts';
 import { isActiveHour } from './life.ts';
+import { partitionScenery } from './scenery-batches.ts';
 
 const seed = (n: number) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
 const TAU = Math.PI * 2;
@@ -48,7 +49,7 @@ export function createAmbientNature(scene: THREE.Scene, canWalk: (x: number, z: 
     const size = 0.25+seed(i+85)*0.65; dummy.scale.set(0.7+seed(i)*0.8,size,0.7+seed(i)*0.8); dummy.updateMatrix(); grass.setMatrixAt(i,dummy.matrix);
     colour.set(i%3===0?'#b5ad71':i%3===1?'#77945a':'#8fa766'); grass.setColorAt(i,colour);
   });
-  group.add(grass);
+  group.add(partitionScenery(grass, 48));
   const shrub = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,1),new THREE.MeshStandardMaterial({color:'#ffffff',roughness:1,flatShading:true}),180);
   shrub.name='woodland-understory'; shrub.receiveShadow=true; shrub.castShadow=true;
   for (let i=0;i<180;i++) {
@@ -57,7 +58,7 @@ export function createAmbientNature(scene: THREE.Scene, canWalk: (x: number, z: 
     dummy.position.set(x,terrainHeight(x,z)+size*0.35,z); dummy.rotation.set(0,seed(i)*TAU,0); dummy.scale.set(size,size*0.65,size*0.85); dummy.updateMatrix(); shrub.setMatrixAt(i,dummy.matrix);
     colour.set(i%3===0?'#88925b':'#6b875b'); shrub.setColorAt(i,colour);
   }
-  group.add(shrub);
+  group.add(partitionScenery(shrub, 48));
   // Dense, intentional flower patches near the lake, chapel and meadow.
   const beds = [[-18,14,3,1],[-30,28,2,2],[-50,33,3,2],[-69,56,5,3],[57,6,3,2],[12,22,2,2]];
   const flowerSites: [number,number][]=[];

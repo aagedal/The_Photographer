@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { terrainHeight } from './terrain.ts';
 import { isActiveHour, routeLength, routePose, routinePose, townRoad, townSidewalk, trafficRoutes, type Route } from './life.ts';
 import { DeerAwareness, type WildlifeVisitor } from './wildlife.ts';
+import { createGroundSurfaces } from './ground-surfaces.ts';
 
 export type Box = (x: number, y: number, z: number, w: number, h: number, d: number, color: string, parent?: THREE.Object3D, solid?: boolean) => THREE.Mesh;
 type Sphere = (x: number, y: number, z: number, sx: number, sy: number, sz: number, color: string, parent: THREE.Object3D) => THREE.Mesh;
@@ -14,6 +15,7 @@ interface Builders {
 }
 
 export function createTownLife({ scene, solids, box, sphere, person, house, batchMeshes }: Builders) {
+  const groundSurfaces = createGroundSurfaces();
   const glow = new THREE.MeshStandardMaterial({ color: '#f4d8a0', emissive: '#ffcb7d', roughness: 0.6 });
   const headlights = new THREE.MeshStandardMaterial({ color: '#f4eedb', emissive: '#fff0bb', roughness: 0.4 });
   const tailLights = new THREE.MeshStandardMaterial({ color: '#9a453b', emissive: '#ff392b', roughness: 0.4 });
@@ -33,7 +35,9 @@ export function createTownLife({ scene, solids, box, sphere, person, house, batc
     }
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3)); geometry.setIndex(indices); geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: colour, roughness: 1, side: THREE.DoubleSide }));
-    mesh.receiveShadow = true; scene.add(mesh); return mesh;
+    mesh.receiveShadow = true; scene.add(mesh);
+    groundSurfaces.apply(mesh, width > 8 ? 'paving' : 'asphalt', colour);
+    return mesh;
   };
   ribbon(townRoad, 8.8, 0.045, '#c1bca9').name = 'neighborhood-sidewalk';
   ribbon(townRoad, 6.2, 0.06, '#747c78').name = 'neighborhood-road';
@@ -55,9 +59,9 @@ export function createTownLife({ scene, solids, box, sphere, person, house, batc
   box(3.2, 1.65, 0, 0.1, 3.3, 0.1, '#53695e', shelter); box(3.2, 3.1, 0, 0.9, 0.8, 0.1, '#cda267', shelter);
   for (const [i,x] of [4,17,30,40].entries()) {
     house(x, 48, 6.5, 3.8 + i % 2, 6, ['#e1d0b1','#bfc9b5','#d6b398','#c0c7cc'][i]);
-    box(x, 0.05, 53.5, 1.5, 0.08, 4.5, '#c3b694');
+    groundSurfaces.apply(box(x, 0.05, 53.5, 1.5, 0.08, 4.5, '#c3b694'), 'gravel', '#c3b694');
     house(x, 71, 6.5, 3.6 + (i+1) % 2, 5, ['#c9ba9c','#d4c3a8','#c8c9ae','#d0b8a6'][i]);
-    box(x, 0.05, 66, 2, 0.08, 4.5, '#c3b694');
+    groundSurfaces.apply(box(x, 0.05, 66, 2, 0.08, 4.5, '#c3b694'), 'gravel', '#c3b694');
     for (const z of [44,74]) {
       box(x, 0.35, z, 7, 0.55, 0.18, '#829278');
       box(x - 3.5, 0.35, z + (z === 44 ? 2 : -2), 0.18, 0.55, 4, '#829278');

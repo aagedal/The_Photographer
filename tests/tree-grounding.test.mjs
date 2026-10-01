@@ -16,8 +16,9 @@ test('tree placement samples the visible terrain triangles rather than the proce
 test('every forest and broadleaf trunk penetrates the terrain across its entire base',()=>{
   const world=createWorld(),matrix=new THREE.Matrix4(),point=new THREE.Vector3();let checked=0;
   for(const name of ['forest-trunks','broadleaf-trunks']){
-    const trunks=world.scene.getObjectByName(name);
-    for(let i=0;i<trunks.count;i++){
+    const root=world.scene.getObjectByName(name),batches=[];
+    root.traverse(mesh=>{if(mesh.isInstancedMesh)batches.push(mesh);});
+    for(const trunks of batches)for(let i=0;i<trunks.count;i++){
       trunks.getMatrixAt(i,matrix);
       for(const x of [-0.5,-0.25,0,0.25,0.5])for(const z of [-0.5,-0.25,0,0.25,0.5]){
         point.set(x,-0.5,z).applyMatrix4(matrix);

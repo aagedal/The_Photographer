@@ -469,7 +469,11 @@ dialog.conversation-dialog::backdrop, dialog.story-dialog::backdrop { background
 .map-destination svg { width:17px; height:17px; flex-shrink:0; }
 .map-legend .map-destination button { padding:7px 9px; flex:0 0 auto; width:auto; font-size:10px; }
 .map-destination button[data-walk-landmark],.map-destination button[data-walk-place] { color:#92c8b2; }
-@media(max-width:800px) { .walking-guide { top:70px; left:16px; width:min(330px,calc(100% - 32px)); padding:10px; } }
+@media(max-width:800px) {
+  .walking-guide { top:70px; left:16px; width:min(330px,calc(100% - 32px)); padding:10px; }
+  /* The route names the selected view; its duplicate shortcut overlaps on phones. */
+  .stage:has(.walking-guide:not([hidden])) .shot-guide { display:none; }
+}
 @media(max-width:520px) { .map-destination { flex-wrap:wrap; } .map-destination >span { flex-basis:100%; } }
 .collection-intro,.collection-reward p { font-size:12px; line-height:1.8; color:var(--muted); }
 .collection-progress { display:block; width:100%; height:7px; margin:22px 0; accent-color:var(--accent); }

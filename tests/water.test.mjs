@@ -52,3 +52,13 @@ test('single-pass reflections hide other reflectors and restore visibility even 
   assert.throws(() => a.onBeforeRender(), /failed reflection/);
   assert.equal(a.visible, true); assert.equal(b.visible, true); assert.equal(c.visible, false);
 });
+
+test('mobile reflections refresh on schedule while every capture sample stays current', () => {
+  const surface=new THREE.Mesh();let renders=0;surface.onBeforeRender=()=>{renders++;};
+  const controller=isolateReflections([surface]);
+  const draw=(time)=>{controller.prepare(time,66);surface.onBeforeRender();};
+  draw(0);draw(16);draw(33);draw(67);assert.equal(renders,2);
+  controller.prepare();surface.onBeforeRender();surface.onBeforeRender();assert.equal(renders,4);
+  draw(68);assert.equal(renders,5,'live view refreshes after shutter restoration');
+  draw(0);assert.equal(renders,6,'a restarted clock never freezes the reflection');
+});

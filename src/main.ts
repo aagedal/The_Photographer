@@ -136,6 +136,7 @@ const standingEyeHeight = 1.7, sneakingEyeHeight = 1.05;
 let eyeHeight = standingEyeHeight;
 const viewfinder = new ViewfinderState();
 let lowQuality = false;
+const mobileGraphics = matchMedia('(any-pointer: coarse)');
 type PauseTab = 'assignments' | 'journal' | 'gallery' | 'collection' | 'explore' | 'settings';
 let pauseTab: PauseTab = 'assignments';
 let missionSection: MissionSection = 'active';
@@ -220,12 +221,12 @@ const stage = $('stage');
 const modal = $<HTMLDialogElement>('modal');
 let renderer: THREE.WebGLRenderer;
 try {
-  renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 } catch {
   stage.insertAdjacentHTML('beforeend', `<div class="error-screen"><h2>A little more graphics power, please.</h2><p>This prototype needs WebGL2. Enable hardware acceleration in your browser, then reload. Current Safari, Chrome, and Firefox on desktop are the intended starting point.</p></div>`);
   throw new Error('WebGL2 renderer could not be initialized.');
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.setPixelRatio(Math.min(devicePixelRatio, mobileGraphics.matches ? 1.25 : 1.5));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
@@ -409,12 +410,12 @@ function openPauseMenu(tab: PauseTab = pauseTab) {
 }
 function activeMissionContent() {
   const m = activeMission;
-  if (save.completed.includes(m.id)) return `<div class="empty"><span class="mission-badge complete">${icon('check')}Completed</span><h3>${esc(m.title)}</h3><p>This assignment is finished. Choose an available story for your next photograph${m.shots ? ', or revisit either view without another payment' : ''}.</p>${seriesChecklist(m,true)}<div class="pause-actions"><button class="secondary" id="walk-assignment">${icon('compass')}Walk to the viewpoint</button><button class="secondary" id="travel">Find the spot</button><button class="secondary" id="suggest">Suggested settings</button></div><button class="secondary" id="choose-available">Browse available assignments</button></div>`;
+  if (save.completed.includes(m.id)) return `<div class="empty"><span class="mission-badge complete">${icon('check')}Completed</span><h3>${esc(m.title)}</h3><p>This assignment is finished. Choose an available story for your next photograph${m.shots ? ', or revisit either view without another payment' : ''}.</p>${seriesChecklist(m,true)}<div class="pause-actions"><button class="secondary" id="walk-assignment">${icon('compass')}Guide me to the viewpoint</button><button class="secondary" id="suggest">Suggested settings</button></div><button class="secondary" id="choose-available">Browse available assignments</button></div>`;
   return `<article class="pause-assignment"><span class="mission-badge">Active assignment</span><span class="eyebrow">${m.category} · ${esc(m.location)} · ${m.payment ? `${money(m.payment)} payment` : m.id === 'nature-bear' ? 'A gift for Arthur' : 'First photograph'}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>
     ${m.timeWindow ? `<p class="mission-time ${isMissionTime(m, clock.hour) ? 'ready' : 'waiting'}">${esc(m.timeWindow.label)} · ${isMissionTime(m, clock.hour) ? 'Ready now' : 'Wait for the light'}</p>` : ''}
     ${seriesChecklist(m, true)}
     <details><summary>Field notes</summary><p>${esc(frameMission().lesson)}</p></details>
-    <div class="pause-actions"><button class="secondary" id="walk-assignment">${icon('compass')}Walk to the viewpoint</button><button class="secondary" id="travel">${icon('pin')}${save.walkingIntroduction ? 'Show the trail on the map' : 'Find the spot'}</button><button class="secondary" id="suggest">Suggested settings</button></div></article>`;
+    <div class="pause-actions"><button class="secondary" id="walk-assignment">${icon('compass')}Guide me to the viewpoint</button><button class="secondary" id="suggest">Suggested settings</button></div></article>`;
 }
 function seriesChecklist(m: Mission, selectable = false) {
   if (!m.shots) return '';
@@ -433,7 +434,7 @@ function openSettings() {
   pauseTab = 'settings';
   showModal('Make yourself at home.', 'PAUSED · SETTINGS', 'Sound, display, controls, and your saved notebook.', `<div class="settings-stack">
     <section class="settings-card"><div><h3>Sound</h3><p>Character voices, wind, water, birds, and quiet streets.</p></div><button class="secondary" id="sound-toggle" aria-pressed="${audio.enabled}" ${audio.available ? '' : 'disabled'}>${audio.enabled ? 'Mute' : 'Enable sound'}</button><label class="volume-setting" for="sound-volume">Volume <output id="sound-value">${Math.round(audio.volume * 100)}%</output><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(audio.volume * 100)}" ${audio.available ? '' : 'disabled'}/></label></section>
-    <section class="settings-card"><div><h3>Graphics</h3><p>Performance reduces shadows and rendering resolution.</p></div><button class="secondary" id="quality">${lowQuality ? 'Performance' : 'Balanced'}</button></section>
+    <section class="settings-card"><div><h3>Graphics</h3><p>Balanced adapts reflection refresh and resolution for touch devices. Performance also reduces shadows and resolution.</p></div><button class="secondary" id="quality">${lowQuality ? 'Performance' : 'Balanced'}</button></section>
     <section class="settings-card"><div><h3>Controls</h3><p>Movement, camera shortcuts, and photography basics.</p></div><button class="secondary" id="menu-help">View controls</button></section>
     <section class="settings-card"><div><h3>Notebook</h3><p>Restart with a backup, or restore your previous progress.</p></div><button class="secondary" id="new-notebook">Manage notebook</button></section>
   </div>`, 'menu');
@@ -508,7 +509,8 @@ function finishMeditation() {
 function leaveModal() { modal.close(); }
 function toggleQuality() {
   lowQuality = !lowQuality;
-  renderer.setPixelRatio(lowQuality ? 1 : Math.min(devicePixelRatio, 1.5));
+  renderer.setPixelRatio(lowQuality ? 1 : Math.min(devicePixelRatio, mobileGraphics.matches ? 1.25 : 1.5));
+  world.prepareRender();
   renderer.shadowMap.enabled = !lowQuality; renderer.shadowMap.needsUpdate = true; resize();
 }
 function faceSubject(m: Mission) {
@@ -804,6 +806,7 @@ function makePhoto(s: CameraSettings, frame: Framing): string {
   const trackingOffset = trackingCamera.quaternion.clone().invert().multiply(originalRotation);
   let base: HTMLCanvasElement;
   try {
+    world.prepareRender();
     base = photoRenderer.render(renderer, samples.length, photoCamera, { aperture: s.aperture, focalLength: s.focalLength ?? focalLength, focusDistance: s.focusDistance ?? autofocus(frame), filter: s.filter, gradPosition: s.gradPosition }, i => {
       const offset = samples[i];
       world.update(elapsed + offset, s, clock.hour + offset * 24 / DAY_SECONDS);
@@ -1078,7 +1081,6 @@ function openBoard() {
   showModal('Your field notebook.', 'PAUSED · ASSIGNMENTS', 'One active story at a time. Completed assignments stay here to revisit.', `<section class="story-summary"><span class="eyebrow">${esc(storyObjective(save.story, save.completed).chapter)}</span><h3>${esc(storyObjective(save.story, save.completed).title)}</h3><p>${esc(storyObjective(save.story, save.completed).text)}</p><button class="secondary" id="story-details">Continue the story ${icon('arrow')}</button></section>${workshopSummary()}<div class="mission-sections" role="group" aria-label="Assignment status">${sections.map(([id, label]) => `<button data-mission-section="${id}" aria-pressed="${missionSection === id}">${label}<span>${notebookMissions(save.discovered, save.completed, activeMission.id, id).length}</span></button>`).join('')}</div>${content}<p class="discovery-note notebook-hint">${save.discovered.length} of ${missions.length} stories discovered · Press R near a local to find more.</p>`, 'menu');
   modal.querySelectorAll<HTMLButtonElement>('[data-mission-section]').forEach(b => b.onclick = () => { missionSection = b.dataset.missionSection as MissionSection; openBoard(); modal.querySelector<HTMLButtonElement>(`[data-mission-section="${missionSection}"]`)?.focus(); });
   if ($('walk-assignment')) $('walk-assignment').onclick = () => guideTo(assignmentDestination());
-  if ($('travel')) $('travel').onclick = () => { if (save.walkingIntroduction) openPauseMenu('explore'); else { modal.close(); travelTo(activeMission); } };
   if ($('suggest')) $('suggest').onclick = suggestSettings;
   modal.querySelectorAll<HTMLButtonElement>('[data-shot]').forEach(b=>b.onclick=()=>{chooseShot(b.dataset.shot!);openBoard();modal.querySelector<HTMLButtonElement>(`[data-shot="${save.activeShot}"]`)?.focus();});
   if ($('choose-available')) $('choose-available').onclick = () => { missionSection = 'available'; openBoard(); };
@@ -1376,8 +1378,8 @@ function openHelp() {
   showModal('Controls & field guide.', 'HELP', 'Explore at your own pace. Return here whenever you need a hand.', `<div class="help-grid">
     <div class="help-card"><strong>Wander and frame</strong><kbd>W A S D</kbd> walk · <kbd>Shift</kbd> move faster. <kbd>C</kbd> toggles a slow, quiet sneak and lowers your viewpoint; Shift stays quiet while sneaking.<br/>Drag the world to look around. On mobile, drag the thumb pad to walk and release to stop; drag the scene with another finger to look. The small sneak button slows your approach. Walking controls are hidden while the camera is raised. Arrow keys also aim. The starter lens is fixed at 35 mm. Buy a zoom or wildlife lens at the camera store, then choose it in the LENS dropdown to use the scroll wheel or <kbd>− / +</kbd>. <kbd>E</kbd> raises or lowers the camera with a quick animation. The camera button also raises or lowers the camera. Camera settings appear while it is raised; the focus panel appears in manual focus. Exploring uses a wide 24 mm view; the viewfinder and photographs use your selected lens.</div>
     <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>Space</kbd> takes a photo. With the burst camera, <kbd>B</kbd> toggles three-frame bursts at 5 fps. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
-    <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, gallery, map and field notes. Press it again to resume. Esc or the close button dismisses any message or submenu directly back to the game.<br/>Walk from the arrival dock to the western meadow for your first deer photograph. Approach with <kbd>C</kbd> to sneak: walking close or running will scare the deer. Step away and wait for it to settle if it bolts. Print the deer for free at the gallery and visit Arthur’s porch to begin the wedding commission. The lighthouse is an optional paid assignment. Approach a local and press <kbd>R</kbd> to talk. A small interaction prompt appears when you are close enough. Their available stories are added to your notebook as you complete main story milestones. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments. Choose Walk to the viewpoint in Assignments, or Walk beside a place in Explore, for a walking route and a direction cue. The route saves with your notebook; use its × button to stop directions.</div>
-    <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Some briefs require a set of distinct views. Choose each view in Assignments, then use Find the spot and Suggested settings. Move around the subject for a new perspective; repeated bursts and zoom changes do not fill another view. All required views must pass before the assignment pays. Accepted views survive reloads and the rolling journal. Click the brief thumbnail or open the journal to read feedback and try again. Slow shutters record moving subjects as streaks; fast shutters freeze them. A tripod steadies the scenery, while Panning follows the runner and streaks the background. Higher ISO is often the right choice when a moment moves fast.</div>
+    <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, gallery, map and field notes. Press it again to resume. Esc or the close button dismisses any message or submenu directly back to the game.<br/>Walk from the arrival dock to the western meadow for your first deer photograph. Approach with <kbd>C</kbd> to sneak: walking close or running will scare the deer. Step away and wait for it to settle if it bolts. Print the deer for free at the gallery and visit Arthur’s porch to begin the wedding commission. The lighthouse is an optional paid assignment. Approach a local and press <kbd>R</kbd> to talk. A small interaction prompt appears when you are close enough. Their available stories are added to your notebook as you complete main story milestones. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments. Choose Guide me to the viewpoint in Assignments, or Walk beside a place in Explore, for a walking route and a direction cue. The route saves with your notebook; use its × button to stop directions.</div>
+    <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Some briefs require a set of distinct views. Choose each view in Assignments, then use Guide me to the viewpoint and Suggested settings. Move around the subject for a new perspective; repeated bursts and zoom changes do not fill another view. All required views must pass before the assignment pays. Accepted views survive reloads and the rolling journal. Click the brief thumbnail or open the journal to read feedback and try again. Slow shutters record moving subjects as streaks; fast shutters freeze them. A tripod steadies the scenery, while Panning follows the runner and streaks the background. Higher ISO is often the right choice when a moment moves fast.</div>
     <div class="help-card"><strong>Choose your depth of field</strong>The viewfinder previews focus. Autofocus follows an unobstructed assignment subject inside the frame; otherwise it focuses on the center surface. Press <kbd>M</kbd> to lock the current distance and enter manual focus. Use the focus slider or <kbd>[ / ]</kbd> to focus nearer or farther; <kbd>Q</kbd> focuses once without releasing the lock. Press M again for autofocus. The distance and focus mode save with your notebook, and the reticle turns amber when the subject is out of focus. A wider aperture, longer lens, or closer subject softens the foreground and background. Stop down to bring more depth into focus. Shutter motion appears in the saved photograph.</div>
     <div class="help-card"><strong>Shape the light</strong><kbd>L</kbd> opens the Lighting kit; <kbd>F</kbd> toggles purchased flash. Adjust manual flash power anywhere. Studio controls appear only near Daylight Studio, where you can move and tune key, fill, and rim lights. A brief flash favours close subjects; shutter speed controls the ambient within the 1/250 s sync limit.</div>
     <div class="help-card"><strong>Wait for the light</strong>The sun, clouds, exposure and stars change through a 30-minute day. Some assignments need a particular time. Open <kbd>Esc</kbd> → Explore → Meditate to skip ahead to dawn, daylight, golden hour, night or the assignment’s preferred time. Time pauses while menus are open.</div>
@@ -1644,6 +1646,7 @@ function animate(now: number) {
   if (now - lastMeterTime > 150) {
     updateExposure(); if (cameraMode) updateFocus(); renderer.shadowMap.needsUpdate = true; lastMeterTime = now;
   }
+  world.prepareRender(now, lowQuality ? 100 : mobileGraphics.matches ? 66 : 0);
   if (conversationSpeaker && modal.open) {
     const { width, height } = stage.getBoundingClientRect();
     const frame = `${width}-${height}`;
