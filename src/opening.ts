@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { terrainHeight } from './terrain.ts';
+import { createIdleRig, animateIdle } from './character-idle.ts';
 import { arrivalPose, ARRIVAL_DURATION, boatBerth } from './arrival-route.ts';
 export { ARRIVAL_DURATION } from './arrival-route.ts';
 
@@ -56,6 +57,7 @@ export function createOpening(scene: THREE.Scene) {
   for (const x of [6.9, 9.1]) for (const z of [93, 98, 103]) block(dock, x, 0.2, z, 0.18, 1.7, 0.18, '#755a42');
   const ranger = scene.getObjectByName('npc-ranger')!.clone(); ranger.name = 'arrival-ranger';
   ranger.getObjectByName('npc-marker-ranger')?.removeFromParent();
+  const rangerRig = createIdleRig(ranger, ranger.children.filter((child): child is THREE.Group => child instanceof THREE.Group && child.name === 'character-arm'));
   ranger.position.set(8, terrainHeight(8, 89), 89); ranger.rotation.y = 0; ranger.visible = false; scene.add(ranger);
   const gift = new THREE.Group(); gift.name = 'intro-camera'; gift.visible = false; scene.add(gift);
   block(gift, 0, 0, 0, 0.45, 0.29, 0.15, '#2e423a');
@@ -71,6 +73,7 @@ export function createOpening(scene: THREE.Scene) {
       wakeMaterial.opacity = 0.15 + Math.sin(Math.min(1, pose.progress) * Math.PI) * 0.14;
       boat.position.y = reducedMotion ? 0.05 : 0.05 + Math.sin(seconds * 1.2) * 0.035;
       gift.visible = step === 2; ranger.visible = step > 0;
+      animateIdle(rangerRig, seconds, 3);
       if (step === 0) {
         camera.fov = 62; camera.updateProjectionMatrix();
         const t = pose.progress, reveal = t * t * (3 - 2 * t);

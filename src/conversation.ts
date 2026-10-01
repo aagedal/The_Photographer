@@ -7,6 +7,10 @@ export interface ConversationTopic { id: string; question: string; answer: strin
 // Asking a question never changes a story gate or spends game time.
 export function conversationTopics(speaker: string, story: Story): ConversationTopic[] {
   switch (speaker) {
+    case 'historian': return [
+      { id: 'keepsakes', question: 'Why save these little things?', answer: 'An official record tells you when a ferry ran. A worn token tells you that someone held it every morning. I like to keep both kinds of history. Nobody needs to be famous to leave a trace.' },
+      { id: 'archive', question: 'What is your archive like?', answer: 'Mostly boxes, a table beside the gallery, and a kettle that takes its time. If you bring together all thirty keepsakes, I will invite you for an evening of stories. I have saved a little gift for someone who notices the things other people walk past.' },
+    ];
     case 'ranger': return [
       { id: 'arthur', question: 'What was Arthur like on the trail?', answer: 'Slow. Not because he couldn’t walk faster. He kept stopping to straighten a step or show someone a nest. I used to get impatient. Now I catch myself doing it. He left us a way of paying attention.' },
       { id: 'woods', question: 'What should I watch for in the woods?', answer: story.reportPublished ? 'People will be walking the proposed route before the hearing. Give them room, and give the animals more. Your bear photograph is for Arthur. It doesn’t need a location printed underneath it.' : 'Look for movement at the edge of a clearing. Stop before an animal stops for you. Arthur always said a picture ought to leave its subject with the same choices it had before you arrived.' },

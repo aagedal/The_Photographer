@@ -7,6 +7,9 @@ import { exposureSamples } from '../src/motion.ts';
 import { missions } from '../src/missions.ts';
 import { createWorld, subjectPosition } from '../src/world.ts';
 import { fovForFocal } from '../src/economy.ts';
+import { createCelestialDisc, createSkyDome } from '../src/sky-dome.ts';
+import { sampleSky, CELESTIAL_DISTANCE } from '../src/environment.ts';
+import { WORLD_HALF } from '../src/terrain.ts';
 
 const results = document.querySelector<HTMLPreElement>('#results')!;
 const images = document.querySelector<HTMLElement>('#images')!;
@@ -198,6 +201,38 @@ document.querySelector<HTMLButtonElement>('#run')!.onclick = () => {
   const waterfallPreview = document.createElement('canvas'); waterfallPreview.width = 900; waterfallPreview.height = 600;
   waterfallPreview.getContext('2d')!.drawImage(renderer.domElement, 0, 0);
   check(difference(waterfallFast, waterfallPreview, 0, 0, 900, 600) < 1, 'Expanded waterfall matches between viewfinder and saved photograph');
+  // A celestial source must retain its screen position and size as the player
+  // crosses the enlarged map, even with a far plane closer than the source.
+  const skyScene=new THREE.Scene(), skyDome=createSkyDome(skyScene);
+  const celestialSun=createCelestialDisc('test-sun','#ffe4ad',CELESTIAL_DISTANCE*Math.tan(THREE.MathUtils.degToRad(0.5)));
+  const celestialMoon=createCelestialDisc('test-moon','#d1dcec',CELESTIAL_DISTANCE*Math.tan(THREE.MathUtils.degToRad(0.4)));
+  skyScene.add(celestialSun,celestialMoon);
+  const skyFrame=(position:THREE.Vector3,direction:THREE.Vector3,far:number)=>{
+    camera.position.copy(position);camera.far=far;camera.fov=fovForFocal(35,1.5);camera.updateProjectionMatrix();
+    camera.lookAt(position.clone().add(direction));camera.updateMatrixWorld(true);renderer.render(skyScene,camera);
+    const frame=document.createElement('canvas');frame.width=900;frame.height=600;frame.getContext('2d')!.drawImage(renderer.domElement,0,0);return frame;
+  };
+  let largestSkyDifference=0,lowestSunBrightness=255;
+  for(const hour of [6.5,12,17]){
+    const environment=sampleSky(hour),direction=new THREE.Vector3(...environment.sunPosition).normalize();
+    celestialSun.position.set(...environment.sunPosition);celestialMoon.visible=false;
+    skyDome.setTime(environment.daylight,environment.warmth,new THREE.Color('#bcd8d2'),environment.sunPosition);
+    const reference=skyFrame(new THREE.Vector3(0,1.7,0),direction,900);
+    lowestSunBrightness=Math.min(lowestSunBrightness,brightness(reference,446,296,8,8));
+    for(const x of [-WORLD_HALF+4,WORLD_HALF-4])for(const z of [-WORLD_HALF+4,WORLD_HALF-4]){
+      const distant=skyFrame(new THREE.Vector3(x,35,z),direction,60);
+      largestSkyDifference=Math.max(largestSkyDifference,difference(reference,distant,0,0,900,600));
+    }
+  }
+  check(lowestSunBrightness>200,`Sun remains visible beyond the camera far plane (${lowestSunBrightness.toFixed(2)} center brightness)`);
+  check(largestSkyDifference<0.1,`Sun and sky retain their angular position and size across the entire map (${largestSkyDifference.toFixed(3)} pixel difference)`);
+  const midnight=sampleSky(0),moonDirection=new THREE.Vector3(...midnight.sunPosition).negate().normalize();
+  celestialSun.visible=false;celestialMoon.visible=true;celestialMoon.position.set(...midnight.sunPosition).negate();
+  skyDome.setTime(0,0,new THREE.Color('#111d30'),midnight.sunPosition);
+  const moonCentre=skyFrame(new THREE.Vector3(0,1.7,0),moonDirection,900),moonEdge=skyFrame(new THREE.Vector3(WORLD_HALF-4,35,-WORLD_HALF+4),moonDirection,60);
+  check(brightness(moonEdge,446,296,8,8)>200&&difference(moonCentre,moonEdge,0,0,900,600)<0.1,'Moon also stays in the distant sky while walking and changing far planes');
+  show('Distant moon · viewed from the map edge',moonEdge);
+  camera.far=450;camera.updateProjectionMatrix();
   const previousTarget = new THREE.WebGLRenderTarget(16, 16);
   renderer.setRenderTarget(previousTarget); renderer.autoClear = false;
   try { capture.render(renderer, 1, camera, optics, () => { throw new Error('Deliberate sample failure'); }); } catch { /* expected */ }

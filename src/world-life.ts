@@ -39,7 +39,8 @@ export function createTownLife({ scene, solids, box, sphere, person, house, batc
   ribbon(townRoad, 6.2, 0.06, '#747c78').name = 'neighborhood-road';
   // A narrow lane connects the new neighborhood to the running club.
   const access: Route = [[48,17],[48,37],[48,17]];
-  ribbon(access, 8.8, 0.04, '#c1bca9'); ribbon(access, 6.2, 0.055, '#747c78');
+  ribbon(access, 8.8, 0.04, '#c1bca9').name = 'neighborhood-access-sidewalk';
+  ribbon(access, 6.2, 0.055, '#747c78').name = 'neighborhood-access-road';
   for (let distance = 0; distance < routeLength(townRoad); distance += 5) {
     const p = routePose(townRoad, distance);
     const stripe = box(p.x, terrainHeight(p.x,p.z) + 0.07, p.z, 0.09, 0.015, 1.7, '#dcd7bd'); stripe.rotation.y = p.yaw;
@@ -81,7 +82,7 @@ export function createTownLife({ scene, solids, box, sphere, person, house, batc
       const hat = sphere(0,2.01,-0.02,0.23,0.14,0.22,'#d5b575',character.group); brim.castShadow = hat.castShadow = true;
     }
     if (i === 4) box(0.4,0.76,0.05,0.25,0.36,0.18,'#d8c4a0',character.group);
-    batchMeshes(character.group); return character;
+    return character;
   });
 
   const cars = Array.from({ length: 3 }, (_, i) => {

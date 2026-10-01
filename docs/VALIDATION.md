@@ -223,3 +223,53 @@ No native application or Linux browser run yet. Performance targets require prof
 - The gallery arrival fixture cleared and saved the destination, showed the R prompt, and retained position, completion and equipment state. Cancellation from the cue survived reload; Stop directions from the map removed its summary. A saved route behind the studio rebuilt to the gallery with a 68 m path. No browser warnings or errors were observed.
 - Development-only `/tests/navigation-playtest.html` provides dock, detour, arrival and selected-view fixtures plus visible save metadata. Evidence: `docs/walking-directions.png` and `docs/walking-route-map.png`.
 - Routes use a two-metre search grid with collision sampling every 0.2 m, and may cross open meadows rather than staying on marked trails. They guide the player without moving them automatically. This does not establish hardware performance targets or add new collision geometry.
+
+## Scenery and ambient life · 2026-10-01
+
+- Added smoother terrain lighting, a sky gradient and solar halo, rounded lit cloud banks, varied tree foliage, house siding and doorstep details. Instanced scenery adds 6,500 wind-animated grass tufts, 180 shrubs and six wildflower beds with separate petals and centers.
+- Seven rabbits hop and graze on dry ground, 22 inland birds circle in two flocks, 16 butterflies visit the gardens, and 45 softly glowing fireflies appear near the lake after dusk. Static animal parts are batched by material; vegetation uses instancing. Wildlife follows clock-based activity windows rather than a needs simulation.
+- All 32 human models have independent breathing and articulated head/posture motion. Standing characters gesture; walking and running retain their limb cycles. Arthur, the three workshop characters and the arrival ranger participate. Props and spectacles stay with the corresponding animated body part; local markers remain centered over their actual positions.
+- All 167 Node tests pass. New coverage checks grass/trail clearance, rabbit ground and collision safety, idle joints across the entire cast, day/night visibility, and exact restoration after shutter sampling. Existing walking routes, subject sightlines, conversations and photo-set framing continue to pass.
+- Production build and strict TypeScript pass. The existing large-bundle advisory remains.
+- All 26 GPU rendering checks pass in isolated headless Chrome, including depth of field, motion blur, graduated filters, window/water reflections, fish, waterfall and exact frame restoration. No shader errors occurred. The rendering harness emits the existing Canvas2D frequent-readback performance advice.
+- Visually inspected lake, meadow, garden, harbor, Arthur, bird flocks and night scenes. The isolated harbor-stories notebook captured an animated crew portrait at 100/100 and retained completion after reload, without browser errors. The player's notebook was untouched.
+- Development-only `/tests/living-world.html` provides seven fixed views and an animation toggle, without notebook access. Saved evidence: `docs/living-meadow.png`, `docs/living-sky.png`, `docs/living-twilight.png`, and `docs/living-harbor.png`. Instancing and batching reduce overhead; target-hardware frame-rate benchmarking remains unverified.
+
+## Distant sun and east-to-west motion · 2026-10-01
+
+- The old visible sun orbited only 75 metres from town, inside the expanded terrain. Sunrise also used −X even though map east is +X. Corrected the path to rise at +X, cross the southern sky (+Z) and set at −X, retaining the existing 06:00–18:00 daylight cycle.
+- Celestial light sources now orbit at a constant 1,040 m radius derived from the map size. Sun/moon discs render at sky depth using camera rotation alone, eliminating walking parallax and far-plane clipping. Their angular diameters are 1° and 0.8°. The sun disc, halo and directional light share the same direction; the moon remains opposite. Shadow camera depth was expanded for the new light-source distance.
+- All 168 Node tests pass. Added checks for continuous east-to-west motion, the southern daytime arc, constant orbit distance, disc/halo/light alignment and shadow-depth coverage of map corners and elevated terrain throughout the day.
+- All 29 GPU checks pass. New rendered checks verify the sun at dawn, noon and late afternoon, unchanged sky/disc position and size from opposite map corners (0.000 mean pixel difference), visibility with a 60 m camera far plane, and the same behavior for the moon. Existing optics, motion, reflections and photograph restoration checks still pass. No browser errors occurred.
+- Strict TypeScript and production build pass; the existing bundle-size advisory remains. The scenery inspector includes east-facing morning and west-facing evening views. Evidence: `docs/sunrise-east.png` and `docs/sunset-west.png`.
+
+## Tree bases embedded in terrain · 2026-10-01
+
+- Forest trunk bottoms previously touched the analytic height, while the visible terrain is offset downward by 5.5 cm and interpolates between grid vertices. Added a surface-height sampler matching the rendered terrain triangles, sharing its grid resolution and offset with mesh construction.
+- All 1,700 forest and seven broadleaf trunks extend 18 cm beneath the lowest sampled surface under their full footprint. Extending trunks downward preserves existing canopy positions. Broadleaf trunks remain one instanced batch. The four waterfall firs sample their actual rock ledges; the rear fir was moved 0.7 m onto the continuous ledge instead of hanging beyond its edge.
+- Three grounding tests pass: surface samples match ray intersections with the rendered mesh, all 1,707 trunk bases remain buried across 25 footprint samples each, and all four cliff fir bases penetrate their supporting rock. The three ambient-life tests also pass, including idle animation for the expanded cast.
+- All 29 GPU checks pass with no browser errors, including photograph restoration, reflections, water, motion and celestial placement. Close ground-level lake and hillside views were visually inspected. Evidence: `docs/rooted-lakeside-trees.png` and `docs/rooted-hillside-trees.png`; both views are available in `/tests/living-world.html`.
+- Strict TypeScript and production build pass. The full suite passes 182 of 184 tests; two unrelated hospital-route and street-collision checks fail during concurrent hospital construction in the shared workspace. Grounding changes do not alter walking blockers.
+
+
+## Hidden keepsakes · 2026-10-01
+
+- Thirty unique local-history keepsakes have distinct names, stories, hiding places and physical silhouettes. Finds span the arrival shore, harbor, town, meadow, woods, wetland and all four outer landmarks. Short-range glints assist discovery without revealing locations on the map. R pickup requires proximity, matching elevation and a clear ray through existing scenery.
+- Collection progress is separate from assignments, story gates, money and XP. The final unique find delivers Elspeth’s invitation in the Keepsakes page. The historian beside the gallery gives the engraved heritage compass once, after all thirty finds; its receipt remains in the collection. Existing saves migrate to an empty collection. Backup/restore includes finds and gift; a fresh notebook restores all hidden models.
+- All five new collection tests pass, covering unique catalog entries, malformed and legacy saves, duplicate pickups, the final-find gate, single gift receipt, save round trips, standing/sneaking proximity, visibility callbacks, actual model uniqueness, hide/reset behavior and collision-safe routes from the ferry to every find and the historian.
+- Browser verification used only the isolated keepsakes notebook: first pickup and reload, automatic 30/30 invitation, historian conversation, gift acceptance and reload with no second gift action. Inspected collection and reward layouts at desktop and narrow sizes. Evidence: docs/keepsakes-reward.png. The development fixture is /tests/collectibles-playtest.html.
+- Strict TypeScript, production build and git diff --check pass. The final full suite passes all 185 tests. An earlier street-boundary failure from concurrent hospital construction was resolved before this final run. The collection does not change walking blockers.
+
+
+## Dangerous bear encounter · 2026-10-01
+
+- Added a live bear warning, charge, contact bites with a 1.5-second cooldown, and hospital recovery after four bites. Staying at the overlook is safe; approaching within 10 metres provokes an immediate charge. Running can outrun the bear, and the chase stays near its clearing. Injury counts survive reloads and recover after 20 seconds safely away.
+- All 185 Node tests pass. Nine new checks cover warning/retreat, lingering and sneaking, four-bite knockout, escape and recovery, collision barriers and bounded movement, deterministic rendering, hospital access and a clear route to town, and save normalization. Production build passes with the existing bundle-size advisory.
+- In-app browser verification used only the isolated bear-review notebook through tests/bear-playtest.html. Observed individual bite feedback and the four-bite hospital message, dismissed the message to inspect the ward and bed, and reloaded into the hospital with no renewed damage. The safe-overlook fixture showed no warning or bite HUD. No browser errors or warnings were recorded. Saved recovery screenshot: docs/bear-hospital.jpg.
+- The hospital sits east of the neighborhood at (60, 35), with a walkable open ward and an Explore/map destination. An initial placement crossed the neighborhood street; the placement was moved, and all existing street and photography-viewpoint checks now pass. Camera trembling and bite recoil respect reduced motion. Menus pause encounter progression, and photographic temporal samples cannot apply bites.
+
+
+### Hospital road clearance follow-up · 2026-10-01
+
+- Rechecked the current hospital at (60, 35) against the complete rendered neighborhood road, access road and both sidewalks. Its outer footprint, including roof overhangs, starts at x=55.25; the nearest sidewalk edge ends at x=52.4, leaving approximately 2.85 metres of clearance.
+- Added a regression that checks every rendered road/sidewalk strip against the hospital footprint, rather than relying solely on walkable street centrelines. The access road meshes now have names for this inspection. All 186 tests pass and the production build was regenerated successfully.

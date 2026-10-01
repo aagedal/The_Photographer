@@ -45,6 +45,7 @@ export const localRoutes: Record<string, Route> = {
   planner: [[-33,32],[-34,34],[-28,34],[-28,32],[-33,32]],
   maker: [[23,-18],[20,-18],[20,-25],[22,-25],[23,-18]],
   astronomer: [[-53,-68],[-55,-66],[-56,-70],[-53,-70],[-53,-68]],
+  historian: [[11,26],[12,26],[12,24],[11,24],[11,26]],
 };
 export const localPose = (id: string, hour: number) => routinePose(localRoutes[id], hour, id === 'astronomer' ? 18 : 7, id === 'astronomer' ? 6 : 21, 0.65, 10);
 export function localActivity(id: string, hour: number) {

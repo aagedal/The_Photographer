@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { terrainHeight } from './terrain.ts';
+import { createIdleRig, animateIdle } from './character-idle.ts';
 
 export const galleryPlace = { name: 'Willowbrook Gallery', x: -7, z: 31, entrance: [-7, 26] as const };
 export const unclePlace = { name: 'Arthur’s porch', x: -23, z: 49, entrance: [-23, 55] as const };
@@ -154,14 +155,17 @@ export function createStoryPlaces(scene: THREE.Scene, solids: THREE.Object3D[]) 
   block(arthur, 0, 1.47, 0.225, 0.095, 0.015, 0.014, '#9d7863', false);
   block(arthur, 0, 0.58, 0.27, 0.6, 0.045, 0.58, '#ad9f82', false);
   for (const x of [-0.23,-0.1,0.03,0.16]) block(arthur,x,0.607,0.27,0.025,0.005,0.56,'#778775',false);
+  const arthurRig = createIdleRig(arthur, [], true);
   // Merge Arthur by material to retain rounded detail with a handful of draw calls.
-  const batches = new Map<THREE.Material, THREE.Mesh[]>();
-  arthur.children.forEach(child => { if (child instanceof THREE.Mesh && !Array.isArray(child.material)) { const list = batches.get(child.material) ?? []; list.push(child); batches.set(child.material, list); } });
-  for (const [mat, meshes] of batches) {
-    const geometries = meshes.map(mesh => { mesh.updateMatrix(); const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone(); return geometry.applyMatrix4(mesh.matrix); });
-    const geometry = mergeGeometries(geometries); geometries.forEach(g => g.dispose());
-    if (!geometry) continue;
-    meshes.forEach(mesh => arthur.remove(mesh)); const mesh = new THREE.Mesh(geometry, mat); mesh.castShadow = mesh.receiveShadow = true; arthur.add(mesh);
+  for (const part of [arthur, arthurRig.torso, arthurRig.head]) {
+    const batches = new Map<THREE.Material, THREE.Mesh[]>();
+    part.children.forEach(child => { if (child instanceof THREE.Mesh && !Array.isArray(child.material)) { const list = batches.get(child.material) ?? []; list.push(child); batches.set(child.material, list); } });
+    for (const [mat, meshes] of batches) {
+      const geometries = meshes.map(mesh => { mesh.updateMatrix(); const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone(); return geometry.applyMatrix4(mesh.matrix); });
+      const geometry = mergeGeometries(geometries); geometries.forEach(g => g.dispose());
+      if (!geometry) continue;
+      meshes.forEach(mesh => part.remove(mesh)); const mesh = new THREE.Mesh(geometry, mat); mesh.castShadow = mesh.receiveShadow = true; part.add(mesh);
+    }
   }
   // A second chair and the family tea things make the porch a place to return to.
   for (const x of [-1.8, 1]) for (const dx of [-0.43,0.43]) block(porch,x+dx,0.43,3.05,0.09,0.6,0.09,'#8d6a4b',false);
@@ -179,6 +183,7 @@ export function createStoryPlaces(scene: THREE.Scene, solids: THREE.Object3D[]) 
   const textures = new Map<string, THREE.Texture>();
   return {
     boundaryFocus, setReportPublished,
+    update(time: number) { animateIdle(arthurRig, time, 47); },
     blocksWalking: (x:number,z:number) => blockers.some(b=>Math.abs(x-b.x)<b.w/2+0.2&&Math.abs(z-b.z)<b.d/2+0.2),
     displayPrints(prints: { photoId: string; image: string }[]) {
       if (typeof document === 'undefined') return;

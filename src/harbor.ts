@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { terrainHeight } from './terrain.ts';
+import { createIdleRig, animateIdle } from './character-idle.ts';
 
 export const workshopPlace = { name: 'Tidewright Workshop', x: 45, z: 86, entrance: [45, 81] as const };
 
@@ -87,18 +88,20 @@ export function createHarbor(scene: THREE.Scene, solids: THREE.Object3D[], subje
   blockWalking(47,86,2.5,5.4);
   const boatFocus=new THREE.Object3D(); boatFocus.position.set(0,0.9,-1.6); boat.add(boatFocus); boatFocus.userData.framePoints = [[0,0,0],[-1.25,0,1.6],[1.25,0,1.6],[0,0,4.2],[0,0,-1]]; subjects.set('Unfinished harbor boat',boatFocus);
   batch(boat);
-  const people: THREE.Group[]=[];
+  const people: { person: THREE.Group; arms: THREE.Group[] }[]=[];
   const character = (name: string, x: number, z: number, skin: string, hair: string, shirt: string, apron: string, height: number) => {
-    const person=new THREE.Group(); person.name=name; person.position.set(x,terrainHeight(x,z),z); person.scale.y=height; scene.add(person); people.push(person); person.rotation.y=Math.PI;
+    const person=new THREE.Group(); person.name=name; person.position.set(x,terrainHeight(x,z),z); person.scale.y=height; scene.add(person); person.rotation.y=Math.PI;
+    const arms: THREE.Group[] = [];
     oval(person,0,1.07,0,0.32,0.38,0.22,shirt);
     box(person,0,1.04,0.224,0.42,0.63,0.035,apron);
     for (const side of [-1,1]) {
       box(person,side*0.17,1.4,0.2,0.045,0.21,0.04,apron);
       oval(person,side*0.15,0.42,0,0.12,0.4,0.13,'#46565b');
       oval(person,side*0.15,0.08,0.07,0.15,0.085,0.23,'#654f3c');
-      oval(person,side*0.34,1.18,0,0.11,0.23,0.14,shirt);
-      oval(person,side*0.36,0.91,0.025,0.075,0.17,0.085,skin);
-      oval(person,side*0.36,0.74,0.065,0.09,0.1,0.075,skin);
+      const arm = new THREE.Group(); arm.position.set(side*0.34,1.4,0); person.add(arm); arms.push(arm);
+      oval(arm,0,-0.22,0,0.11,0.23,0.14,shirt);
+      oval(arm,side*0.02,-0.49,0.025,0.075,0.17,0.085,skin);
+      oval(arm,side*0.02,-0.66,0.065,0.09,0.1,0.075,skin); batch(arm);
       oval(person,side*0.21,1.65,0,0.04,0.065,0.05,skin);
       oval(person,side*0.082,1.71,0.201,0.027,0.021,0.013,'#303f3b');
       box(person,side*0.085,1.77,0.197,0.07,0.018,0.025,hair);
@@ -111,7 +114,7 @@ export function createHarbor(scene: THREE.Scene, solids: THREE.Object3D[], subje
     box(person,0.1,0.95,0.25,0.18,0.13,0.025,'#d9c39b');
     box(person,-0.15,1.02,0.25,0.04,0.28,0.04,'#bb6e46');
     const focus=new THREE.Object3D(); focus.position.set(0,1.5,0.24); focus.userData.framePoints = [[0,0.4,0],[0,-0.9,0]]; person.add(focus);
-    batch(person); return {person,focus};
+    people.push({person,arms}); return {person,focus};
   };
   const ruth=character('ruth-boatbuilder',42,84,'#a97957','#c5c0ae','#658387','#bb9a6d',1);
   // Ruth's round spectacles and rolled kerchief give her a recognizable silhouette.
@@ -119,11 +122,11 @@ export function createHarbor(scene: THREE.Scene, solids: THREE.Object3D[], subje
     const glasses=new THREE.Mesh(new THREE.TorusGeometry(0.062,0.009,6,16),material('#566b63')); glasses.position.set(x,1.71,0.219); ruth.person.add(glasses);
   }
   box(ruth.person,0,1.71,0.226,0.055,0.014,0.018,'#566b63');
-  oval(ruth.person,0,1.45,0.1,0.14,0.06,0.13,'#d9bc82'); batch(ruth.person);
+  oval(ruth.person,0,1.45,0.1,0.14,0.06,0.13,'#d9bc82');
   const nessa=character('nessa-apprentice',45,84,'#795641','#302b2b','#ba7d69','#718b7b',1.06);
-  oval(nessa.person,0,1.78,-0.24,0.12,0.15,0.16,'#302b2b'); batch(nessa.person);
+  oval(nessa.person,0,1.78,-0.24,0.12,0.15,0.16,'#302b2b');
   const kit=character('kit-apprentice',48.2,83.8,'#dec0a2','#98653e','#c4ad6a','#738998',0.94);
-  oval(kit.person,0,1.88,0,0.23,0.1,0.23,'#698491'); box(kit.person,0,1.85,0.12,0.46,0.04,0.3,'#698491'); batch(kit.person);
+  oval(kit.person,0,1.88,0,0.23,0.1,0.23,'#698491'); box(kit.person,0,1.85,0.12,0.46,0.04,0.3,'#698491');
   subjects.set('Ruth the boatbuilder',ruth.focus); subjects.set('Nessa the apprentice',nessa.focus); subjects.set('Kit the apprentice',kit.focus);
   const crewFocus=new THREE.Object3D(); crewFocus.position.set(45,terrainHeight(45,84)+1.5,84); scene.add(crewFocus); subjects.set('Harbor repair crew',crewFocus);
   const portraitFocus=new THREE.Object3D(); portraitFocus.position.set(44.2,terrainHeight(44.2,84.8)+1.5,84.8); scene.add(portraitFocus); subjects.set('Ruth and her work',portraitFocus);
@@ -141,6 +144,9 @@ export function createHarbor(scene: THREE.Scene, solids: THREE.Object3D[], subje
     const lines=value?['PEOPLE, PATHS AND LIVELIHOODS','Ruth · Nessa · Kit','Delivery bay suggested for the hearing','Access and costs still to be checked','Photographs and captions shared with June']:['Boats repaired · Skills passed on','Ruth · Nessa · Kit','Deliveries via the existing harbor lane','Ask Ruth about a workshop portrait','A working harbor is part of home.'];
     lines.forEach((line,i)=>ctx.fillText(line,512,170+i*66));texture.needsUpdate=true;
   };
+  const rigs = people.map(({person,arms}) => {
+    const rig = createIdleRig(person,arms); batch(rig.head); batch(rig.torso); batch(person); return rig;
+  });
   setShared(false); batch(yard,true);
-  return { setShared, blocksWalking: (x:number,z:number)=>blockers.some(b=>Math.abs(x-b.x)<b.w/2+0.2&&Math.abs(z-b.z)<b.d/2+0.2), update(time:number) { people.forEach((p,i)=>{p.rotation.y=Math.PI+Math.sin(time*0.35+i)*0.06;}); } };
+  return { setShared, blocksWalking: (x:number,z:number)=>blockers.some(b=>Math.abs(x-b.x)<b.w/2+0.2&&Math.abs(z-b.z)<b.d/2+0.2), update(time:number) { people.forEach(({person},i)=>{person.rotation.y=Math.PI+Math.sin(time*0.35+i)*0.06; animateIdle(rigs[i],time,i+31);}); } };
 }

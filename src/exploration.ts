@@ -1,6 +1,7 @@
 import { missions, type Mission } from './missions.ts';
 import { ownsGear, type Economy } from './economy.ts';
 import { terrainHeight } from './terrain.ts';
+import { historian } from './collectibles.ts';
 
 export const starterMission = 'nature-1';
 export const npcCatalog = [
@@ -10,6 +11,7 @@ export const npcCatalog = [
   { id: 'planner', name: 'Alma', role: 'Garden host', x: -33, z: 32, shirt: '#b9828d', dialogue: 'The couple have a quiet moment by the arch. Later, bring everyone into focus for the family photograph.', missions: ['wedding-1', 'wedding-2', 'horizon-wind'] },
   { id: 'maker', name: 'Eli', role: 'Studio assistant', x: 23, z: -18, shirt: '#b78568', dialogue: 'The maker and their vase are ready in the studio. Shape a portrait with the lights, then show every detail of the pottery.', missions: ['studio-1', 'studio-2'] },
   { id: 'astronomer', name: 'Ida', role: 'Ridge astronomer', x: -53, z: -68, shirt: '#687b9a', dialogue: 'Up here the town lights fall away. Wait for night: gather starlight, or let a longer exposure draw its paths.', missions: ['astro-1', 'astro-2', 'horizon-stars'] },
+  { ...historian, shirt: '#8e7595', dialogue: 'Little things carry a town’s history. If you find an old keepsake on your walks, I would love to hear its story.', missions: [] },
 ] as const;
 export type NPC = typeof npcCatalog[number];
 export const npcPosition = (npc: NPC): [number, number, number] => [npc.x, terrainHeight(npc.x, npc.z), npc.z];

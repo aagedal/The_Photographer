@@ -10,6 +10,7 @@ const voices: Record<string, Voice> = {
   planner: { pitch: 223, resonance: 1.12, pace: 0.98 },
   maker: { pitch: 158, resonance: 0.97, pace: 1.02 },
   astronomer: { pitch: 207, resonance: 1.08, pace: 0.9 },
+  historian: { pitch: 182, resonance: 0.94, pace: 0.88 },
 };
 const vowels = [[390, 900, 2250], [480, 1050, 2400], [650, 1400, 2600], [420, 1850, 2700], [320, 800, 2100]];
 export interface VoiceSyllable {

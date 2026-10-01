@@ -1,6 +1,11 @@
 import type { Mission } from './missions.ts';
+import { WORLD_HALF } from './terrain.ts';
 
 export const DAY_SECONDS = 30 * 60;
+// Keep celestial light sources beyond the enlarged terrain. Their visible
+// discs render at sky depth so walking and camera far planes cannot move them.
+export const CELESTIAL_DISTANCE = WORLD_HALF * 4;
+const SOLAR_TILT = Math.PI / 12;
 export const wrapHour = (hour: number) => ((hour % 24) + 24) % 24;
 const smooth = (a: number, b: number, value: number) => {
   const t = Math.max(0, Math.min(1, (value - a) / (b - a)));
@@ -34,7 +39,9 @@ export function sampleSky(hour: number) {
   const sunStrength = daylight * smooth(0, 0.18, elevation) * (1 - cloudCover * 0.45);
   const lightLevel = 0.18 + daylight * 2.12 + sunStrength * 3.5 + night * 0.22;
   return { hour, elevation, daylight, night, warmth, cloudCover, ev, sunStrength, lightLevel,
-    sunPosition: [-Math.cos(angle) * 75, elevation * 75, elevation * 20] as [number, number, number] };
+    // +X is east, -X west, -Z north. The daytime arc passes to the south.
+    sunPosition: [Math.cos(angle) * CELESTIAL_DISTANCE, elevation * Math.cos(SOLAR_TILT) * CELESTIAL_DISTANCE,
+      elevation * Math.sin(SOLAR_TILT) * CELESTIAL_DISTANCE] as [number, number, number] };
 }
 export function formatTime(hour: number) {
   const minutes = Math.floor(wrapHour(hour) * 60);

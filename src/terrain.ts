@@ -1,6 +1,8 @@
 import { creekDistance } from './creek.ts';
 
 export const WORLD_HALF = 260;
+export const TERRAIN_SEGMENTS = 260;
+export const TERRAIN_SURFACE_OFFSET = -0.055;
 export const coastline = (x: number) => 98 + Math.sin(x * 0.045) * 3 + Math.sin(x * 0.1) * 1.5;
 const smooth = (a: number, b: number, value: number) => {
   const t = Math.max(0, Math.min(1, (value - a) / (b - a)));
@@ -36,6 +38,23 @@ export function terrainHeight(x: number, z: number) {
   const harborShelf = (1 - smooth(6, 11, Math.abs(x - 45))) * (1 - smooth(5, 9, Math.abs(z - 84)));
   return (inland * (1 - coastal) + beach * coastal) * (1 - harborShelf) + 0.8 * harborShelf;
 }
+// Match the actual PlaneGeometry triangles, including the small surface offset.
+// Procedural height alone can sit above the mesh between grid vertices.
+export function terrainSurfaceHeight(x: number, z: number) {
+  const step = WORLD_HALF * 2 / TERRAIN_SEGMENTS;
+  const ix = Math.max(0, Math.min(TERRAIN_SEGMENTS - 1, Math.floor((x + WORLD_HALF) / step)));
+  const iz = Math.max(0, Math.min(TERRAIN_SEGMENTS - 1, Math.floor((z + WORLD_HALF) / step)));
+  const ax = -WORLD_HALF + ix * step, az = -WORLD_HALF + iz * step;
+  const u = Math.max(0, Math.min(1, (x - ax) / step)), v = Math.max(0, Math.min(1, (z - az) / step));
+  const b = terrainHeight(ax, az + step), d = terrainHeight(ax + step, az);
+  if (u + v <= 1) {
+    const a = terrainHeight(ax, az);
+    return a + (d - a) * u + (b - a) * v + TERRAIN_SURFACE_OFFSET;
+  }
+  const c = terrainHeight(ax + step, az + step);
+  return c + (b - c) * (1 - u) + (d - c) * (1 - v) + TERRAIN_SURFACE_OFFSET;
+}
+
 export const trails: [number, number][][] = [
   [[-4, -25], [-30, -37], [-46, -51], [-53, -70], [-67, -88], [-89, -98]],
   [[43, 16], [55, 3], [57, -18], [63, -32], [59, -53], [60, -69], [86, -75], [105, -87]],

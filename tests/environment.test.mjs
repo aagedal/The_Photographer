@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WorldClock, DAY_SECONDS, sampleSky, isMissionTime, missionReferenceHour, missionAmbientEV, formatTime } from '../src/environment.ts';
+import * as THREE from 'three';
+import { WORLD_HALF, terrainHeight } from '../src/terrain.ts';
+import { WorldClock, DAY_SECONDS, CELESTIAL_DISTANCE, sampleSky, isMissionTime, missionReferenceHour, missionAmbientEV, formatTime } from '../src/environment.ts';
 import { missions } from '../src/missions.ts';
 import { assessPhoto, exposureStops } from '../src/photography.ts';
 import { createWorld } from '../src/world.ts';
@@ -25,9 +27,11 @@ test('meditation targets and saved clock values normalize without advancing offl
 });
 test('sun rises in the east, crosses above town and sets in the west', () => {
   const dawn = sampleSky(6), noon = sampleSky(12), dusk = sampleSky(18), night = sampleSky(0);
-  assert.ok(dawn.sunPosition[0]<0); assert.ok(dusk.sunPosition[0]>0);
+  assert.ok(dawn.sunPosition[0]>0,'east is +X'); assert.ok(dusk.sunPosition[0]<0,'west is -X');
   near(dawn.sunPosition[1],0); near(dusk.sunPosition[1],0);
-  assert.ok(noon.sunPosition[1]>70); assert.ok(night.sunPosition[1]<-70);
+  assert.ok(noon.sunPosition[1]>WORLD_HALF*3); assert.ok(night.sunPosition[1]<-WORLD_HALF*3);
+  assert.ok(noon.sunPosition[2]>0,'daytime arc passes to the south');
+  for (let hour=6; hour<18; hour+=0.25) assert.ok(sampleSky(hour+0.25).sunPosition[0]<sampleSky(hour).sunPosition[0], 'sun travels continuously from east to west');
   assert.equal(noon.night,0); assert.equal(night.night,1);
   assert.ok(sampleSky(17).warmth>noon.warmth);
 });
@@ -79,4 +83,26 @@ test('world time changes actual lights, sky, stars and instanced cloud positions
   assert.equal(stars.visible,true); assert.ok(stars.material.opacity>.5);
   assert.notEqual(world.scene.background.getHex(),dayColour);
   assert.notDeepEqual(Array.from(clouds.instanceMatrix.array),matrices);
+});
+
+
+test('celestial bodies stay beyond the map and align discs, sky halo and shadow direction', () => {
+  const world=createWorld(),sun=world.scene.getObjectByName('sun-light'),moon=world.scene.getObjectByName('moon-light');
+  const sunDisc=world.scene.getObjectByName('sun-disc'),moonDisc=world.scene.getObjectByName('moon-disc'),sky=world.scene.getObjectByName('atmospheric-sky');
+  assert.ok(CELESTIAL_DISTANCE>Math.hypot(WORLD_HALF,WORLD_HALF)*2);
+  for(let hour=0;hour<24;hour+=0.25){
+    world.setTime(hour);
+    const direction=new THREE.Vector3(...sampleSky(hour).sunPosition).normalize();
+    near(sun.position.length(),CELESTIAL_DISTANCE,1e-8);
+    assert.deepEqual(sunDisc.position.toArray(),sun.position.toArray());
+    assert.deepEqual(moonDisc.position.toArray(),moon.position.toArray());
+    assert.ok(sky.material.uniforms.sunDirection.value.distanceTo(direction)<1e-9);
+    assert.ok(moon.position.clone().add(sun.position).length()<1e-9);
+    // The shadow camera must still include elevated terrain across the full map.
+    world.scene.updateMatrixWorld(true);sun.shadow.updateMatrices(sun);
+    for(const x of [-WORLD_HALF+4,0,WORLD_HALF-4])for(const z of [-WORLD_HALF+4,0,WORLD_HALF-4]){
+      const p=new THREE.Vector3(x,terrainHeight(x,z),z).applyMatrix4(sun.shadow.camera.matrixWorldInverse);
+      assert.ok(-p.z>sun.shadow.camera.near&&-p.z<sun.shadow.camera.far,`terrain outside shadow depth at ${hour}`);
+    }
+  }
 });

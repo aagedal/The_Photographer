@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { creekPath, creekPoint } from './creek.ts';
 import { createWaterSurface } from './water.ts';
+import { treeRootHeight } from './tree-grounding.ts';
+import { terrainSurfaceHeight } from './terrain.ts';
 
 export function createWaterfall() {
   const group = new THREE.Group(); group.name = 'fern-creek';
@@ -43,9 +45,17 @@ export function createWaterfall() {
   const foliage = new THREE.MeshStandardMaterial({ color: '#4d7456', roughness: 1, flatShading: true });
   const treeGeometry = new THREE.ConeGeometry(1, 1, 5), trunkGeometry = new THREE.CylinderGeometry(0.09, 0.14, 1, 5);
   const trunkMaterial = new THREE.MeshStandardMaterial({ color: '#726047', roughness: 1 });
-  for (const [x, z, height] of [[-29, -15, 3.2], [-20, -15.8, 3.7], [-25, -17.2, 2.7], [-31, -14.2, 2.2]]) {
-    const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial); trunk.position.set(x, 8.6 + height * 0.25, z); trunk.scale.y = height * 0.5;
-    const tree = new THREE.Mesh(treeGeometry, foliage); tree.position.set(x, 8.6 + height * 0.7, z); tree.scale.set(height * 0.36, height, height * 0.36);
+  cliff.updateMatrixWorld(true);
+  const cliffRay = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+  const cliffHeight = (x: number, z: number) => {
+    cliffRay.ray.origin.set(x, 20, z);
+    return cliffRay.intersectObject(cliff, false)[0]?.point.y ?? terrainSurfaceHeight(x, z);
+  };
+  for (const [x, z, height] of [[-29, -15, 3.2], [-20, -15.8, 3.7], [-25, -16.5, 2.7], [-31, -14.2, 2.2]]) {
+    const ground = cliffHeight(x, z), root = treeRootHeight(x, z, 0.14, 0.14, cliffHeight), trunkTop = ground + height * 0.5;
+    const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial); trunk.name = 'waterfall-fir-trunk';
+    trunk.position.set(x, (root + trunkTop) / 2, z); trunk.scale.y = trunkTop - root;
+    const tree = new THREE.Mesh(treeGeometry, foliage); tree.position.set(x, ground + height * 0.7, z); tree.scale.set(height * 0.36, height, height * 0.36);
     trunk.castShadow = true; tree.castShadow = true; group.add(trunk, tree);
   }
   const bankRocks = new THREE.InstancedMesh(boulderGeometry, boulderMaterial, 26); bankRocks.name = 'creek-bank-rocks';
