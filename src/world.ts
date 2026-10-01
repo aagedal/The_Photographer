@@ -13,6 +13,7 @@ import { createCoast } from './coast.ts';
 import { createOpening } from './opening.ts';
 import type { DeerMood, WildlifeVisitor } from './wildlife.ts';
 import { createCameraStore } from './camera-store.ts';
+import { createStoryPlaces } from './story-world.ts';
 import { sampleSky } from './environment.ts';
 import type { Mission } from './missions.ts';
 import { defaultStudioRig, lightNames, lightPosition, type StudioRig } from './lighting.ts';
@@ -21,6 +22,7 @@ export interface World {
   reactWildlife: (time: number, visitor: WildlifeVisitor) => boolean;
   deerMood: (time: number) => DeerMood;
   opening: ReturnType<typeof createOpening>;
+  storyPlaces: ReturnType<typeof createStoryPlaces>;
   scene: THREE.Scene; subjects: Map<string, THREE.Object3D>; solids: THREE.Object3D[];
   update: (time: number, settings: { filter: string; shutter: number }, activityHour?: number) => void;
   setTime: (hour: number) => void;
@@ -172,7 +174,7 @@ export function createWorld(): World {
       if (Math.max(Math.abs(x), Math.abs(z)) < 52) x += x < 0 ? -55 : 55;
     }
     // Clear the trails, ridge viewpoint, and bird sightline.
-    if ((x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 115 + seed(i) * 9; z = -120 + seed(i + 9) * 240; }
+    if ((x > -96 && x < -61 && z > -102 && z < -72) || (x > -2 && x < 10 && z > -43 && z < -27) || (x > -30 && x < 0 && z > 27 && z < 57) || (x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 115 + seed(i) * 9; z = -120 + seed(i + 9) * 240; }
     const ground = terrainHeight(x, z);
     const size = 0.8 + seed(i + 13) * 1.3;
     dummy.position.set(x, ground + size * 1.5, z); dummy.scale.set(0.35 * size, 3 * size, 0.35 * size); dummy.rotation.y = 0; dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
@@ -351,6 +353,26 @@ export function createWorld(): World {
   box(13, 3.8, -10.85, 9, 0.1, 0.1, '#657963');
   const reporter = person(8, -7, '#718b86', scene, 2); subjects.set('Reporter', reporter.focus);
   box(8.45, 1.15, -6.85, 0.13, 0.38, 0.13, '#394d45');
+  // Town hall: an open glazed front looks onto Vale's late-night meeting.
+  box(4, 2, -39, 10, 4, 0.3, '#c9c2af', scene, true);
+  for (const x of [-1, 9]) box(x, 2, -36, 0.3, 4, 6, '#c9c2af', scene, true);
+  box(4, 4.2, -36, 10.4, 0.3, 6.5, '#67786c');
+  box(4, 0.02, -36, 10, 0.04, 6, '#b9a88b');
+  box(4, 0.35, -32.95, 10, 0.7, 0.16, '#c9c2af', scene, true);
+  for (const x of [-0.7, 8.7]) box(x, 2, -32.9, 0.16, 4, 0.16, '#68776b');
+  const hallGlass = new THREE.Mesh(new THREE.PlaneGeometry(9.3, 3.1), glassMat); hallGlass.position.set(4, 2.1, -32.9); hallGlass.name = 'townhall-glass'; scene.add(hallGlass);
+  const hallReflection = new Reflector(new THREE.PlaneGeometry(9.3, 3.1), { textureWidth: 512, textureHeight: 256, multisample: 0, clipBias: 0.003, shader: { name: 'TownHallWindow', uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null }, strength: { value: 0.6 } }, vertexShader: reflectionMaterial.vertexShader, fragmentShader: reflectionMaterial.fragmentShader } });
+  hallReflection.position.set(4, 2.1, -32.88); hallReflection.name = 'townhall-reflection';
+  const hallReflectionMaterial = hallReflection.material as THREE.ShaderMaterial;
+  hallReflectionMaterial.transparent = true; hallReflectionMaterial.depthWrite = false; hallReflection.renderOrder = 1; scene.add(hallReflection);
+  const vale = person(3.5, -36.2, '#4e5b6a', scene, 1); vale.group.name = 'councillor-vale';
+  const developer = person(5.1, -36.4, '#8e745f', scene, 4); developer.group.name = 'townhall-developer';
+  const meetingFocus = new THREE.Object3D(); meetingFocus.position.set(4, 1.5, -36); scene.add(meetingFocus); subjects.set('Councillor Vale', meetingFocus);
+  box(4.3, 0.85, -35.5, 3, 0.14, 1.3, '#8b6c50');
+  for (const x of [3.1, 5.5]) box(x, 0.42, -35.5, 0.12, 0.84, 0.8, '#8b6c50');
+  const papers = box(4.2, 0.95, -35.3, 0.75, 0.025, 0.6, '#eee7d2'); papers.name = 'meeting-papers';
+  for (let i = 0; i < 4; i++) box(4.2, 0.969, -35.5 + i * 0.12, 0.55, 0.005, 0.015, '#6c776d');
+  const hallLamp = new THREE.PointLight('#ffd49b', 12, 10); hallLamp.name = 'townhall-lamp'; hallLamp.position.set(4, 2.8, -35); scene.add(hallLamp);
   // Wedding garden: arch, flower beds, couple, and guests at different depths.
   for (const x of [-27, -23]) box(x, 2.2, 25, 0.24, 4.4, 0.24, '#e3d7bb');
   box(-25, 4.3, 25, 4.3, 0.24, 0.3, '#e3d7bb');
@@ -394,9 +416,22 @@ export function createWorld(): World {
   const coast = createCoast(scene);
   const townLife = createTownLife({ scene, solids, box, sphere, person, house, batchMeshes });
   const store = createCameraStore(scene, solids);
+  const storyPlaces = createStoryPlaces(scene, solids);
   const opening = createOpening(scene);
   const deer = scene.getObjectByName('meadow-deer-0')!;
   const deerFocus = new THREE.Object3D(); deerFocus.position.set(0, 1, 0); deer.add(deerFocus); subjects.set('Meadow deer', deerFocus);
+  const bear = new THREE.Group(); bear.name = 'pale-woodland-bear'; scene.add(bear);
+  sphere(0, 1.05, 0, 1.15, 0.82, 0.65, '#d3c8a7', bear);
+  sphere(-0.8, 1.2, 0, 0.62, 0.72, 0.65, '#ddd2b5', bear);
+  sphere(-1.45, 1.05, 0, 0.55, 0.46, 0.47, '#e5dcc4', bear);
+  sphere(-1.85, 0.98, 0, 0.35, 0.25, 0.32, '#c5b696', bear);
+  sphere(-2.1, 1.03, 0, 0.12, 0.1, 0.17, '#3d4036', bear);
+  for (const z of [-0.38, 0.38]) {
+    sphere(-1.4, 1.47, z, 0.17, 0.2, 0.14, '#b9a887', bear);
+    sphere(-1.7, 1.15, z, 0.05, 0.05, 0.045, '#34392f', bear);
+    for (const x of [-0.65, 0.75]) sphere(x, 0.42, z, 0.27, 0.55, 0.27, '#c7b995', bear);
+  }
+  const bearFocus = new THREE.Object3D(); bearFocus.position.set(-0.3, 1.2, 0); bear.add(bearFocus); subjects.set('Pale woodland bear', bearFocus);
   // Direction signs and park lamp posts.
   for (const [x, z] of [[-4, 15], [17, 14], [-16, 25], [-4, -26]]) {
     box(x, 1.2, z, 0.16, 2.4, 0.16, '#766246'); box(x + 0.5, 2.1, z, 1.8, 0.55, 0.15, '#eee0bb');
@@ -409,7 +444,7 @@ export function createWorld(): World {
   // A wetland, bird perch and raised hide make the long-lens assignment a real place.
   const pondGeometry = new THREE.CircleGeometry(1, 48); pondGeometry.scale(14, 11, 1);
   const pond = createWaterSurface(pondGeometry, 76, 1.28, -54, 'wetland'); scene.add(pond.tint, pond.reflection);
-  isolateReflections([coast.reflection, reflection, lake.reflection, pond.reflection, creek.river.reflection]);
+  isolateReflections([coast.reflection, reflection, hallReflection, lake.reflection, pond.reflection, creek.river.reflection]);
   const bird = new THREE.Group(); bird.name = 'kingfisher'; bird.position.set(76, 3.6, -54); scene.add(bird);
   box(76, 2.35, -54, 0.18, 2.25, 0.18, '#80684d'); box(76, 3.39, -54, 1.6, 0.12, 0.17, '#80684d');
   sphere(0, 0, 0, 0.15, 0.23, 0.29, '#397f96', bird);
@@ -487,6 +522,8 @@ export function createWorld(): World {
     parkLamps.forEach(lamp => { lamp.intensity = 3 * (1 - sky.daylight); });
     material('#e8d6a4').emissive.set('#ffce81'); material('#e8d6a4').emissiveIntensity = 1 - sky.daylight;
     material('#bdd4cb').emissive.set('#ffc078'); material('#bdd4cb').emissiveIntensity = (1 - sky.daylight) * 0.8;
+    const meeting = sky.hour >= 22 || sky.hour < 2;
+    vale.group.visible = developer.group.visible = papers.visible = meeting; hallLamp.intensity = meeting ? 12 : 0;
     townLife.setTime(sky.hour, 1 - sky.daylight); church.setTime(1 - sky.daylight);
     for (let i = 0; i < 60; i++) {
       const cluster = Math.floor(i / 5), puff = i % 5;
@@ -517,7 +554,7 @@ export function createWorld(): World {
   batchMeshes(scene, new Set(solids));
   const staticSolidCount = solids.length;
   return {
-    opening, scene, subjects, solids, traffic: townLife.traffic,
+    opening, storyPlaces, scene, subjects, solids, traffic: townLife.traffic,
     reactWildlife(time, visitor) { return townLife.reactWildlife(time, sky.hour, visitor, (x, z) => this.canWalk(x, z)); },
     deerMood: townLife.deerMood,
     npcPosition(id) { const p = locals.get(id)!.group.position; return [p.x, p.y, p.z]; },
@@ -530,6 +567,8 @@ export function createWorld(): World {
       cameraFlash.target.position.set(position[0] + direction[0] * 10, position[1] + 0.18 + direction[1] * 10, position[2] + direction[2] * 10);
     },
     update(time, settings, activityHour = sky.hour) {
+      const bearX = -88 + Math.sin(time * 0.12) * 1.2, bearZ = -91 + Math.cos(time * 0.12) * 0.8;
+      bear.position.set(bearX, terrainHeight(bearX, bearZ), bearZ); bear.rotation.y = 3.35 + Math.sin(time * 0.12) * 0.12;
       runner.group.position.set(29 + Math.sin(time * 0.9) * 6, 0, 5 + Math.cos(time * 0.9) * 5);
       runner.group.rotation.y = time * 0.9 + Math.PI / 2;
       runner.legs[0].rotation.x = Math.sin(time * 9) * 0.5; runner.legs[1].rotation.x = -Math.sin(time * 9) * 0.5;
@@ -554,12 +593,13 @@ export function createWorld(): World {
       creek.update(time, settings.filter, sky.daylight);
       // A CPL suppresses reflected light without removing the window itself.
       reflectionMaterial.uniforms.strength.value = settings.filter === 'cpl' ? 0.06 : 0.6;
+      hallReflectionMaterial.uniforms.strength.value = settings.filter === 'cpl' ? 0.06 : 0.6;
     },
     canWalk(x, z) {
       if (Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4) return false;
       if (z > coastline(x) - 1.2 && !opening.onDock(x, z)) return false;
       if (Math.hypot((x - 76) / 14, (z + 54) / 11) < 1) return false;
-      if (creekDistance(x, z) < 1.08 || townLife.blocksWalking(x, z) || store.blocksWalking(x, z)) return false;
+      if (creekDistance(x, z) < 1.08 || townLife.blocksWalking(x, z) || store.blocksWalking(x, z) || storyPlaces.blocksWalking(x, z)) return false;
       // The jetty is a narrow walkable exception inside the lake boundary.
       return !blockers.some(b => Math.abs(x - b.x) < b.w / 2 + 0.25 && Math.abs(z - b.z) < b.d / 2 + 0.25 && !(b.w === 28 && Math.abs(x) < 1.25 && z > 3.5));
     },

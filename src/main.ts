@@ -21,6 +21,8 @@ import { movementSpeed } from './wildlife.ts';
 import { openingScenes, arrivalPosition } from './opening.ts';
 import { cameraStore, atCameraStore } from './camera-store.ts';
 import { notebookMissions, type MissionSection } from './notebook.ts';
+import { freshStory, normalizeStory, storyMissionUnlocked, storyDiscoveries, storyObjective, mainStoryIds, printPhoto, visitUncle, startExhibition, settleDays, buyCottage, PRINT_PRICE, EXHIBITION_DAILY, ROOM_RENT, COTTAGE_PRICE, type Story } from './story.ts';
+import { galleryPlace, unclePlace, nearStoryPlace } from './story-world.ts';
 import './style.css';
 
 const paths: Record<string, string> = {
@@ -60,7 +62,7 @@ const esc = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 interface Photo { payment?: number; burst?: { id: string; index: number; total: number }; id: string; missionId: string; image: string; settings: CameraSettings; result: Assessment; date: number; studio?: StudioRig; environment?: { hour: number; cloudCover: number } }
-interface Save { walkingIntroduction?: boolean; position?: [number, number]; openingSeen?: boolean; focus?: { mode: 'auto' | 'manual'; distance: number }; sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
+interface Save { story: Story; walkingIntroduction?: boolean; position?: [number, number]; openingSeen?: boolean; focus?: { mode: 'auto' | 'manual'; distance: number }; sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
 const playtest = new URLSearchParams(location.search).get('playtest');
 const storageKey = playtest === null ? 'the-photographer-save-v1' : `the-photographer-playtest${playtest && playtest !== '1' ? `-${playtest.slice(0,32)}` : ''}-v1`;
 let storageAvailable = true;
@@ -69,8 +71,11 @@ function loadSave(): Save {
     const raw = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
     if (raw?.version === 1) {
       const completed = normalizeCompleted(raw.completed);
+      const known = normalizeDiscovered(raw.discovered, [...completed, raw.active, ...(Array.isArray(raw.photos) ? raw.photos.map((p: Photo) => p?.missionId) : [])]);
+      const story = normalizeStory(raw.story, completed, known);
+      const discovered = storyDiscoveries(story, completed, known);
       return {
-      version: 1,
+      version: 1, story,
       openingSeen: raw.openingSeen !== false,
       walkingIntroduction: !completed.includes('intro-deer') && (raw.walkingIntroduction === true || raw.active === 'intro-deer'),
       position: Array.isArray(raw.position) && raw.position.length === 2 && raw.position.every(Number.isFinite) ? raw.position : undefined,
@@ -78,7 +83,7 @@ function loadSave(): Save {
       sound: { enabled: raw.sound?.enabled !== false, volume: Number.isFinite(raw.sound?.volume) ? Math.max(0, Math.min(1, raw.sound.volume)) : 0.6 },
       filterShopVersion: 1, filter: raw.filter, gradPosition: gradientPosition(raw.gradPosition),
       completed,
-      discovered: normalizeDiscovered(raw.discovered, [...completed, raw.active, ...(Array.isArray(raw.photos) ? raw.photos.map((p: Photo) => p?.missionId) : [])]),
+      discovered,
       lens: raw.lens,
       economy: normalizeEconomy(raw.economy, completed, raw.lighting?.flashPower > 0 || (Array.isArray(raw.photos) && raw.photos.some((p: Photo) => (p?.settings?.flashPower ?? 0) > 0)), raw.filterShopVersion !== 1),
       focalLength: Number.isFinite(raw.focalLength) ? raw.focalLength : undefined,
@@ -89,7 +94,7 @@ function loadSave(): Save {
     };
     }
   } catch { storageAvailable = false; }
-  return { openingSeen: false, version: 1, filterShopVersion: 1, discovered: normalizeDiscovered(undefined), completed: [], photos: [], active: missions[0].id, economy: normalizeEconomy(undefined, []) };
+  return { story: freshStory(), openingSeen: false, version: 1, filterShopVersion: 1, discovered: ['intro-deer'], completed: [], photos: [], active: 'intro-deer', economy: normalizeEconomy(undefined, []) };
 }
 const save = loadSave();
 const focus = new FocusState(save.focus);
@@ -97,11 +102,11 @@ const audio = new WorldAudio(save.sound?.enabled ?? true, save.sound?.volume ?? 
 // These listeners execute within the browser’s user-gesture window.
 document.addEventListener('pointerdown', () => audio.unlock(), { passive: true });
 document.addEventListener('keydown', () => audio.unlock());
-let activeMission = missions.find(m => m.id === save.active && canAcceptMission(m, save.discovered, save.economy)) ?? missions[0];
+let activeMission = missions.find(m => m.id === save.active && canAcceptMission(m, save.discovered, save.economy) && storyMissionUnlocked(m.id, save.story, save.completed)) ?? missions.find(m => save.discovered.includes(m.id) && missionGearReady(m, save.economy)) ?? missions.find(m => m.id === 'intro-deer')!;
 const clock = new WorldClock(save.hour ?? missionReferenceHour(activeMission));
 let openingStep: number | null = null;
 let openingSeconds = 0;
-let meditation: { start: number; distance: number; elapsed: number; target: number } | null = null;
+let meditation: { start: number; distance: number; elapsed: number; target: number; travelled: number } | null = null;
 let lastClockSave = 0;
 let equippedLens = normalizeLens(save.lens, save.economy);
 let focalLength = THREE.MathUtils.clamp(save.focalLength ?? 35, ...focalRange(save.economy, equippedLens));
@@ -113,7 +118,7 @@ let cameraMode = false;
 let sneaking = false;
 const viewfinder = new ViewfinderState();
 let lowQuality = false;
-type PauseTab = 'assignments' | 'journal' | 'explore' | 'settings';
+type PauseTab = 'assignments' | 'journal' | 'gallery' | 'explore' | 'settings';
 let pauseTab: PauseTab = 'assignments';
 let missionSection: MissionSection = 'active';
 let capturing = false;
@@ -121,6 +126,7 @@ const captureSequence = new CaptureSequence();
 let shotSettings: CameraSettings | null = null;
 let shotPhotos: Photo[] = [];
 let shotPayment = 0;
+let shotStoryAdvanced = false;
 let shotId = '';
 let shootReadyAt = 0;
 let lastGearHint = -Infinity;
@@ -237,7 +243,7 @@ function finishOpening(skipped: boolean) {
   save.openingSeen = true; keys.clear(); drag = false;
   save.walkingIntroduction = true;
   const deer = missions.find(m => m.id === 'intro-deer')!;
-  save.discovered = normalizeDiscovered(save.discovered, [deer.id]); selectMission(deer);
+  save.discovered = storyDiscoveries(save.story, save.completed, [...save.discovered, deer.id]); selectMission(deer);
   settings = { ...deer.recommended, flashPower: 0 }; focus.mode = 'auto'; equipLens('prime');
   player.set(arrivalPosition[0], world.groundHeight(...arrivalPosition) + 1.7, arrivalPosition[1]);
   yaw = 0; pitch = 0; viewfinder.request(false, true); syncSettings(); updateCamera();
@@ -249,6 +255,7 @@ function toast(message: string) {
   window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => $('toast').classList.remove('show'), 3600);
 }
 function persist() {
+  save.discovered = storyDiscoveries(save.story, save.completed, save.discovered);
   save.position = [player.x, player.z];
   save.focus = { mode: focus.mode, distance: focus.distance };
   save.sound = { enabled: audio.enabled, volume: audio.volume };
@@ -265,7 +272,7 @@ function persist() {
 function updateProgress() {
   if (!$('menu-progress')) return;
   const xp = missions.filter(m => save.completed.includes(m.id)).reduce((total, m) => total + m.reward, 0);
-  $('menu-progress').textContent = `${save.completed.length}/${missions.length} assignments · ${save.discovered.length} discovered · ${save.photos.length} photos · ${xp} XP · ${money(balance(save.economy, save.completed))}`;
+  $('menu-progress').textContent = `${save.completed.length}/${missions.length} assignments · ${save.discovered.length} discovered · ${save.photos.length} photos · ${xp} XP · ${money(balance(save.economy, save.completed))} · Day ${save.story.day}`;
   $('save-status').textContent = storageAvailable ? 'Saved on this device' : 'Saving unavailable · This session only';
 }
 function renderMission() {
@@ -309,12 +316,13 @@ function suggestSettings() {
   modal.close(); toast('Suggested settings applied.');
 }
 function pauseNavigation() {
-  const tabs: [PauseTab, string][] = [['assignments', 'Assignments'], ['journal', 'Journal'], ['explore', 'Explore'], ['settings', 'Settings']];
+  const tabs: [PauseTab, string][] = [['assignments', 'Assignments'], ['journal', 'Journal'], ['gallery', 'Gallery'], ['explore', 'Explore'], ['settings', 'Settings']];
   return `<div class="pause-tabs" role="tablist" aria-label="Pause menu">${tabs.map(([id, label]) => `<button role="tab" id="tab-${id}" data-pause-tab="${id}" aria-selected="${pauseTab === id}" aria-controls="pause-panel" tabindex="${pauseTab === id ? 0 : -1}">${label}</button>`).join('')}</div>`;
 }
 function openPauseMenu(tab: PauseTab = pauseTab) {
   pauseTab = tab; persist();
   if (tab === 'journal') openJournal(true);
+  else if (tab === 'gallery') openGallery(true);
   else if (tab === 'explore') openMap(true);
   else if (tab === 'settings') openSettings();
   else openBoard();
@@ -322,7 +330,7 @@ function openPauseMenu(tab: PauseTab = pauseTab) {
 function activeMissionContent() {
   const m = activeMission;
   if (save.completed.includes(m.id)) return `<div class="empty"><span class="mission-badge complete">${icon('check')}Completed</span><h3>${esc(m.title)}</h3><p>This assignment is finished. Choose an available story for your next photograph.</p><button class="secondary" id="choose-available">Browse available assignments</button></div>`;
-  return `<article class="pause-assignment"><span class="mission-badge">Active assignment</span><span class="eyebrow">${m.category} · ${esc(m.location)} · ${m.payment ? `${money(m.payment)} payment` : 'First photograph'}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>
+  return `<article class="pause-assignment"><span class="mission-badge">Active assignment</span><span class="eyebrow">${m.category} · ${esc(m.location)} · ${m.payment ? `${money(m.payment)} payment` : m.id === 'nature-bear' ? 'A gift for Arthur' : 'First photograph'}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>
     ${m.timeWindow ? `<p class="mission-time ${isMissionTime(m, clock.hour) ? 'ready' : 'waiting'}">${esc(m.timeWindow.label)} · ${isMissionTime(m, clock.hour) ? 'Ready now' : 'Wait for the light'}</p>` : ''}
     <details><summary>Field notes</summary><p>${esc(m.lesson)}</p></details>
     <div class="pause-actions"><button class="secondary" id="travel">${icon('pin')}${save.walkingIntroduction ? 'Show the trail on the map' : 'Find the spot'}</button><button class="secondary" id="suggest">Suggested settings</button></div></article>`;
@@ -347,7 +355,7 @@ function openGearShop() {
   }
   const cash = balance(save.economy, save.completed);
   showModal(cameraStore.name, 'CAMERA STORE', 'Each assignment pays once. Spend your earnings on new ways to shoot.', `
-    <div class="shop-wallet"><div><small>AVAILABLE</small><strong id="shop-balance">${money(cash)}</strong></div><span>${money(earnedMoney(save.completed))} earned · ${money(earnedMoney(save.completed) - cash)} spent</span></div>
+    <div class="shop-wallet"><div><small>AVAILABLE</small><strong id="shop-balance">${money(cash)}</strong></div><span>${money(earnedMoney(save.completed))} in commissions · ${money(save.economy.living?.exhibitionIncome ?? 0)} from exhibitions</span></div>
     <div class="gear-grid">${gearCatalog.map(gear => {
       const owned = ownsGear(save.economy, gear.id), affordable = cash >= gear.price;
       return `<article class="gear-card" id="gear-${gear.id}"><div class="gear-icon">${icon(gear.icon)}</div><div><h3>${gear.name}</h3><p>${gear.description}</p><div class="gear-action">${owned ? `<span class="gear-owned">${icon('check')}${save.economy.gifted.includes(gear.id) ? 'Kept from your previous kit' : 'In your kit'}</span>${gear.id === 'burst' ? `<button class="secondary" id="shop-burst">${save.economy.burstEnabled ? 'Use single shots' : 'Use burst mode'}</button>` : isFilterGear(gear.id) ? `<button class="secondary" data-fit-filter="${settings.filter === gear.id ? 'none' : gear.id}">${settings.filter === gear.id ? 'Remove filter' : 'Fit filter'}</button>` : ''}` : `<strong>${money(gear.price)}</strong><button class="${affordable ? 'primary' : 'secondary'}" data-buy="${gear.id}" ${affordable ? '' : 'disabled'}>${affordable ? `Buy · ${money(gear.price)}` : `Need ${money(gear.price - cash)} more`}</button>`}</div></div></article>`;
@@ -384,8 +392,9 @@ function toggleSneak() {
   $('sneak-label').textContent = sneaking ? 'Sneaking' : 'Sneak';
 }
 function updateClockCue() {
-  $('location-title').textContent = Math.hypot(player.x - arrivalPosition[0], player.z - arrivalPosition[1]) < 10 ? 'Arrival dock' : atCameraStore(player.x, player.y, player.z) ? cameraStore.name : player.z > 84 ? 'Southern shore' : player.z >= 31 && player.z < 80 && player.x > -15 && player.x < 57 ? 'South neighborhood' : player.x < -35 && player.x > -53 && player.z > 7 && player.z < 39 ? 'Wedding chapel' : activeMission.location;
-  if (activeMission.id === 'intro-deer') {
+  $('location-title').textContent = nearStoryPlace(galleryPlace, player.x, player.y, player.z) ? galleryPlace.name : nearStoryPlace(unclePlace, player.x, player.y, player.z) ? unclePlace.name : Math.hypot(player.x - arrivalPosition[0], player.z - arrivalPosition[1]) < 10 ? 'Arrival dock' : atCameraStore(player.x, player.y, player.z) ? cameraStore.name : player.z > 84 ? 'Southern shore' : player.z >= 31 && player.z < 80 && player.x > -15 && player.x < 57 ? 'South neighborhood' : player.x < -35 && player.x > -53 && player.z > 7 && player.z < 39 ? 'Wedding chapel' : activeMission.location;
+  if (save.completed.includes(activeMission.id)) $('subject-cue').textContent = `${storyObjective(save.story, save.completed).title} · Esc → Assignments`;
+  if (activeMission.id === 'intro-deer' && !save.completed.includes('intro-deer')) {
     const deer = subjectPosition(world, activeMission), distance = Math.round(deer.distanceTo(player)), mood = world.deerMood(elapsed);
     $('subject-cue').textContent = mood !== 'calm' ? `Deer ${mood} · Back away quietly and let it settle` : distance > 30 ? `Western meadow · ${distance} m · Follow the western trail past the chapel` : `Meadow deer · ${distance} m · ${sneaking ? 'Sneaking quietly' : 'C to sneak; give the deer space'}`;
   }
@@ -404,8 +413,8 @@ function openMeditation() {
 function startMeditation(target: number) {
   modal.close(); keys.clear(); drag = false;
   if (lightingOpen) toggleLightingKit();
-  if (reducedMotion.matches) { clock.skipTo(target); finishMeditation(); return; }
-  meditation = { start: clock.hour, distance: wrapHour(target - clock.hour), elapsed: 0, target };
+  if (reducedMotion.matches) { advanceWorldTime(wrapHour(target - clock.hour)); finishMeditation(); return; }
+  meditation = { start: clock.hour, distance: wrapHour(target - clock.hour), elapsed: 0, target, travelled: 0 };
   $('meditation-overlay').hidden = false; syncTripod();
 }
 function finishMeditation() {
@@ -434,7 +443,7 @@ function travelTo(m: Mission) {
   toast(m.location);
 }
 function selectMission(m: Mission) {
-  if (!save.discovered.includes(m.id)) { toast('Explore and talk to the locals to discover this assignment.'); return false; }
+  if (!save.discovered.includes(m.id) || !storyMissionUnlocked(m.id, save.story, save.completed)) { toast('Continue Arthur’s story or talk to the locals to discover this assignment.'); return false; }
   if (!missionGearReady(m, save.economy)) { openGearShop(); return false; }
   activeMission = m; missionSection = 'active'; renderer.shadowMap.needsUpdate = true;
   lightingMode = m.category === 'Studio' ? 'studio' : 'flash';
@@ -734,7 +743,7 @@ function capture() {
   if (openingStep !== null || modal.open || capturing || tripod.transitioning || viewfinder.transitioning || meditation || now < shootReadyAt) return;
   if (settings.filter !== equippedFilter(settings.filter, save.economy)) { syncSettings(); openGearShop(); toast('Buy the filter before taking a photograph with it.'); return; }
   if (activeMission.requiredGear && (!missionGearReady(activeMission, save.economy) || equippedLens !== 'telephoto')) { toast('Choose the 200–600 mm wildlife lens in the LENS dropdown.'); return; }
-  capturing = true; keys.clear(); shotPhotos = []; shotPayment = 0; shotId = crypto.randomUUID();
+  capturing = true; keys.clear(); shotPhotos = []; shotPayment = 0; shotStoryAdvanced = false; shotId = crypto.randomUUID();
   shotSettings = { ...settings, focalLength, focusMode: focus.mode, focusDistance: focus.mode === 'manual' ? focus.distance : undefined };
   captureSequence.start(now, captureCount(save.economy)); syncTripod();
   captureFrame(now);
@@ -756,7 +765,9 @@ function captureFrame(now: number) {
   }
   audio.shutter();
   const photo: Photo = { id: crypto.randomUUID(), missionId: activeMission.id, image, settings: captureSettings, result, date: Date.now(), studio: activeMission.category === 'Studio' ? normalizeStudioRig(studioRig) : undefined, environment: { hour: clock.hour, cloudCover: sampleSky(clock.hour).cloudCover }, burst: shot.total > 1 ? { id: shotId, index: shot.index, total: shot.total } : undefined };
+  const firstCompletion = result.passed && !save.completed.includes(activeMission.id);
   const completion = completeMission(save.completed, activeMission.id, result.passed);
+  shotStoryAdvanced ||= firstCompletion && mainStoryIds.includes(activeMission.id);
   save.completed = completion.completed; photo.payment = completion.payment; shotPayment += completion.payment;
   save.photos.unshift(photo); save.photos = save.photos.slice(0, 16); shotPhotos.push(photo);
   $('flash').classList.remove('fire'); void $('flash').offsetWidth; $('flash').classList.add('fire');
@@ -773,11 +784,79 @@ function finishShooting() {
   preview.onclick = () => { preview.hidden = true; openReview(best); };
   window.clearTimeout(previewTimer); previewTimer = window.setTimeout(() => preview.hidden = true, 6000);
   shotPhotos = []; shotSettings = null;
-  if (best.missionId === 'intro-deer' && best.result.passed && activeMission.id === 'intro-deer') {
+  if (shotStoryAdvanced && best.missionId === 'intro-deer' && best.result.passed && activeMission.id === 'intro-deer') {
     save.walkingIntroduction = false;
     selectMission(missions[0]); setCameraMode(false);
-    toast('A photograph, and the deer walks away. Your next story: the lighthouse at Willow Lake. Esc for directions.');
+    toast('Your first photograph. Print it at Willowbrook Gallery, then show Arthur. Esc → Assignments for the story.');
   }
+  if (shotStoryAdvanced) openStory();
+}
+
+function advanceWorldTime(hours: number) {
+  const days = Math.floor((clock.hour + hours) / 24);
+  clock.skipTo(clock.hour + hours);
+  if (days > 0) {
+    const settled = settleDays(save.story, save.economy, save.completed, days);
+    save.story = settled.story; save.economy = settled.economy;
+    persist();
+    toast(`Day ${save.story.day} · Exhibition +${money(settled.income)} · Rent ${money(settled.rent)}${save.story.rentArrears ? ` · ${money(save.story.rentArrears)} rent waiting` : ''}`);
+  }
+}
+function openStory() {
+  const objective = storyObjective(save.story, save.completed);
+  const needsPrint = !save.story.deerShown ? !save.story.prints.some(p => p.missionId === 'intro-deer') : save.completed.includes('nature-bear') && !save.story.prints.some(p => p.missionId === 'nature-bear');
+  const action = objective.action === 'mission' ? 'Accept this assignment' : needsPrint ? 'Visit the gallery' : 'Find Arthur’s porch';
+  showModal(objective.title, `ARTHUR’S STORY · ${objective.chapter}`, 'A photographer finds a place in Willowbrook.', `<div class="story-scene"><p>${esc(objective.text)}</p><p class="discovery-note">${objective.action === 'mission' ? 'Follow the main story at your own pace. Side assignments help pay for gear and prints.' : 'The gallery and Arthur’s porch are marked in Esc → Explore. Press R when you arrive.'}</p><button class="primary" id="story-next">${action} ${icon('arrow')}</button></div>`);
+  $('story-next').onclick = () => {
+    if ('missionId' in objective && objective.missionId) {
+      save.discovered = storyDiscoveries(save.story, save.completed, save.discovered);
+      if (selectMission(missions.find(m => m.id === objective.missionId)!)) { modal.close(); toast('Story assignment accepted. Esc → Assignments for directions and settings.'); }
+    } else if (needsPrint) openGallery();
+    else openPauseMenu('explore');
+  };
+}
+function openGallery(topLevel = false) {
+  if (topLevel) pauseTab = 'gallery';
+  const nearby = nearStoryPlace(galleryPlace, player.x, player.y, player.z);
+  const prints = save.story.prints;
+  const candidates = save.photos.filter(p => p.result.passed && !prints.some(print => print.missionId === p.missionId)).filter((p, i, all) => all.findIndex(other => other.missionId === p.missionId) === i);
+  const cash = balance(save.economy, save.completed);
+  showModal(galleryPlace.name, 'PRINTS · EXHIBITIONS', `Day ${save.story.day} · ${money(cash)} available · ${prints.length} different stories on the wall`, `
+    <section class="gallery-status"><h3>${save.story.exhibition ? 'Your exhibition is open.' : 'A wall of your own.'}</h3><p>${save.story.exhibition ? `Visitors bring in $${EXHIBITION_DAILY} each game day.` : `Hang five different successful photographs to open a paid exhibition. It earns $${EXHIBITION_DAILY} each game day.`} Prints cost $${PRINT_PRICE}; the deer and Arthur’s bear print are free.</p><p class="discovery-note">${nearby ? 'You are at the gallery. Prints below will be framed and hung here.' : 'Visit the gallery beside the garden, then press R to print and open your exhibition.'}</p><div class="pause-actions"><button class="secondary" id="gallery-map">Find the gallery ${icon('map')}</button>${!save.story.exhibition ? `<button class="primary" id="start-exhibition" ${nearby && prints.length >= 5 ? '' : 'disabled'}>Open paid exhibition · ${Math.min(5, prints.length)}/5</button>` : ''}</div></section>
+    <section class="living-status"><h3>${save.story.home === 'cottage' ? 'Your garden cottage' : 'Your room in town'}</h3><p>${save.story.home === 'cottage' ? 'You own the cottage. No daily rent.' : save.story.deerShown ? `Rent is $${ROOM_RENT} per game day. A garden cottage costs $${COTTAGE_PRICE}; ask Arthur at his porch.` : 'Mara has arranged a room. Rent starts after you show Arthur the deer print.'}${save.story.rentArrears ? ` ${money(save.story.rentArrears)} in rent is waiting; it will be settled from future funds at midnight.` : ''}</p><p class="discovery-note">Income and rent settle at midnight. Menus pause time; meditation advances it. No charges or income while you are away.</p><p class="discovery-note">Exhibitions earned ${money(save.economy.living?.exhibitionIncome ?? 0)} · Rent paid ${money(save.economy.living?.rentPaid ?? 0)} · Printing ${money(save.economy.living?.printCosts ?? 0)}</p></section>
+    ${prints.length ? `<h3>On the wall</h3><div class="journal-grid">${prints.map(print => `<article class="photo-card"><img src="${esc(print.image)}" alt="Framed ${esc(missions.find(m => m.id === print.missionId)!.title)}"/><h3>${esc(missions.find(m => m.id === print.missionId)!.title)}</h3><p>Printed and exhibited · Kept in the gallery</p></article>`).join('')}</div>` : '<p class="discovery-note">Your first print will live here, even when the journal makes room for newer photographs.</p>'}
+    <h3>Ready to print</h3>${candidates.length ? `<div class="journal-grid">${candidates.map(photo => `<article class="photo-card"><img src="${esc(photo.image)}" alt="Print preview"/><h3>${esc(missions.find(m => m.id === photo.missionId)!.title)}</h3><button class="secondary" data-print="${photo.id}" ${nearby && (['intro-deer', 'nature-bear'].includes(photo.missionId) || cash >= PRINT_PRICE) ? '' : 'disabled'}>Print & hang · ${['intro-deer', 'nature-bear'].includes(photo.missionId) ? 'Free' : money(PRINT_PRICE)}</button></article>`).join('')}</div>` : '<p class="discovery-note">Make a successful photograph to add a new print. You can replay completed assignments if an older frame has left your journal.</p>'}`, topLevel ? 'menu' : 'page');
+  $('gallery-map').onclick = () => openPauseMenu('explore');
+  if ($('start-exhibition')) $('start-exhibition').onclick = () => {
+    if (!nearStoryPlace(galleryPlace, player.x, player.y, player.z)) return;
+    save.story = startExhibition(save.story); persist(); openGallery(topLevel); toast('Your exhibition is open. $5 each game day, beginning at the next midnight.');
+  };
+  modal.querySelectorAll<HTMLButtonElement>('[data-print]').forEach(button => button.onclick = () => {
+    if (!nearStoryPlace(galleryPlace, player.x, player.y, player.z)) return;
+    const photo = save.photos.find(p => p.id === button.dataset.print);
+    if (!photo) return;
+    const result = printPhoto(save.story, save.economy, save.completed, photo);
+    if (!result.ok) { toast(result.reason); return; }
+    save.story = result.story; save.economy = result.economy; world.storyPlaces.displayPrints(save.story.prints); persist(); openGallery(topLevel);
+    toast(['intro-deer', 'nature-bear'].includes(photo.missionId) ? 'Your print is on the gallery wall. Bring Arthur the story at his porch.' : 'Printed and hung in your gallery.');
+  });
+}
+function openUncle() {
+  const before = save.story;
+  save.story = visitUncle(save.story, save.completed); persist();
+  const ending = !before.reconciled && save.story.reconciled;
+  const first = !before.deerShown && save.story.deerShown;
+  const line = ending ? 'There it is. Just as I remember. You came all this way for a photograph, but you stayed. I’m glad we have this time together. Sit with me a while.' : first ? 'Look at that deer. You waited, and you let it be itself. You always had an eye for things. Alma stopped by your exhibition wall; she has a wedding coming up and wants to meet our new photographer.' : save.story.reconciled ? 'I keep your bear beside my chair. Tell me what you saw today.' : !save.story.deerShown ? 'I would love to see your first photograph. Print the deer at the gallery, then come sit with me. The bear can wait until you have a long lens.' : 'I hear the town is getting to know you. Take your time with the bear. It’s the time with you that matters most.';
+  const price = COTTAGE_PRICE + save.story.rentArrears;
+  showModal(ending ? 'A little time together.' : 'Uncle Arthur', ending ? 'ARTHUR’S STORY · HOME, AT LAST' : 'ARTHUR’S PORCH', ending ? 'The photograph is home. So are you.' : 'The kettle is on. There is a chair for you.', `<p class="npc-dialogue">“${esc(line)}”</p>${ending ? '<p>You sit beside Arthur as the light turns. There is no photograph to make, and nowhere else you need to be.</p>' : ''}<section class="living-status"><h3>${save.story.home === 'cottage' ? 'A home of your own' : 'Settle into Willowbrook'}</h3><p>${save.story.home === 'cottage' ? 'Your garden cottage is on the southern street. You can keep photographing and running the gallery.' : `Your room costs $${ROOM_RENT} per game day after your first visit with the deer print. The garden cottage is available for $${COTTAGE_PRICE}, with no daily rent.${save.story.rentArrears ? ` Clear ${money(save.story.rentArrears)} in waiting rent as part of the purchase.` : ''}`}</p>${save.story.home === 'room' ? `<button class="secondary" id="buy-home" ${save.story.deerShown && balance(save.economy, save.completed) >= price ? '' : 'disabled'}>Buy garden cottage · ${money(price)}</button>` : ''}</section><div class="review-actions"><button class="secondary" id="uncle-gallery">View the gallery</button><button class="primary" id="uncle-next">${ending || save.story.reconciled ? 'Keep exploring' : 'Continue the story'} ${icon('arrow')}</button></div>`);
+  if ($('buy-home')) $('buy-home').onclick = () => {
+    if (!nearStoryPlace(unclePlace, player.x, player.y, player.z)) return;
+    const result = buyCottage(save.story, save.economy, save.completed);
+    if (!result.ok) return;
+    save.story = result.story; save.economy = result.economy; persist(); openUncle(); toast('The garden cottage is yours. Find it on the map.');
+  };
+  $('uncle-gallery').onclick = () => openGallery();
+  $('uncle-next').onclick = () => { if (save.story.reconciled) modal.close(); else openStory(); };
 }
 
 function showModal(title: string, eyebrow: string, subtitle: string, content: string, view: 'menu' | 'page' = 'page') {
@@ -806,7 +885,7 @@ function showModal(title: string, eyebrow: string, subtitle: string, content: st
 }
 function missionCard(m: Mission) {
   const ready = missionGearReady(m, save.economy);
-  return `<button class="assignment-card ${ready ? '' : 'mission-locked'}" data-mission="${m.id}"><span class="eyebrow">${icon(categoryIcon[m.category])}${m.category} · ${esc(m.location)}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>${ready ? '' : '<p class="gear-requirement">Requires 200–600 mm lens · $480 · Visit camera store →</p>'}<span class="card-footer"><span>${save.completed.includes(m.id) ? '✓ Story told' : m.timeWindow ? esc(m.timeWindow.label) : 'Any time'}</span><span>${save.completed.includes(m.id) ? 'Replay · no extra payment' : `${m.payment ? `${money(m.payment)} · ` : ''}${m.reward} XP →`}</span></span></button>`;
+  return `<button class="assignment-card ${ready ? '' : 'mission-locked'}" data-mission="${m.id}"><span class="eyebrow">${icon(categoryIcon[m.category])}${mainStoryIds.includes(m.id) ? 'Main story' : 'Side assignment'} · ${m.category} · ${esc(m.location)}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>${ready ? '' : '<p class="gear-requirement">Requires 200–600 mm lens · $480 · Visit camera store →</p>'}<span class="card-footer"><span>${save.completed.includes(m.id) ? '✓ Story told' : m.timeWindow ? esc(m.timeWindow.label) : 'Any time'}</span><span>${save.completed.includes(m.id) ? 'Replay · no extra payment' : `${m.payment ? `${money(m.payment)} · ` : ''}${m.reward} XP →`}</span></span></button>`;
 }
 function wireMissionCards() {
   modal.querySelectorAll<HTMLButtonElement>('[data-mission]').forEach(b => b.onclick = () => {
@@ -818,29 +897,33 @@ function openBoard() {
   const sections: [MissionSection, string][] = [['active', 'Active'], ['available', 'Available'], ['completed', 'Completed']];
   const list = notebookMissions(save.discovered, save.completed, activeMission.id, missionSection);
   const content = missionSection === 'active' ? activeMissionContent() : `<div class="mission-grid">${list.map(missionCard).join('')}</div>${list.length ? '' : `<div class="empty"><h3>${missionSection === 'completed' ? 'Your stories will live here.' : 'More stories are out there.'}</h3><p>${missionSection === 'completed' ? 'Finish an assignment to add it to your completed collection.' : 'Talk to locals with golden markers to discover your next assignment.'}</p></div>`}`;
-  showModal('Your field notebook.', 'PAUSED · ASSIGNMENTS', 'One active story at a time. Completed assignments stay here to revisit.', `<div class="mission-sections" role="group" aria-label="Assignment status">${sections.map(([id, label]) => `<button data-mission-section="${id}" aria-pressed="${missionSection === id}">${label}<span>${notebookMissions(save.discovered, save.completed, activeMission.id, id).length}</span></button>`).join('')}</div>${content}<p class="discovery-note notebook-hint">${save.discovered.length} of ${missions.length} stories discovered · Press R near a local to find more.</p>`, 'menu');
+  showModal('Your field notebook.', 'PAUSED · ASSIGNMENTS', 'One active story at a time. Completed assignments stay here to revisit.', `<section class="story-summary"><span class="eyebrow">${esc(storyObjective(save.story, save.completed).chapter)}</span><h3>${esc(storyObjective(save.story, save.completed).title)}</h3><p>${esc(storyObjective(save.story, save.completed).text)}</p><button class="secondary" id="story-details">Continue the story ${icon('arrow')}</button></section><div class="mission-sections" role="group" aria-label="Assignment status">${sections.map(([id, label]) => `<button data-mission-section="${id}" aria-pressed="${missionSection === id}">${label}<span>${notebookMissions(save.discovered, save.completed, activeMission.id, id).length}</span></button>`).join('')}</div>${content}<p class="discovery-note notebook-hint">${save.discovered.length} of ${missions.length} stories discovered · Press R near a local to find more.</p>`, 'menu');
   modal.querySelectorAll<HTMLButtonElement>('[data-mission-section]').forEach(b => b.onclick = () => { missionSection = b.dataset.missionSection as MissionSection; openBoard(); modal.querySelector<HTMLButtonElement>(`[data-mission-section="${missionSection}"]`)?.focus(); });
   if ($('travel')) $('travel').onclick = () => { if (save.walkingIntroduction) openPauseMenu('explore'); else { modal.close(); travelTo(activeMission); } };
   if ($('suggest')) $('suggest').onclick = suggestSettings;
   if ($('choose-available')) $('choose-available').onclick = () => { missionSection = 'available'; openBoard(); };
-  wireMissionCards();
+  wireMissionCards(); $('story-details').onclick = openStory;
 }
 function talkToNPC() {
   if (modal.open || capturing || meditation || tripod.transitioning) return;
   if (atCameraStore(player.x, player.y, player.z)) { openGearShop(); return; }
+  if (nearStoryPlace(galleryPlace, player.x, player.y, player.z)) { openGallery(); return; }
+  if (nearStoryPlace(unclePlace, player.x, player.y, player.z)) { openUncle(); return; }
   const npc = nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id));
   if (!npc) return;
   const before = save.discovered.length;
-  save.discovered = discoverNPC(save.discovered, npc); persist();
-  showModal(npc.name, npc.role.toUpperCase(), `${save.discovered.length - before ? `${save.discovered.length - before} new stories added to your notebook` : 'A familiar face in Willowbrook'}`, `<p class="npc-dialogue">“${esc(npc.dialogue)}”</p><div class="mission-grid">${missions.filter(m => (npc.missions as readonly string[]).includes(m.id)).map(missionCard).join('')}</div><div class="review-actions"><span class="discovery-note">These stories stay in your notebook for later.</span><button class="primary" id="leave-npc">Keep exploring ${icon('arrow')}</button></div>`);
+  save.discovered = storyDiscoveries(save.story, save.completed, discoverNPC(save.discovered, npc)); persist();
+  showModal(npc.name, npc.role.toUpperCase(), `${save.discovered.length - before ? `${save.discovered.length - before} new stories added to your notebook` : 'A familiar face in Willowbrook'}`, `<p class="npc-dialogue">“${esc(npc.missions.some(id => storyMissionUnlocked(id, save.story, save.completed)) ? npc.dialogue : 'Welcome to Willowbrook. Settle in and show Arthur your first photograph. We’ll have work for you as the town gets to know you.')}”</p><div class="mission-grid">${missions.filter(m => (npc.missions as readonly string[]).includes(m.id) && storyMissionUnlocked(m.id, save.story, save.completed)).map(missionCard).join('')}</div><div class="review-actions"><span class="discovery-note">These stories stay in your notebook for later.</span><button class="primary" id="leave-npc">Keep exploring ${icon('arrow')}</button></div>`);
   wireMissionCards(); $('leave-npc').onclick = () => modal.close();
 }
 function updateNPCPrompt() {
   const npc: NPC | undefined = nearestNPC(player.x, player.y, player.z, npc => world.npcPosition(npc.id));
   const prompt = $('npc-prompt');
   const storeNearby = atCameraStore(player.x, player.y, player.z);
-  prompt.hidden = (!npc && !storeNearby) || modal.open || capturing || tripod.transitioning || !!meditation;
+  const storyPlace = nearStoryPlace(galleryPlace, player.x, player.y, player.z) ? galleryPlace : nearStoryPlace(unclePlace, player.x, player.y, player.z) ? unclePlace : undefined;
+  prompt.hidden = (!npc && !storeNearby && !storyPlace) || modal.open || capturing || tripod.transitioning || !!meditation;
   if (storeNearby) { prompt.dataset.npc = 'camera-store'; prompt.innerHTML = `<kbd>R</kbd> Browse the camera store <small>${cameraStore.name} · Lenses, filters & cameras</small>`; return; }
+  if (storyPlace) { prompt.dataset.npc = storyPlace.name; prompt.innerHTML = `<kbd>R</kbd> ${storyPlace === galleryPlace ? 'Visit the gallery' : 'Sit with Uncle Arthur'} <small>${storyPlace === galleryPlace ? 'Prints & exhibitions' : 'A little time together'}</small>`; return; }
   const promptKey = npc ? `${npc.id}-${localActivity(npc.id, clock.hour)}` : '';
   if (npc && prompt.dataset.npc !== promptKey) { prompt.dataset.npc = promptKey; prompt.innerHTML = `<kbd>R</kbd> Talk to ${esc(npc.name)} <small>${esc(npc.role)} · ${esc(localActivity(npc.id, clock.hour))}</small>`; }
 }
@@ -854,8 +937,9 @@ function openReview(photo: Photo) {
   const { result, settings: s } = photo;
   showModal(result.passed ? 'A story worth keeping.' : 'One frame closer.', 'IN THE DARKROOM', `${m.title} · ${m.location}`, `
     <div class="review-layout"><div><img class="review-photo" src="${esc(photo.image)}" alt="Your captured photograph"/><div class="photo-settings"><span>${shutterLabel(s.shutter)}${s.shutter < 0.25 ? ' s' : ''}</span><span>f/${s.aperture}</span><span>ISO ${s.iso}</span>${s.focalLength ? `<span>${Math.round(s.focalLength)} mm</span>` : ''}${s.focusDistance && Number.isFinite(s.focusDistance) ? `<span>${s.focusMode === 'manual' ? 'MF' : 'AF'} ${s.focusDistance >= 1e5 ? '∞' : `${s.focusDistance.toFixed(1)} m`}</span>` : ''}${photo.burst ? `<span>Burst ${photo.burst.index}/${photo.burst.total}</span>` : ''}${Number.isFinite(photo.environment?.hour) ? `<span>${formatTime(photo.environment!.hour)} · ${Math.round(photo.environment!.cloudCover * 100)}% cloud cover</span>` : ''}<span>${filterLabel(s.filter)}${s.filter === 'gnd3' ? ` · transition ${Math.round(gradientPosition(s.gradPosition) * 100)}%` : ''}</span>${s.tripod ? '<span>Tripod</span>' : ''}${s.panning ? '<span>Panning</span>' : ''}${flashPower(s) > 0 ? `<span>Flash ${flashPower(s) === 1 ? 'full' : `1/${Math.round(1 / flashPower(s))}`} ${flashCanFire(s) ? '' : '(not synced)'}</span>` : ''}${photo.studio ? `<span>Studio: ${lightNames.map(n => `${n} ${photo.studio![n].enabled ? Math.round(photo.studio![n].power * 100) : 0}%`).join(' · ')}</span>` : ''}</div><p style="font-size:9px;color:#8b927b;line-height:1.6;margin-top:14px">Exposure and lighting falloff are calculated. Depth of field uses scene depth and lens settings; motion accumulates over the shutter interval. Optics and noise remain simplified.</p></div>
-    <div><div class="review-score">${result.score}<small> / 100</small></div><p class="review-verdict">${result.passed ? `Assignment complete · ${m.payment === 0 ? 'First photograph' : photo.payment ? `${money(photo.payment)} paid` : 'Payment already earned'} · ${m.reward} XP` : 'Keep exploring. Every attempt teaches you something.'}</p>${result.feedback.map(f => `<div class="feedback-row ${f.passed ? '' : 'missed'}"><span class="feedback-icon">${icon(f.passed ? 'check' : 'info')}</span><div><strong>${esc(f.label)}</strong><p>${esc(f.text)}</p></div></div>`).join('')}</div></div>
-    <div class="review-actions"><a class="secondary" id="download-photo" style="text-decoration:none;color:inherit" href="${esc(photo.image)}" download="willowbrook-${m.id}-${photo.date}.jpg">${icon('download')}Keep a copy</a><button class="primary" id="review-next">${result.passed ? 'Find another story' : 'Try another frame'}${icon('arrow')}</button></div>`);
+    <div><div class="review-score">${result.score}<small> / 100</small></div><p class="review-verdict">${result.passed ? `Assignment complete · ${m.payment === 0 ? m.id === 'nature-bear' ? 'A gift for Arthur' : 'First photograph' : photo.payment ? `${money(photo.payment)} paid` : 'Payment already earned'} · ${m.reward} XP` : 'Keep exploring. Every attempt teaches you something.'}</p>${result.feedback.map(f => `<div class="feedback-row ${f.passed ? '' : 'missed'}"><span class="feedback-icon">${icon(f.passed ? 'check' : 'info')}</span><div><strong>${esc(f.label)}</strong><p>${esc(f.text)}</p></div></div>`).join('')}</div></div>
+    <div class="review-actions"><a class="secondary" id="download-photo" style="text-decoration:none;color:inherit" href="${esc(photo.image)}" download="willowbrook-${m.id}-${photo.date}.jpg">${icon('download')}Keep a copy</a>${result.passed ? '<button class="secondary" id="review-gallery">Print at the gallery</button>' : ''}<button class="primary" id="review-next">${result.passed ? 'Find another story' : 'Try another frame'}${icon('arrow')}</button></div>`);
+  if ($('review-gallery')) $('review-gallery').onclick = () => openGallery();
   $('review-next').onclick = () => { if (result.passed) { missionSection = 'available'; openPauseMenu('assignments'); } else { modal.close(); setCameraMode(true); } };
 }
 
@@ -884,12 +968,17 @@ function drawMap(canvas: HTMLCanvasElement) {
     if (!npc.missions.some(id => save.discovered.includes(id))) continue;
     const [x,,z] = world.npcPosition(npc.id); ctx.beginPath(); ctx.arc(mx(x), mz(z), 4, 0, Math.PI * 2); ctx.fillStyle = '#b08b46'; ctx.fill(); ctx.fillText(npc.name, mx(x), mz(z) - 9);
   }
+  for (const place of [galleryPlace, unclePlace]) { ctx.fillStyle = '#8c6486'; ctx.fillRect(mx(place.x)-4, mz(place.z)-4, 8, 8); ctx.fillText(place.name, mx(place.x), mz(place.z)-10); }
   ctx.fillStyle = '#3b7e87'; ctx.fillRect(mx(cameraStore.x) - 4, mz(cameraStore.z) - 4, 8, 8); ctx.fillText('Camera store', mx(cameraStore.x), mz(cameraStore.z) - 10);
   const target = subjectPosition(world, activeMission); ctx.beginPath(); ctx.arc(mx(target.x),mz(target.z),5,0,Math.PI * 2);ctx.fillStyle='#dab955';ctx.fill();
   ctx.save(); ctx.translate(mx(player.x),mz(player.z));ctx.rotate(-yaw);
   ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fillStyle='#314e40';ctx.fill();ctx.restore();
 }
 const landmarks = [
+  { id: 'gallery', name: galleryPlace.name, x: galleryPlace.entrance[0], z: galleryPlace.entrance[1], target: [galleryPlace.x, 2, galleryPlace.z] },
+  { id: 'uncle', name: unclePlace.name, x: unclePlace.entrance[0], z: unclePlace.entrance[1], target: [unclePlace.x, 2, unclePlace.z] },
+  { id: 'room', name: 'Your town room', x: 4, z: 56, target: [4, 2, 48] },
+  { id: 'cottage', name: 'Garden cottage', x: 40, z: 65, target: [40, 2, 71] },
   { id: 'camera-store', name: cameraStore.name, x: cameraStore.entrance[0], z: cameraStore.entrance[1], target: [cameraStore.x, 2, cameraStore.z] },
   { id: 'chapel', name: 'Wedding chapel', x: -38, z: 35, target: [-43, 5, 16] },
   { id: 'streets', name: 'South neighborhood', x: 19, z: 32, target: [26, 1.3, 48] },
@@ -917,7 +1006,7 @@ function openHelp() {
   showModal('Take your time. Look around.', 'WELCOME TO WILLOWBROOK', 'An early prototype about learning the craft, one photograph at a time.', `<div class="help-grid">
     <div class="help-card"><strong>Wander and frame</strong><kbd>W A S D</kbd> walk · <kbd>Shift</kbd> move faster. <kbd>C</kbd> toggles a slow, quiet sneak; Shift stays quiet while sneaking.<br/>Drag the world to look around. Arrow keys also aim. The starter lens is fixed at 35 mm. Buy a zoom or wildlife lens at the camera store, then choose it in the LENS dropdown to use the scroll wheel or <kbd>− / +</kbd>. <kbd>E</kbd> raises or lowers the camera with a quick animation. Exploring uses a wide 24 mm view; the viewfinder and photographs use your selected lens.</div>
     <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>Space</kbd> takes a photo. With the burst camera, <kbd>B</kbd> toggles three-frame bursts at 5 fps. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
-    <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, map and field notes. Press it again to resume. From a submenu, Esc returns to the pause menu.<br/>Walk from the arrival dock to the western meadow for your first deer photograph. Approach with <kbd>C</kbd> to sneak: walking close or running will scare the deer. Step away and wait for it to settle if it bolts. Then find the lighthouse assignment. Find locals with golden markers and press <kbd>R</kbd> to talk. Their stories are added to your notebook. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments.</div>
+    <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, gallery, map and field notes. Press it again to resume. From a submenu, Esc returns to the pause menu.<br/>Walk from the arrival dock to the western meadow for your first deer photograph. Approach with <kbd>C</kbd> to sneak: walking close or running will scare the deer. Step away and wait for it to settle if it bolts. Print the deer for free at the gallery and visit Arthur’s porch to begin the wedding commission. The lighthouse is an optional paid assignment. Find locals with golden markers and press <kbd>R</kbd> to talk. Their available stories are added to your notebook as you complete main story milestones. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments.</div>
     <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Click the brief thumbnail or open the journal to read feedback and try again. Slow shutters record moving subjects as streaks; fast shutters freeze them. A tripod steadies the scenery, while Panning follows the runner and streaks the background. Higher ISO is often the right choice when a moment moves fast.</div>
     <div class="help-card"><strong>Choose your depth of field</strong>The viewfinder previews focus. Autofocus follows an unobstructed assignment subject inside the frame; otherwise it focuses on the center surface. Press <kbd>M</kbd> to lock the current distance and enter manual focus. Use the focus slider or <kbd>[ / ]</kbd> to focus nearer or farther; <kbd>Q</kbd> focuses once without releasing the lock. Press M again for autofocus. The distance and focus mode save with your notebook, and the reticle turns amber when the subject is out of focus. A wider aperture, longer lens, or closer subject softens the foreground and background. Stop down to bring more depth into focus. Shutter motion appears in the saved photograph.</div>
     <div class="help-card"><strong>Shape the light</strong><kbd>L</kbd> opens the Lighting kit; <kbd>F</kbd> toggles purchased flash. Adjust manual flash power or visit the studio to move and tune key, fill, and rim lights. A brief flash favours close subjects; shutter speed controls the ambient within the 1/250 s sync limit.</div>
@@ -943,7 +1032,8 @@ function openNewNotebook() {
     catch { toast('The backup could not be saved. Your current notebook has been kept.'); return; }
     sneaking = false; $('sneak').setAttribute('aria-pressed', 'false'); $('sneak-label').textContent = 'Sneak';
     save.openingSeen = false;
-    save.completed = []; save.discovered = normalizeDiscovered(undefined); save.photos = []; equippedLens = 'prime'; save.economy = normalizeEconomy(undefined, []); focalLength = 35; activeMission = missions[0];
+    save.story = freshStory(); world.storyPlaces.displayPrints([]);
+    save.completed = []; save.discovered = ['intro-deer']; save.photos = []; equippedLens = 'prime'; save.economy = normalizeEconomy(undefined, []); focalLength = 35; activeMission = missions.find(m => m.id === 'intro-deer')!;
     settings = { shutter: 1 / 125, aperture: 5.6, iso: 100, filter: 'none', tripod: false, panning: false, flashPower: 0 }; studioRig = defaultStudioRig();
     focus.mode = 'auto'; focus.acquire(10);
     clock.skipTo(17); world.setTime(clock.hour); requestTripod(false, true); selectMission(activeMission); player.set(...activeMission.viewpoint); camera.fov = viewfinder.fov(focalLength, camera.aspect); camera.updateProjectionMatrix(); faceSubject(activeMission); syncSettings(); updateLensLabel(); modal.close();
@@ -1052,6 +1142,7 @@ renderer.domElement.addEventListener('wheel', e => {
 }, { passive: false });
 renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); keys.clear(); toast('Graphics were interrupted. Reload to return to your saved journal.'); });
 
+world.storyPlaces.displayPrints(save.story.prints);
 world.setTime(clock.hour); applyStudioRig(); world.update(0, settings); world.scene.updateMatrixWorld(true);
 faceSubject(activeMission); renderMission(); syncSettings(); updateProgress(); resize(); updateLensLabel();
 renderer.shadowMap.needsUpdate = true;
@@ -1067,11 +1158,12 @@ function animate(now: number) {
   } else if (meditation) {
     meditation.elapsed += realDt;
     const progress = Math.min(1, meditation.elapsed / 1.5);
-    clock.skipTo(meditation.start + meditation.distance * (progress * progress * (3 - 2 * progress)));
+    const travelled = meditation.distance * (progress * progress * (3 - 2 * progress));
+    advanceWorldTime(travelled - meditation.travelled); meditation.travelled = travelled;
     world.setTime(clock.hour); $('meditation-time').textContent = formatTime(clock.hour);
     if (progress === 1) { clock.skipTo(meditation.target); finishMeditation(); }
   } else if (!modal.open) {
-    elapsed += dt; clock.advance(realDt); world.setTime(clock.hour);
+    elapsed += dt; advanceWorldTime(realDt * 24 / DAY_SECONDS); world.setTime(clock.hour);
     const viewfinderWasTransitioning = viewfinder.transitioning;
     viewfinder.update(dt); camera.fov = viewfinder.fov(focalLength, camera.aspect); camera.updateProjectionMatrix();
     stage.style.setProperty('--viewfinder-progress', String(viewfinder.progress));

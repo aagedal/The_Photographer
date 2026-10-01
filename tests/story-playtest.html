@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Story playtest fixtures</title></head>
+<body><h1>Isolated story playtest</h1><p>Prepare a camera-ready deer shot in the story-review notebook. The player’s normal notebook is never touched. This skips only the walk for browser verification.</p><button id="deer">Prepare deer capture</button><script type="module">
+import { freshStory } from '../src/story.ts';
+import { normalizeEconomy } from '../src/economy.ts';
+document.getElementById('deer').onclick = () => {
+  localStorage.setItem('the-photographer-playtest-story-review-v1', JSON.stringify({ version:1, filterShopVersion:1, story:freshStory(), discovered:['intro-deer'], completed:[], photos:[], active:'intro-deer', position:[-61,53], hour:15, openingSeen:true, walkingIntroduction:true, economy:normalizeEconomy(undefined,[]) }));
+  location.href='/?playtest=story-review';
+};
+</script></body></html>

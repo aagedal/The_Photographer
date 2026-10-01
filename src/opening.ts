@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { terrainHeight } from './terrain.ts';
 
 export const openingScenes = [
-  { title: 'A place worth finding.', speaker: 'The boatman', line: 'Willowbrook. End of the line. You picked a fine evening to arrive.', action: 'Step ashore' },
-  { title: 'One small assignment.', speaker: 'Mara · Creek ranger', line: 'Fancy a little hunting? There’s a deer in the western meadow. I’d like you to take a shot.', action: 'Take the camera' },
-  { title: 'Bring back a photograph.', speaker: 'Mara · Creek ranger', line: 'Here. Your camera. Walk inland from the dock, then take the western trail past the chapel into the meadow. Press C to sneak as you approach the deer, and Space for the shutter. We leave only footprints here.', action: 'Start exploring' },
+  { title: 'Coming home to Willowbrook.', speaker: 'Arthur · A letter from your uncle', line: 'The doctors say I haven’t long. If you can, come stay. There’s a pale bear in the northern woods I saw once when I was young. I’d love to see it again. Mostly, I’d love to see you.', action: 'Step ashore' },
+  { title: 'Begin with a quiet moment.', speaker: 'Mara · Creek ranger', line: 'Arthur told me you were coming. I’ll help you find his bear, but you need a telephoto lens to keep your distance. First, try the deer in the western meadow. Here’s a camera to get you started.', action: 'Take the camera' },
+  { title: 'A photograph worth bringing home.', speaker: 'Mara · Creek ranger', line: 'Walk inland, then take the western trail past the chapel. C to sneak; Space for the shutter. Print your deer photograph at the gallery, then show Arthur. You have a room in town when you’re ready to settle in.', action: 'Start exploring' },
 ];
 export const arrivalPosition = [8, 94] as const;
 

@@ -21,8 +21,8 @@ test('ND64 removes six stops; polarizer removes approximately one', () => {
   assert.equal(cameraEV({ ...standard, filter: 'nd6' }), cameraEV(standard) + 6);
 });
 test('the curriculum retains each discipline and adds a wildlife assignment', () => {
-  assert.equal(new Set(missions.map(m => m.id)).size, 14);
-  for (const c of categories) assert.equal(missions.filter(m => m.category === c).length, c === 'Nature' ? 4 : 2);
+  assert.equal(new Set(missions.map(m => m.id)).size, 16);
+  for (const c of categories) assert.equal(missions.filter(m => m.category === c).length, c === 'Nature' ? 5 : c === 'News' ? 3 : 2);
 });
 for (const m of missions) {
   test(`suggested settings complete ${m.id} when properly framed`, () => {

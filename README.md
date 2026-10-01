@@ -1,6 +1,6 @@
 # The Photographer
 
-A small open-world photography game prototype. Explore a warm, low-poly town and its surrounding hills, meet locals for assignments, choose manual camera settings, and learn from the photographs you make.
+A small open-world photography game prototype. Explore a warm, low-poly town and its surrounding hills, move home to be near your dying uncle, get to know the town through paid assignments, and learn from the photographs you make.
 
 ## Play locally
 
@@ -33,6 +33,7 @@ npm run preview
 | Focus nearer / farther | [ / ] or viewfinder focus slider |
 | Focus once (preserves manual lock) | Q or Focus once button |
 | Talk to a nearby local | R or the on-screen prompt |
+| Visit gallery / talk to Uncle Arthur | R at the gallery entrance / Arthur’s porch |
 | Toggle sneak | C or Sneak button |
 | Make a photograph | Space or shutter button |
 | Slower / faster shutter | 1 / 2 |
@@ -45,7 +46,7 @@ npm run preview
 | Pause menu: Assignments, Journal, Explore, Settings | Escape or Esc button |
 | Back to pause menu / resume | Escape |
 
-A fresh notebook opens with a skippable boat arrival. Mara invites you to hunt a deer, then hands you a camera. Both continuing and skipping with **Esc** leave you at the arrival dock. Walk inland and follow the western trail past the chapel to find the deer. **C** toggles a slow, quiet sneak; Shift does not override it. Walking within 18 metres or running within 28 metres startles the deer, while sneaking lets you approach to six metres. Getting too close still scares it. Back away and stay quiet to let it settle. The first wildlife photograph uses the starter kit and teaches framing, an undisturbed subject, and keeping six metres of space; completion moves you on to **Chasing the golden hour**, the lighthouse assignment and unlocks travel shortcuts. Existing notebooks keep their progress and bypass the opening. Walk to locals with golden markers and press **R** (or click the talk prompt) to hear their stories. Their briefs are added to **Esc → Assignments**, where you can accept them later. Explore by the creek, track, square, garden, studio, and northern ridge. Travel shortcuts in **Esc → Assignments → Active → Find the spot** and the map are available for discovered, gear-ready assignments. Frame the marked subject. Adjust shutter, aperture, ISO, filters, and tripod. **Try suggested settings** provides a starting point for experimentation. Feedback evaluates the subject, exposure, and the lesson; try again freely. Assignment XP and payment are earned only once. Photographs, your position, and progress save locally in this browser, with the latest 16 frames retained. Taking a photo shows a brief clickable preview without interrupting play. Open the preview or **Esc → Journal** for feedback and downloads.
+A fresh notebook opens with a skippable boat arrival. A letter from Uncle Arthur explains why you have come home. Mara lends you a camera and suggests starting with a deer before trying to photograph Arthur’s rare pale bear. Both continuing and skipping with **Esc** leave you at the arrival dock. Walk inland and follow the western trail past the chapel to find the deer. **C** toggles a slow, quiet sneak; Shift does not override it. Walking within 18 metres or running within 28 metres startles the deer, while sneaking lets you approach to six metres. Getting too close still scares it. Back away and stay quiet to let it settle. The first wildlife photograph uses the starter kit and teaches framing, an undisturbed subject, and keeping six metres of space; completion unlocks travel shortcuts and the optional **Chasing the golden hour** lighthouse assignment. The main story asks you to print the deer at **Willowbrook Gallery**, then visit **Arthur’s porch**. Both are marked under Esc → Explore. Existing notebooks keep their progress and bypass the opening. Walk to locals with golden markers and press **R** (or click the talk prompt) to hear their stories. Their unlocked briefs are added to **Esc → Assignments**, where you can accept them later. Main story milestones open new disciplines and commissions. Explore by the creek, track, square, garden, studio, and northern ridge. Travel shortcuts in **Esc → Assignments → Active → Find the spot** and the map are available for discovered, gear-ready assignments. Frame the marked subject. Adjust shutter, aperture, ISO, filters, and tripod. **Try suggested settings** provides a starting point for experimentation. Feedback evaluates the subject, exposure, and the lesson; try again freely. Assignment XP and payment are earned only once. Photographs, your position, and progress save locally in this browser, with the latest 16 frames retained. Taking a photo shows a brief clickable preview without interrupting play. Open the preview or **Esc → Journal** for feedback and downloads.
 
 Saved photographs accumulate scene motion over the selected shutter interval: fast shutters freeze subjects, slow shutters soften flowing water and smear the runner. A tripod removes simulated handheld shake; Panning tracks the runner and lets the background streak. Motion blur appears in the photograph, while the live view remains responsive.
 
@@ -53,11 +54,29 @@ Exploration uses a **24 mm-equivalent field of view**, independent of your equip
 
 Press **M** to lock the current focus distance and switch to manual focus. The viewfinder’s **Lens focus** panel has a logarithmic distance slider from **0.7 m to infinity**, with finer control near the camera. Use **[ / ]** to focus nearer/farther, or **Q** to autofocus once while keeping manual mode. Recompose or move and the locked plane stays at the same distance from the camera; press M again to resume continuous autofocus. An amber dashed reticle and **Out of focus** cue warn when the assignment subject is too soft. Captures assess focus using the same thin-lens blur as the renderer, with guidance for missed focus. Manual burst frames share the locked distance; autofocus reacquires each frame. Focus mode and distance survive reloads, and the journal records AF/MF with each photograph. Suggested settings restore autofocus.
 
-The Esc menu has **Assignments**, **Journal**, **Explore**, and **Settings** tabs. Assignments are separated into **Active**, **Available**, and **Completed**, with paid replays clearly marked. Explore contains the map, meditation, and lighting kit; Settings contains sound, graphics, controls, and notebook backup/restore. Arrow keys navigate the main tabs, and Esc resumes from any main tab or returns from a detail page.
+The Esc menu has **Assignments**, **Journal**, **Gallery**, **Explore**, and **Settings** tabs. Assignments are separated into **Active**, **Available**, and **Completed**, with paid replays clearly marked. Explore contains the map, meditation, and lighting kit; Settings contains sound, graphics, controls, and notebook backup/restore. Arrow keys navigate the main tabs, and Esc resumes from any main tab or returns from a detail page.
 
 The HUD contains only compact camera settings, equipment icons, an ambient meter, and a small subject cue. Shortcuts work while playing; focused dropdowns keep their normal keyboard behavior. Without a tripod, the camera has a tiny handheld wobble, softened at long focal lengths for precise aiming. **T** unfolds the tripod in 0.42 seconds and packs it in 0.28 seconds; the wobble smoothly settles during setup and returns during packing. Movement and capture are blocked during the transition, and movement remains locked while deployed. Reduced-motion preferences disable the wobble and skip the animation.
 
 To restart, open **Esc → Settings → Manage notebook → Start a fresh notebook**. The current notebook is backed up on this device before the new one starts. **Restore previous notebook** restores that backup.
+
+## Arthur’s story, the gallery, and a home
+
+You have moved to Willowbrook because Uncle Arthur is dying. His wish is a photograph of the rare pale bear he remembers from the northern woods. The starter lens cannot reach it safely; becoming the town’s photographer pays for the equipment you need.
+
+The main story runs through **deer → free gallery print → Arthur’s porch → wedding portrait → wedding group → newspaper sports commission → secret town-hall meeting → bear photograph → free bear print → Arthur’s porch**. Esc → Assignments always shows the current chapter and a **Continue the story** button. The final visit is about time together and reconciliation; you can keep exploring afterward.
+
+The studio side jobs open after showing Arthur the deer print. Finishing the wedding opens the creek and astronomy briefs; the race opens the paper’s other jobs, panning, and the kingfisher assignment. Talk to locals to discover these paid side jobs. Existing notebooks keep their earlier discoveries and payments.
+
+**Behind closed doors** needs the **$90 CPL**, no flash, and **22:00–02:00** light. Vale and the developer appear behind the town hall’s reflective window at night with papers on the desk. Suggested settings start at 1/125 s, f/2.8, ISO 6400; use meditation to wait for the meeting. June receives the photograph and investigates what it means.
+
+**One last wild thing** requires buying and equipping the **$480 200–600 mm lens**, a shutter of 1/500 s or faster, no flash, and at least **20 m** of space. The northern overlook provides a clear view. The wedding, race, and meeting together pay $760, enough for the CPL and wildlife lens with money left for prints and rent. Side jobs provide more flexibility if you buy other equipment first.
+
+Visit the open-front gallery beside the wedding garden and press **R** to print and hang a successful photograph. Each story occupies one exhibition slot, so burst frames and replays cannot multiply the income. Ordinary prints cost **$5**; the deer and bear prints are free. Prints remain saved in the gallery after their photos leave the journal. The gallery has sixteen physical frames, and the Gallery tab lets you see the collection from anywhere.
+
+Once **five different successful photographs** are on the wall, open a paid exhibition at the gallery. It earns **$5 per game day**, starting at the next midnight. Your town room costs **$2 per game day**, beginning after showing Arthur your deer print. If funds run short, rent waits as arrears while you keep photographing. Buy the **$350 garden cottage** from Arthur’s porch, clearing any rent arrears at the same time; ownership removes future rent. Both homes are marked on the map.
+
+Income and rent settle at game midnight, including when meditation crosses it. Menus pause time, and there are no charges or earnings while the game is closed. The Gallery tab shows the day, wallet, income, printing costs, housing, and waiting rent. For the full new opening, use **Esc → Settings → Manage notebook → Start a fresh notebook**; your current notebook is backed up first. See [the story design](docs/STORY.md) for the implemented progression and prototype limits.
 
 ## Mission payments and gear
 
@@ -85,7 +104,7 @@ The world is **260 m across**, up from 110 m, with over five times the area. Wal
 
 Mara, the creek ranger, introduces **A flash of blue** alongside the waterfall story. Buy the **$480 wildlife lens** and accept the bird assignment from your notebook. Photograph the kingfisher on its wetland perch from the trail or hide, about 20–35 m away. Use **400–600 mm**, **1/1000 s or faster**, **f/5.6 or smaller**, and stay at least **18 m away**. Suggested settings equip the wildlife lens at 600 mm and set ISO 800. The photograph must show a close-up as well as meet the exposure and technique checks; it pays **$260** once. Aim sensitivity slows at long focal lengths for finer framing.
 
-Mission discovery saves with the notebook. Existing saves retain completed, photographed, and previously active briefs; other stories are found through locals. To experience the one-mission introduction, use **Esc → Settings → Manage notebook → Start a fresh notebook**, which backs up the current notebook first.
+Mission discovery and story progress save with the notebook. Existing saves retain completed, photographed, and previously active briefs; other stories are found through locals after their story milestones. To experience the one-mission introduction, use **Esc → Settings → Manage notebook → Start a fresh notebook**, which backs up the current notebook first.
 
 ## Sky, time, and meditation
 

@@ -94,3 +94,9 @@ New notebooks open with a skippable three-beat boat arrival, a ranger's hunting 
 ## Exploration view and camera handling
 
 The lowered camera uses a 24 mm-equivalent view regardless of the selected lens. E raises the camera over 0.24 seconds and lowers it over 0.18 seconds, smoothly changing the field of view and showing a simple camera-and-hands overlay. The transition reverses from its current progress and reduced motion skips it. Capture waits for the transition to finish. Photos and assessment always use the selected lens crop, and the overlay is excluded from captures.
+
+## Narrative campaign, gallery and housing — October 1, 2026
+
+The campaign now connects the photography lessons through Arthur’s wish: deer practice, a printed gallery debut, a wedding commission, local newspaper sports work, a secret night meeting through a reflective town-hall window, and a safe telephoto bear photograph returned to Arthur. The Assignments page tracks the current chapter; main completions open narrative scenes, and side jobs become discoverable through story milestones. Existing discoveries survive migration.
+
+Added a physical gallery with sixteen frames, persistent prints, a five-subject exhibition paying $5 per game day, $2 daily room rent with deferred arrears, and a $350 cottage purchase that removes rent. Finances settle at game midnight, including meditation, and use the gear wallet. The deer and bear prints are free. Captioned dialogue, housing without interiors, and a written reconciliation scene define the current prototype scope. Full progression and economy details are recorded in `docs/STORY.md`.

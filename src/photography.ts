@@ -37,6 +37,12 @@ export function assessPhoto(mission: Mission, s: CameraSettings, frame: Framing,
   const add = (label: string, passed: boolean, yes: string, no: string) => feedback.push({ label, passed, text: passed ? yes : no });
   if (mission.requiredGear) add('Required gear', lighting?.gearReady === true, 'The wildlife lens gives you the reach this assignment needs.', 'Buy the 200–600 mm wildlife lens at the camera store before taking this assignment.');
   switch (mission.technique) {
+    case 'bear':
+      add('Safe distance', frame.distance >= 20, 'You watched from the overlook and gave the bear room.', 'Stay at least 20 metres away. A long lens lets you keep a safe distance.');
+      add('A quiet close-up', (s.focalLength ?? 35) >= 200 && (s.focalLength ?? 35) <= 600 && (s.focalLength ?? 35) / frame.distance >= 7 && s.shutter <= 1 / 500 && (s.flashPower ?? 0) === 0, 'Your telephoto lens and quick shutter preserved the moment without flash.', 'Equip the 200–600 mm lens, zoom closer, use 1/500 s or faster, and turn off the flash.'); break;
+    case 'meeting':
+      add('Through the window', s.filter === 'cpl', 'The polarizer reveals Vale and the documents behind the reflected window.', 'Buy and fit a circular polarizer to reduce the reflected window glare.');
+      add('An unobtrusive moment', s.shutter <= 1 / 125 && (s.flashPower ?? 0) === 0, 'You preserved the exchange using the room’s light.', 'Use 1/125 s or faster and keep your flash off. Raise ISO for the dim room.'); break;
     case 'wildlife':
       add('An undisturbed subject', !frame.wildlifeSpooked, 'The deer stayed calm while you made your photograph.', 'The deer is startled. Back away quietly, let it settle, then approach with C to sneak.');
       add('A gentle distance', frame.distance >= 6, 'You kept your distance and brought back a photograph.', 'Give the deer at least six metres of space. Stay on the trail and frame it from there.');

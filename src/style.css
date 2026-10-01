@@ -247,3 +247,14 @@ dialog { display:flex; flex-direction:column; } dialog:not([open]) { display:non
 .opening .sneak-button { visibility:hidden; }
 .viewfinder { opacity:var(--viewfinder-progress,0); transform:translate(-50%,calc(-50% + (1 - var(--viewfinder-progress,0)) * 20px)); }
 @media(max-width:800px) { .sneak-button { right:16px; top:62px; } .camera-mode .sneak-button { bottom:190px; right:16px; } }
+
+/* Story scenes and the gallery share the field notebook's quiet paper palette. */
+.story-summary, .gallery-status, .living-status { padding: 22px; margin-bottom: 20px; border: 1px solid #d6d2bf; border-radius: 12px; background: #f4f0e4; }
+.story-summary h3, .gallery-status h3, .living-status h3 { font-family: Georgia, serif; margin: 8px 0 10px; font-size: 23px; font-weight: 400; }
+.story-summary p, .gallery-status p, .living-status p, .story-scene p { line-height: 1.75; max-width: 68ch; }
+.story-scene { max-width: 680px; margin: 12px auto 26px; font-size: 16px; }
+.story-scene .primary { margin-top: 18px; }
+.gallery-status .pause-actions { flex-wrap: wrap; }
+.photo-card > button { margin: 8px 14px 16px; }
+.living-status { background: #ebece0; }
+@media (max-width: 600px) { .story-summary, .gallery-status, .living-status { padding: 16px; } .pause-tabs { overflow-x: auto; } }

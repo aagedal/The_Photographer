@@ -28,7 +28,7 @@ test('old notebook migration preserves evidence of previous assignments without 
   assert.deepEqual(normalizeDiscovered(undefined, ['sports-1', 'studio-2', 'missing', null, 'sports-1']), ['nature-1', 'sports-1', 'studio-2']);
   assert.deepEqual(normalizeDiscovered(['missing', 'news-1']), ['nature-1', 'news-1']);
   const all = npcCatalog.reduce(discoverNPC, normalizeDiscovered(undefined));
-  assert.deepEqual(new Set(all), new Set(missions.map(m => m.id)));
+  assert.deepEqual(new Set(all), new Set(missions.filter(m => !['nature-bear', 'news-townhall'].includes(m.id)).map(m => m.id)));
 });
 test('five briefs fund the wildlife lens after buying ND64 and CPL, without repeat payments', () => {
   const completed = ['nature-1', 'nature-2', 'sports-1'];

@@ -9,13 +9,13 @@ export const gearCatalog = [
   ...filterCatalog.map(filter => ({ id: filter.id, name: filter.name, price: filter.price, icon: 'filter', description: filter.description })),
 ] as const;
 export type GearId = typeof gearCatalog[number]['id'];
-export interface Economy { purchased: GearId[]; gifted: GearId[]; burstEnabled: boolean }
+export interface Economy { purchased: GearId[]; gifted: GearId[]; burstEnabled: boolean; living?: { exhibitionIncome?: number; printCosts?: number; rentPaid?: number; homeCosts?: number } }
 export const money = (amount: number) => `$${amount}`;
 export const normalizeCompleted = (raw: unknown): string[] => Array.isArray(raw) ? [...new Set(raw.filter((id): id is string => missions.some(m => m.id === id)))] : [];
 export const earnedMoney = (completed: string[]) => missions.filter(m => completed.includes(m.id)).reduce((sum, m) => sum + m.payment, 0);
 export const ownsGear = (economy: Economy, id: GearId) => economy.purchased.includes(id) || economy.gifted.includes(id);
 export const equippedFilter = (raw: unknown, economy: Economy): FilterId => isFilterGear(raw) && ownsGear(economy, raw) ? raw : 'none';
-export const balance = (economy: Economy, completed: string[]) => earnedMoney(completed) - gearCatalog.filter(g => economy.purchased.includes(g.id)).reduce((sum, g) => sum + g.price, 0);
+export const balance = (economy: Economy, completed: string[]) => earnedMoney(completed) + (economy.living?.exhibitionIncome ?? 0) - (economy.living?.printCosts ?? 0) - (economy.living?.rentPaid ?? 0) - (economy.living?.homeCosts ?? 0) - gearCatalog.filter(g => economy.purchased.includes(g.id)).reduce((sum, g) => sum + g.price, 0);
 
 export function normalizeEconomy(raw: unknown, completed: string[], legacyFlashUsed = false, legacyFilters = false): Economy {
   const data = raw && typeof raw === 'object' ? raw as Partial<Economy> : {};
@@ -27,6 +27,13 @@ export function normalizeEconomy(raw: unknown, completed: string[], legacyFlashU
     if (!gifted.includes(id) && !validIds(data.purchased).includes(id)) gifted.push(id);
   }
   const economy: Economy = { purchased: [], gifted, burstEnabled: false };
+  if (data.living && typeof data.living === 'object') {
+    economy.living = {};
+    for (const key of ['exhibitionIncome', 'printCosts', 'rentPaid', 'homeCosts'] as const) {
+      const value = data.living[key];
+      if (typeof value === 'number' && Number.isFinite(value)) economy.living[key] = Math.max(0, Math.min(10000000, Math.floor(value)));
+    }
+  }
   for (const id of validIds(data.purchased)) {
     const gear = gearCatalog.find(g => g.id === id)!;
     if (!ownsGear(economy, id) && balance(economy, completed) >= gear.price) economy.purchased.push(id);
