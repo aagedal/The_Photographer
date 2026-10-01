@@ -33,7 +33,7 @@ export const keepsakes = [
 ] as const;
 export type Keepsake = typeof keepsakes[number];
 export interface Collection { found: string[]; giftReceived: boolean }
-export const historian = { id: 'historian', name: 'Elspeth', role: 'Local historian', x: 11, z: 26 } as const;
+export const historian = { id: 'historian', name: 'Elspeth', role: 'Local historian', x: -52, z: -20 } as const;
 export const historianReward = {
   invitation: 'An evening at the Willowbrook archive',
   letter: 'Dear friend, you have brought all thirty little pieces of Willowbrook together. Please join me for tea and an evening of stories at my archive table beside the gallery. I have a small gift waiting for you. — Elspeth',

@@ -30,8 +30,12 @@ import { defaultStudioRig, lightNames, lightPosition, type StudioRig } from './l
 import { createBuildingSurfaces, gabledRoof } from './building-surfaces.ts';
 import { partitionScenery } from './scenery-batches.ts';
 import { createGroundSurfaces } from './ground-surfaces.ts';
+import { nearBuildingSite, woodlandCabins } from './world-layout.ts';
+import { createWoodlandPlaces } from './woodland-world.ts';
+import { createGalleryVisitors } from './gallery-visitors.ts';
 
 export interface World {
+  galleryVisitors: ReturnType<typeof createGalleryVisitors>;
   bearEncounter: BearEncounter;
   reactWildlife: (time: number, visitor: WildlifeVisitor) => boolean;
   deerMood: (time: number) => DeerMood;
@@ -200,7 +204,7 @@ export function createWorld(): World {
       if (Math.max(Math.abs(x), Math.abs(z)) < 52) x += x < 0 ? -55 : 55;
     }
     // Clear the trails, ridge viewpoint, and bird sightline.
-    if ((x > -46 && x < -28 && z > -51 && z < -32) || (x > -96 && x < -61 && z > -102 && z < -72) || (x > -2 && x < 10 && z > -43 && z < -27) || (x > -30 && x < 0 && z > 27 && z < 57) || (x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || (x > 33 && x < 57 && z > 76 && z < 96) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || regionalLandmarks.some(p => Math.hypot(x - p.x, z - p.z) < (p.id === 'viaduct' ? 65 : 38) || Math.hypot(x - p.viewpoint[0], z - p.viewpoint[1]) < 16) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 240 + seed(i) * 12; z = -240 + seed(i + 9) * 315; }
+    if (nearBuildingSite(x,z,3) || (x > -46 && x < -28 && z > -51 && z < -32) || (x > -96 && x < -61 && z > -102 && z < -72) || (x > -2 && x < 10 && z > -43 && z < -27) || (x > -30 && x < 0 && z > 27 && z < 57) || (x > -83 && x < -63 && z > 52 && z < 66) || (x > 60 && x < 74 && z > -39 && z < -24) || (Math.abs(x + 43) < 8 && Math.abs(z - 16) < 11) || (x > 33 && x < 57 && z > 76 && z < 96) || z > 84 || (x > -13 && x < 56 && z > 31 && z < 78) || regionalLandmarks.some(p => Math.hypot(x - p.x, z - p.z) < (p.id === 'viaduct' ? 65 : 38) || Math.hypot(x - p.viewpoint[0], z - p.viewpoint[1]) < 16) || distanceToTrail(x, z) < 3 || Math.hypot(x - 76, z + 54) < 27 || Math.hypot(x + 53, z + 70) < 8) { x = 240 + seed(i) * 12; z = -240 + seed(i + 9) * 315; }
     const ground = terrainHeight(x, z);
     const size = 0.8 + seed(i + 13) * 1.3;
     const root = treeRootHeight(x, z, 0.175 * size), trunkTop = ground + 3 * size;
@@ -467,18 +471,26 @@ export function createWorld(): World {
   const papers = box(4.2, 0.95, -35.3, 0.75, 0.025, 0.6, '#eee7d2'); papers.name = 'meeting-papers';
   for (let i = 0; i < 4; i++) box(4.2, 0.969, -35.5 + i * 0.12, 0.55, 0.005, 0.015, '#6c776d');
   const hallLamp = new THREE.PointLight('#ffd49b', 12, 10); hallLamp.name = 'townhall-lamp'; hallLamp.position.set(4, 2.8, -35); scene.add(hallLamp);
-  // Wedding garden: arch, flower beds, couple, and guests at different depths.
-  for (const x of [-27, -23]) box(x, 2.2, 25, 0.24, 4.4, 0.24, '#e3d7bb');
-  box(-25, 4.3, 25, 4.3, 0.24, 0.3, '#e3d7bb');
-  for (let i = 0; i < 12; i++) box(-27 + i * 0.36, 4.55 + Math.sin(i) * 0.13, 25, 0.25, 0.25, 0.35, i % 2 ? '#cfab95' : '#eee2c7');
-  const coupleA = person(-25.55, 25, '#eee7d7', scene, 3); person(-24.65, 25, '#526e69', scene, 1);
-  const coupleFocus = new THREE.Object3D(); coupleFocus.position.set(-25, 1.35, 25); scene.add(coupleFocus); subjects.set('Newlyweds', coupleFocus); coupleA.group.rotation.y = 0.2;
-  for (let i = 0; i < 5; i++) person(-22 + i, 25 + (i % 2) * 0.8, ['#b99d85', '#818e70', '#d5c4a3', '#8c9d9a', '#c88c72'][i], scene, i + 8);
-  const guests = new THREE.Object3D(); guests.position.set(-20, 1.3, 25.4); scene.add(guests); subjects.set('Wedding guests', guests);
-  for (let i = 0; i < 18; i++) {
-    const x = -32 + seed(i + 4) * 4, z = 22 + seed(i + 203) * 10;
-    box(x, 0.18, z, 0.09, 0.36, 0.09, '#6b8650'); box(x, 0.4, z, 0.24, 0.2, 0.24, i % 2 ? '#d6a494' : '#ead6a7');
+  // The chapel's south-facing entrance leads straight down the garden aisle.
+  const garden = new THREE.Group(); garden.name='wedding-garden'; garden.position.set(-43,0,29); scene.add(garden); staticGroups.push(garden);
+  for (const x of [-2,2]) box(x,2.2,0,0.24,4.4,0.24,'#e3d7bb',garden);
+  box(0,4.3,0,4.3,0.24,0.3,'#e3d7bb',garden);
+  for(let i=0;i<12;i++) box(-2+i*0.36,4.55+Math.sin(i)*0.13,0,0.25,0.25,0.35,i%2?'#cfab95':'#eee2c7',garden);
+  const coupleA=person(-43.55,29,'#eee7d7',scene,3),coupleB=person(-42.65,29,'#526e69',scene,1);
+  coupleA.group.name='wedding-partner-a'; coupleB.group.name='wedding-partner-b';
+  coupleA.group.rotation.y=0.08; coupleB.group.rotation.y=-0.08;
+  const coupleFocus=new THREE.Object3D();coupleFocus.position.set(-43,1.35,29);scene.add(coupleFocus);subjects.set('Newlyweds',coupleFocus);
+  for(let i=0;i<5;i++){const guest=person(-37+i,32+(i%2)*0.9,['#b99d85','#818e70','#d5c4a3','#8c9d9a','#c88c72'][i],scene,i+8);guest.group.name=`wedding-guest-${i}`;guest.group.rotation.y=0;}
+  const guests=new THREE.Object3D();guests.position.set(-35,1.3,32.4);scene.add(guests);subjects.set('Wedding guests',guests);
+  for(const side of [-1,1]) {
+    box(side*3.2,0.12,4,1,0.24,8,'#91795a',garden);
+    for(let i=0;i<16;i++) {
+      const x=side*(2.95+(i%2)*0.5),z=0.7+Math.floor(i/2)*0.9;
+      box(x,0.35,z,0.05,0.45,0.05,'#6b8650',garden);
+      sphere(x,0.61,z,0.2,0.1,0.2,i%2?'#d6a494':'#ead6a7',garden);
+    }
   }
+  box(0,0.035,5,2.8,0.07,10,'#c3b694',garden);
   // Open-front studio with a seamless backdrop and movable lighting equipment.
   box(30, 2.5, -29, 12, 5, 0.4, '#d7d0b9', scene, true);
   box(24, 2.5, -26, 0.4, 5, 6, '#d7d0b9', scene, true); box(36, 2.5, -26, 0.4, 5, 6, '#d7d0b9', scene, true);
@@ -515,6 +527,9 @@ export function createWorld(): World {
   const storyPlaces = createStoryPlaces(scene, solids);
   const harbor = createHarbor(scene, solids, subjects);
   const hospital = createHospital(scene, solids);
+  const woodland = createWoodlandPlaces(scene, solids);
+  staticGroups.push(...woodlandCabins.map(c=>scene.getObjectByName(c.id)!));
+  const galleryVisitors = createGalleryVisitors(storyPlaces.gallery, storyPlaces.frames, person);
   subjects.set('Woodland survey notice', storyPlaces.boundaryFocus);
   const regions = createRegionalLandmarks(scene, solids, subjects);
   const opening = createOpening(scene);
@@ -598,7 +613,7 @@ export function createWorld(): World {
       const x = -250 + seed(i + count * 7) * 500, z = -250 + seed(i + count * 9) * 340;
       const inTown = Math.max(Math.abs(x), Math.abs(z)) < 45;
       dummy.position.set(x, terrainHeight(x, z) + (mesh === flowers ? 0.16 : 0.22), z);
-      const scale = inTown || distanceToTrail(x, z) < 3 || regionalLandmarks.some(p => Math.hypot(x - p.x, z - p.z) < 65) || Math.hypot(x - 76, z + 54) < 20 ? 0 : (mesh === flowers ? 0.15 : 0.35 + seed(i) * 0.7);
+      const scale = inTown || nearBuildingSite(x,z,1) || distanceToTrail(x, z) < 3 || regionalLandmarks.some(p => Math.hypot(x - p.x, z - p.z) < 65) || Math.hypot(x - 76, z + 54) < 20 ? 0 : (mesh === flowers ? 0.15 : 0.35 + seed(i) * 0.7);
       dummy.scale.set(scale, scale * 0.6, scale); dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
     }
     mesh.receiveShadow = true; scene.add(partitionScenery(mesh));
@@ -607,7 +622,7 @@ export function createWorld(): World {
     if (Math.abs(x) > WORLD_HALF - 4 || Math.abs(z) > WORLD_HALF - 4) return false;
     if (z > coastline(x) - 1.2 && !opening.onDock(x, z)) return false;
     if (Math.hypot((x - 76) / 14, (z + 54) / 11) < 1) return false;
-    if (regions.blocksWalking(x, z) || harbor.blocksWalking(x, z) || hospital.blocksWalking(x, z)) return false;
+    if (woodland.blocksWalking(x,z) || regions.blocksWalking(x, z) || harbor.blocksWalking(x, z) || hospital.blocksWalking(x, z)) return false;
     if (creekDistance(x, z) < 1.08 || townLife.blocksWalking(x, z) || store.blocksWalking(x, z) || storyPlaces.blocksWalking(x, z)) return false;
     // The jetty is a narrow walkable exception inside the lake boundary.
     return !blockers.some(b => Math.abs(x - b.x) < b.w / 2 + 0.25 && Math.abs(z - b.z) < b.d / 2 + 0.25 && !(b.w === 28 && Math.abs(x) < 1.25 && z > 3.5));
@@ -690,12 +705,12 @@ export function createWorld(): World {
   scene.traverse(object => { if (object instanceof THREE.PointLight || object instanceof THREE.SpotLight) localLights.push(object); });
   const staticSolidCount = solids.length;
   return {
-    opening, storyPlaces, harbor, collectibles, bearEncounter, scene, subjects, solids, traffic: townLife.traffic,
+    opening, storyPlaces, galleryVisitors, harbor, collectibles, bearEncounter, scene, subjects, solids, traffic: townLife.traffic,
     prepareRender(timeMs, interval = 0) { reflections.prepare(timeMs, interval); },
     reactWildlife(time, visitor) { return townLife.reactWildlife(time, sky.hour, visitor, (x, z) => this.canWalk(x, z)); },
     deerMood: townLife.deerMood,
     npcPosition(id) { const p = locals.get(id)!.group.position; return [p.x, p.y, p.z]; },
-    groundHeight: (x, z) => hospital.groundHeight(x, z) ?? opening.dockHeight(x, z),
+    groundHeight: (x, z) => hospital.groundHeight(x, z) ?? storyPlaces.groundHeight(x,z) ?? woodland.groundHeight(x,z) ?? opening.dockHeight(x, z),
     setTime(hour) { sky = sampleSky(hour); applyEnvironment(); },
     setStudioRig,
     setFlash(position, direction, intensity) {
@@ -732,6 +747,7 @@ export function createWorld(): World {
       townLife.update(time, poseHour);
       nature.update(time, poseHour, sky.daylight);
       storyPlaces.update(time);
+      galleryVisitors.update(time);
       regions.update(time);
       harbor.update(time);
       solids.splice(staticSolidCount, solids.length - staticSolidCount, ...townLife.dynamicSolids());

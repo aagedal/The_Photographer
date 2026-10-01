@@ -1,3 +1,4 @@
+import { unclePlace } from '../src/story-world.ts';
 import { createSpeech } from '../src/speech.ts';
 import { WorldAudio } from '../src/audio.ts';
 import { freshStory } from '../src/story.ts';
@@ -30,7 +31,7 @@ function prepareGame(position: number[], openingSeen = true) {
   }));
   location.href = '/?playtest=audio-checks';
 }
-element('game-arthur').onclick = () => prepareGame([-23, 55]);
+element('game-arthur').onclick = () => prepareGame([...unclePlace.entrance]);
 element('game-mara').onclick = () => { const mara = localPose('ranger', 17); prepareGame([mara.x + 1, mara.z]); };
 element('game-opening').onclick = () => prepareGame([8, 94], false);
 

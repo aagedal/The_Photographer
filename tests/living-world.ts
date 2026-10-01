@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { missions } from '../src/missions.ts';
 import { createWorld } from '../src/world.ts';
 import { terrainHeight } from '../src/terrain.ts';
+import { galleryPlace, unclePlace, hospitalPlace, woodlandCabins } from '../src/world-layout.ts';
 import { reflectionRefreshInterval } from '../src/render-quality.ts';
 import { createGpuTimer } from '../src/gpu-timer.ts';
 const world=createWorld();
@@ -30,12 +32,23 @@ const views: {name:string;hour:number;position:[number,number,number];target:[nu
   {name:'Lakeside',hour:15,position:[-15,2,20],target:[-6,2,-10]},
   {name:'Meadow',hour:15,position:[-62,terrainHeight(-62,54)+1.7,54],target:[-74,terrainHeight(-74,61)+0.7,61]},
   {name:'Grass close-up',hour:15,position:[-70,terrainHeight(-70,54)+0.45,54],target:[-73,terrainHeight(-73,57)+0.3,57]},
-  {name:'Garden',hour:16,position:[-27,1.7,34],target:[-24,1.5,25]},
+  {name:'Garden',hour:16,position:[-43,1.7,39],target:[-43,1.5,29]},
+  {name:'Gallery exterior',hour:15,position:[-43,terrainHeight(-43,-14)+1.7,-14],target:[-43,terrainHeight(-43,-29)+2,-29]},
+  {name:'Gallery interior',hour:15,position:[-43,terrainHeight(-43,-24)+1.76,-24],target:[-43,terrainHeight(-43,-33)+1.9,-33]},
+  {name:'Hospital',hour:15,position:[hospitalPlace.x,1.7,hospitalPlace.z+9],target:[hospitalPlace.x,2,hospitalPlace.z]},
+  ...woodlandCabins.map(c=>({name:c.name,hour:15,position:[c.x,terrainHeight(c.x,c.z)+1.7,c.z+10] as [number,number,number],target:[c.x,terrainHeight(c.x,c.z)+1.5,c.z] as [number,number,number]})),
   {name:'Harbor',hour:17,position:[45,2.5,76],target:[45,2.2,86]},
-  {name:'Arthur',hour:17,position:[-23,terrainHeight(-23,55)+1.7,55],target:[-22,terrainHeight(-23,49)+1.8,52]},
+  {name:'Arthur',hour:17,position:[unclePlace.x,1.7,unclePlace.z+8],target:[unclePlace.x+1,1.8,unclePlace.z+3]},
   {name:'Twilight',hour:19.6,position:[-15,2,20],target:[-6,3,-10]},
   {name:'Birds',hour:15,position:[0,6,36],target:[-20,27,-12]},
 ];
+const exhibitionPrints = missions.map((mission,i)=>{
+  const canvas=document.createElement('canvas');canvas.width=600;canvas.height=400;const ctx=canvas.getContext('2d')!;
+  ctx.fillStyle=['#789482','#ae8765','#71879a','#97849e'][i%4];ctx.fillRect(0,0,600,400);ctx.fillStyle='#f6edd8';ctx.font='26px Georgia';ctx.textAlign='center';ctx.fillText(mission.title,300,190);ctx.font='20px Georgia';ctx.fillText('Exhibition preview',300,230);
+  return {photoId:`preview-${i}`,missionId:mission.id,image:canvas.toDataURL('image/jpeg',.75)};
+});
+world.storyPlaces.displayPrints(exhibitionPrints);
+world.galleryVisitors.setExhibition(true,exhibitionPrints);
 let time=24,animated=false;
 function render(){world.update(time,{filter:'none',shutter:1/125});renderer.info.reset();renderer.render(world.scene,camera);document.querySelector('#status')!.textContent=`${renderer.info.render.calls} draw calls · ${renderer.info.render.triangles.toLocaleString()} triangles · t=${time.toFixed(2)} s`;}
 function select(view:typeof views[number]){world.setTime(view.hour);camera.position.set(...view.position);camera.lookAt(...view.target);render();}

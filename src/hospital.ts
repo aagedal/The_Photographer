@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { terrainHeight } from './terrain.ts';
 
-export const hospitalPlace = { name: 'Willowbrook Hospital', x: 60, z: 35, entrance: [60, 40] as const, recovery: [60, 35] as const };
+import { hospitalPlace } from './world-layout.ts';
+export { hospitalPlace } from './world-layout.ts';
 
 export function createHospital(scene: THREE.Scene, solids: THREE.Object3D[]) {
   const group = new THREE.Group(); group.name = 'willowbrook-hospital';
@@ -16,7 +17,9 @@ export function createHospital(scene: THREE.Scene, solids: THREE.Object3D[]) {
     if (solid) { solids.push(mesh); blockers.push({ x: group.position.x + x, z: group.position.z + z, w, d }); }
   };
   // An open ward lets the player wake beside the bed and walk back into town.
+  box(0,-0.16,0,9.4,0.4,7.4,'#b5baac',false);
   box(0,0,0,9,0.08,7,'#d8ddd4',false);
+  box(0,0,4.25,3,0.08,1.5,'#d8ddd4',false);
   box(0,2,-3.5,9,4,0.25,'#e4e8de');
   for (const x of [-4.5,4.5]) box(x,2,0,0.25,4,7,'#e4e8de');
   box(0,4.1,0,9.5,0.2,7.5,'#607e79',false);
@@ -26,8 +29,8 @@ export function createHospital(scene: THREE.Scene, solids: THREE.Object3D[]) {
   box(-2.3,0.9,-1.65,1.2,0.2,0.5,'#ffffff',false);
   for (const x of [-3,-1.6]) box(x,0.3,-0.8,0.09,0.6,2.4,'#6c7e80',false);
   box(2.8,0.65,-2,1.7,1.3,0.9,'#a7b7a8');
-  box(0,3.35,3.65,0.22,0.8,0.06,'#f1efdf',false);
-  box(0,3.35,3.66,0.8,0.22,0.06,'#f1efdf',false);
+  box(3.8,3.35,3.65,0.22,0.8,0.06,'#f1efdf',false);
+  box(3.8,3.35,3.66,0.8,0.22,0.06,'#f1efdf',false);
   if (typeof document !== 'undefined') {
     const canvas = document.createElement('canvas'); canvas.width = 768; canvas.height = 128;
     const ctx = canvas.getContext('2d');

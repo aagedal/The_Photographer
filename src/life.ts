@@ -42,10 +42,10 @@ export const localRoutes: Record<string, Route> = {
   ranger: [[-29,4],[-33,5],[-34,9],[-29,9],[-29,4]],
   coach: [[39,17],[42,17],[42,24],[39,24],[39,17]],
   editor: [[18,-6],[17.5,-4],[17.5,6],[17.5,-4],[18,-6]],
-  planner: [[-33,32],[-34,34],[-28,34],[-28,32],[-33,32]],
+  planner: [[-31,29],[-30,31],[-30,34],[-32,34],[-31,29]],
   maker: [[23,-18],[20,-18],[20,-25],[22,-25],[23,-18]],
   astronomer: [[-53,-68],[-55,-66],[-56,-70],[-53,-70],[-53,-68]],
-  historian: [[11,26],[12,26],[12,24],[11,24],[11,26]],
+  historian: [[-52,-20],[-52,-24],[-54,-24],[-54,-20],[-52,-20]],
 };
 export const localPose = (id: string, hour: number) => routinePose(localRoutes[id], hour, id === 'astronomer' ? 18 : 7, id === 'astronomer' ? 6 : 21, 0.65, 10);
 export function localActivity(id: string, hour: number) {

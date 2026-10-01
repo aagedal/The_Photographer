@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { coastline, distanceToTrail, terrainHeight } from './terrain.ts';
 import { creekDistance } from './creek.ts';
 import { regionalLandmarks } from './landmarks.ts';
+import { nearBuildingSite } from './world-layout.ts';
 import { isActiveHour } from './life.ts';
 import { partitionScenery } from './scenery-batches.ts';
 import { partitionGrass, GRASS_REFERENCE_PROJECTION } from './grass-detail.ts';
@@ -50,7 +51,7 @@ export function createAmbientNature(scene: THREE.Scene, canWalk: (x: number, z: 
     const x = i < 7200 ? -86 + seed(i + 8200) * 35 : i < 11400 ? 52 + seed(i + 8200) * 38 : -215 + seed(i + 8200) * 430;
     const z = i < 7200 ? 36 + seed(i + 19200) * 32 : i < 11400 ? -25 + seed(i + 19200) * 52 : -220 + seed(i + 19200) * 310;
     const town = x > -46 && x < 58 && z > -42 && z < 79;
-    if (town || z > coastline(x)-13 || terrainHeight(x,z)<0 || distanceToTrail(x,z)<2.6 || creekDistance(x,z)<3 || !canWalk(x,z)) continue;
+    if (town || nearBuildingSite(x,z,1) || z > coastline(x)-13 || terrainHeight(x,z)<0 || distanceToTrail(x,z)<2.6 || creekDistance(x,z)<3 || !canWalk(x,z)) continue;
     if (Math.hypot((x-76)/17,(z+54)/14)<1 || regionalLandmarks.some(p=>Math.hypot(x-p.x,z-p.z)<22)) continue;
     sites.push([x,z]);
   }
@@ -72,7 +73,7 @@ export function createAmbientNature(scene: THREE.Scene, canWalk: (x: number, z: 
   }
   group.add(partitionScenery(shrub, 48));
   // Dense, intentional flower patches near the lake, chapel and meadow.
-  const beds = [[-18,14,3,1],[-30,28,2,2],[-50,33,3,2],[-69,56,5,3],[57,6,3,2],[12,22,2,2]];
+  const beds = [[-18,14,3,1],[-46,34,0.6,4],[-40,34,0.6,4],[-69,56,5,3],[57,6,3,2],[12,22,2,2]];
   const flowerSites: [number,number][]=[];
   beds.forEach(([cx,cz,rx,rz],b)=>{for(let i=0;i<60;i++) {
     const a=seed(i+b*60+111)*TAU,r=Math.sqrt(seed(i+b*60+221)); const x=cx+Math.cos(a)*rx*r,z=cz+Math.sin(a)*rz*r;
@@ -120,13 +121,13 @@ export function createAmbientNature(scene: THREE.Scene, canWalk: (x: number, z: 
   const oval=(parent:THREE.Object3D,x:number,y:number,z:number,sx:number,sy:number,sz:number,mat=animalMaterial)=>{
     const mesh=new THREE.Mesh(ovalGeometry,mat);mesh.position.set(x,y,z);mesh.scale.set(sx,sy,sz);mesh.castShadow=true;parent.add(mesh);return mesh;
   };
-  const rabbits=Array.from({length:7},(_,i)=>{
+  const rabbits=Array.from({length:13},(_,i)=>{
     const rabbit=new THREE.Group();rabbit.name=`meadow-rabbit-${i}`;group.add(rabbit);
     oval(rabbit,0,0.23,0,0.18,0.22,0.3);oval(rabbit,0,0.36,0.25,0.14,0.15,0.14);
     const ears=[-1,1].map(side=>oval(rabbit,side*0.065,0.57,0.23,0.045,0.18,0.045));
     for(const side of [-1,1]) {oval(rabbit,side*0.12,0.38,0.32,0.018,0.025,0.015,eyeMaterial);oval(rabbit,side*0.13,0.08,-0.1,0.1,0.09,0.16);oval(rabbit,side*0.08,0.055,0.22,0.055,0.055,0.12);}
     oval(rabbit,0,0.25,-0.29,0.085,0.09,0.08,tailMaterial);
-    const home=[[-57,43],[-62,47],[-74,61],[-81,56],[56,5],[67,12],[-49,28]][i];
+    const home=[[-57,43],[-62,47],[-74,61],[-81,56],[56,5],[67,12],[-49,28],[-113,-121],[-126,-125],[118,-29],[131,-31],[-139,66],[-162,-145]][i];
     batchAnimalParts(rabbit,ears);
     return {rabbit,ears,home};
   });

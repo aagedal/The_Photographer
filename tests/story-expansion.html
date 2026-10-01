@@ -8,6 +8,7 @@
 <button id="delivery">Prepare June handoff</button>
 <button id="porch">Visit Arthur's new porch</button>
 <script type="module">
+import { unclePlace } from '../src/story-world.ts';
 import { freshStory } from '../src/story.ts';
 import { normalizeEconomy } from '../src/economy.ts';
 const completed=['intro-deer','wedding-1','wedding-2','sports-1','news-townhall'];
@@ -22,6 +23,6 @@ function prepare(position, done=completed) {
 }
 document.querySelector('#boundary').onclick=()=>prepare([-34,-37]);
 document.querySelector('#delivery').onclick=()=>prepare([20.5,-6],[...completed,'news-boundary']);
-document.querySelector('#porch').onclick=()=>prepare([-23,55]);
+document.querySelector('#porch').onclick=()=>prepare([...unclePlace.entrance]);
 </script>
 </html>

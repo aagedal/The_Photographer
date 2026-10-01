@@ -151,6 +151,10 @@ export function createTownLife({ scene, solids, box, sphere, person, house, batc
   const deerRoute: Route = [[-68,57],[-72,60],[-77,62],[-73,58],[-68,57]];
   const deerAwareness = deer.map(() => new DeerAwareness());
   const deerRoutine = (hour: number, i: number) => routinePose(deerRoute, hour + i * 0.05, 4, 23, 0.4, 18);
+  const woodlandDeer = [quadruped('ridge-deer-0','#b48d66',1.2),quadruped('ridge-deer-1','#c0a17b',0.9)];
+  const woodlandDeerRoute: Route = [[-116,-121],[-122,-119],[-127,-123],[-120,-125],[-116,-121]];
+  const hollowFox = quadruped('birch-hollow-fox','#b86e45',0.75); hollowFox.tail.scale.set(0.19,0.17,0.65);
+  const hollowFoxRoute: Route = [[119,-28],[123,-25],[130,-27],[133,-31],[128,-29],[119,-28]];
   const foxRoute: Route = [[62,-28],[65,-32],[68,-36],[72,-32],[68,-27],[62,-28]];
   const ducks = Array.from({length:5},(_,i) => {
     const group=new THREE.Group(); group.name=`lake-duck-${i}`; scene.add(group);
@@ -200,6 +204,8 @@ export function createTownLife({ scene, solids, box, sphere, person, house, batc
       dog.group.visible=walkers[0].group.visible;
       const walker=walkers[0].group; animateAnimal(dog,{x:walker.position.x-Math.sin(walker.rotation.y)*1.2,z:walker.position.z-Math.cos(walker.rotation.y)*1.2,yaw:walker.rotation.y,walking:true});
       deer.forEach((animal,i)=>{ const p=deerAwareness[i].pose(time,deerRoutine(hour,i)); animateAnimal(animal,p,deerAwareness[i].mood(time)==='calm'); });
+      woodlandDeer.forEach((animal,i)=>{animal.group.visible=isActiveHour(hour,5,21);animateAnimal(animal,routinePose(woodlandDeerRoute,hour+i*0.08,5,21,0.35,20),true);});
+      hollowFox.group.visible=isActiveHour(hour,17,7); animateAnimal(hollowFox,routinePose(hollowFoxRoute,hour,17,7,0.55,18));
       fox.group.visible=isActiveHour(hour,19,6); animateAnimal(fox,routinePose(foxRoute,hour,19,6,0.7,12));
       ducks.forEach((duck,i)=>{
         const active=isActiveHour(hour,5,21), angle=time*0.13+i*0.6;

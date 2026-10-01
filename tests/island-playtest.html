@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Island layout playtest</title>
+<style>body{background:#17251e;color:#f5f1df;font:16px system-ui;padding:32px;max-width:820px}button{margin:8px;padding:16px;font:inherit}</style>
+<h1>Island layout and exhibitions</h1>
+<p>These fixtures use only the <strong>island-layout</strong> notebook. Gallery images are labelled test cards. The normal notebook is untouched.</p>
+<button id="closed">Gallery with five prints · Open the exhibition</button>
+<button id="five">Exhibition · Five visitors</button>
+<button id="twelve">Exhibition · Twelve visitors</button>
+<button id="visitor">Talk to a gallery visitor</button>
+<button id="arthur">Arthur’s porch</button>
+<button id="hospital">Hospital ward</button>
+<div id="cabins"></div>
+<script type="module">
+import {freshStory} from '../src/story.ts';
+import {normalizeEconomy} from '../src/economy.ts';
+import {missions} from '../src/missions.ts';
+import {galleryPlace,unclePlace,hospitalPlace,woodlandCabins} from '../src/world-layout.ts';
+function prepare(position,count=5,exhibition=true){
+ const completed=missions.slice(0,count).map(m=>m.id);
+ const prints=missions.slice(0,count).map((m,i)=>{
+  const canvas=document.createElement('canvas');canvas.width=600;canvas.height=400;const ctx=canvas.getContext('2d');
+  ctx.fillStyle=['#789482','#ae8765','#71879a','#97849e'][i%4];ctx.fillRect(0,0,600,400);ctx.fillStyle='#f6edd8';ctx.font='26px Georgia';ctx.textAlign='center';ctx.fillText(m.title,300,190);ctx.font='20px Georgia';ctx.fillText('Exhibition playtest card',300,230);
+  return {photoId:`fixture-${m.id}`,missionId:m.id,image:canvas.toDataURL('image/jpeg',.75)};
+ });
+ localStorage.setItem('the-photographer-playtest-island-layout-v1',JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:false,story:{...freshStory(),deerShown:true,prints,exhibition},position,hour:14,discovered:completed,completed,photos:[],active:completed[0],economy:normalizeEconomy(undefined,completed),sound:{enabled:false,volume:.6}}));
+ location.href='/?playtest=island-layout';
+}
+document.querySelector('#closed').onclick=()=>prepare([...galleryPlace.entrance],5,false);
+document.querySelector('#five').onclick=()=>prepare([...galleryPlace.entrance]);
+document.querySelector('#twelve').onclick=()=>prepare([...galleryPlace.entrance],12);
+document.querySelector('#visitor').onclick=()=>prepare([galleryPlace.x-4.4,galleryPlace.z-2.2],12);
+document.querySelector('#arthur').onclick=()=>prepare([...unclePlace.entrance]);
+document.querySelector('#hospital').onclick=()=>prepare([...hospitalPlace.recovery]);
+for(const cabin of woodlandCabins){const button=document.createElement('button');button.textContent=cabin.name;button.onclick=()=>prepare([...cabin.entrance]);document.querySelector('#cabins').append(button);}
+</script></html>

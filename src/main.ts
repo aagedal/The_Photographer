@@ -27,6 +27,7 @@ import { openingScenes, arrivalPosition, ARRIVAL_DURATION } from './opening.ts';
 import { cameraStore, atCameraStore } from './camera-store.ts';
 import { notebookMissions, type MissionSection } from './notebook.ts';
 import { freshStory, normalizeStory, storyMissionUnlocked, storyDiscoveries, storyObjective, mainStoryIds, printPhoto, visitUncle, startExhibition, settleDays, buyCottage, PRINT_PRICE, EXHIBITION_DAILY, ROOM_RENT, COTTAGE_PRICE, publishReport, arthurMemories, rememberArthur, localStoryDialogue, horizonAlbum, horizonAlbumDialogue, meetWorkshop, shareWorkshop, workshopDialogue, workshopMissionIds, type Story } from './story.ts';
+import { woodlandCabins } from './world-layout.ts';
 import { galleryPlace, unclePlace, paperPlace, boundaryPlace, nearStoryPlace } from './story-world.ts';
 import { workshopPlace } from './harbor.ts';
 import { contextInFrame } from './framing.ts';
@@ -337,6 +338,7 @@ function persist() {
   save.bearBites = normalizeBearBites(world.bearEncounter.bites);
   save.discovered = storyDiscoveries(save.story, save.completed, save.discovered);
   world.storyPlaces.setReportPublished(save.story.reportPublished, save.story.workshopShared);
+  world.galleryVisitors.setExhibition(save.story.exhibition,save.story.prints,save.story.day);
   world.harbor.setShared(save.story.workshopShared);
   world.collectibles.setFound(save.collection.found);
   save.position = [player.x, player.z];
@@ -935,7 +937,7 @@ function openGallery(topLevel = false) {
   const candidates = save.photos.filter(p => p.result.passed && save.completed.includes(p.missionId) && !prints.some(print => print.missionId === p.missionId)).filter((p, i, all) => all.findIndex(other => other.missionId === p.missionId) === i);
   const cash = balance(save.economy, save.completed);
   showModal(galleryPlace.name, 'PRINTS · EXHIBITIONS', `Day ${save.story.day} · ${money(cash)} available · ${prints.length} different stories on the wall`, `
-    <section class="gallery-status"><h3>${save.story.exhibition ? 'Your exhibition is open.' : 'A wall of your own.'}</h3><p>${save.story.exhibition ? `Visitors bring in $${EXHIBITION_DAILY} each game day.` : `Hang five different successful photographs to open a paid exhibition. It earns $${EXHIBITION_DAILY} each game day.`} Prints cost $${PRINT_PRICE}; the deer and Arthur’s bear print are free.</p><p class="discovery-note">${nearby ? 'You are at the gallery. Prints below will be framed and hung here.' : 'Visit the gallery beside the garden, then press R to print and open your exhibition.'}</p><div class="pause-actions"><button class="secondary" id="gallery-map">Walk to the gallery ${icon('compass')}</button>${!save.story.exhibition ? `<button class="primary" id="start-exhibition" ${nearby && prints.length >= 5 ? '' : 'disabled'}>Open paid exhibition · ${Math.min(5, prints.length)}/5</button>` : ''}</div></section>
+    <section class="gallery-status"><h3>${save.story.exhibition ? 'Your exhibition is open.' : 'A wall of your own.'}</h3><p>${save.story.exhibition ? `${world.galleryVisitors.count} visitors are looking at your photographs. Add more prints to welcome more people, up to 12 at a time. Walk inside and press R beside a visitor to hear what caught their eye. Visitors bring in $${EXHIBITION_DAILY} each game day.` : `Hang five different successful photographs to open a paid exhibition. It earns $${EXHIBITION_DAILY} each game day.`} Prints cost $${PRINT_PRICE}; the deer and Arthur’s bear print are free.</p><p class="discovery-note">${nearby ? 'You are at the gallery. Prints below will be framed and hung here.' : 'Visit the gallery inland, west of Fern Creek, then press R to print and open your exhibition.'}</p><div class="pause-actions"><button class="secondary" id="gallery-map">Walk to the gallery ${icon('compass')}</button>${!save.story.exhibition ? `<button class="primary" id="start-exhibition" ${nearby && prints.length >= 5 ? '' : 'disabled'}>Open paid exhibition · ${Math.min(5, prints.length)}/5</button>` : ''}</div></section>
     <section class="living-status"><h3>${save.story.home === 'cottage' ? 'Your garden cottage' : 'Your room in town'}</h3><p>${save.story.home === 'cottage' ? 'You own the cottage. No daily rent.' : save.story.deerShown ? `Rent is $${ROOM_RENT} per game day. A garden cottage costs $${COTTAGE_PRICE}; ask Arthur at his porch.` : 'Mara has arranged a room. Rent starts after you show Arthur the deer print.'}${save.story.rentArrears ? ` ${money(save.story.rentArrears)} in rent is waiting; it will be settled from future funds at midnight.` : ''}</p><p class="discovery-note">Income and rent settle at midnight. Menus pause time; meditation advances it. No charges or income while you are away.</p><p class="discovery-note">Exhibitions earned ${money(save.economy.living?.exhibitionIncome ?? 0)} · Rent paid ${money(save.economy.living?.rentPaid ?? 0)} · Printing ${money(save.economy.living?.printCosts ?? 0)}</p></section>
     ${prints.length ? `<h3>On the wall</h3><div class="journal-grid">${prints.map(print => `<article class="photo-card"><img src="${esc(print.image)}" alt="Framed ${esc(missions.find(m => m.id === print.missionId)!.title)}"/><h3>${esc(missions.find(m => m.id === print.missionId)!.title)}</h3><p>Printed and exhibited · Kept in the gallery</p></article>`).join('')}</div>` : '<p class="discovery-note">Your first print will live here, even when the journal makes room for newer photographs.</p>'}
     <h3>Ready to print</h3>${candidates.length ? `<div class="journal-grid">${candidates.map(photo => `<article class="photo-card"><img src="${esc(photo.image)}" alt="Print preview"/><h3>${esc(missions.find(m => m.id === photo.missionId)!.title)}</h3><button class="secondary" data-print="${photo.id}" ${nearby && (['intro-deer', 'nature-bear'].includes(photo.missionId) || cash >= PRINT_PRICE) ? '' : 'disabled'}>Print & hang · ${['intro-deer', 'nature-bear'].includes(photo.missionId) ? 'Free' : money(PRINT_PRICE)}</button></article>`).join('')}</div>` : '<p class="discovery-note">Complete an assignment to add a new print. For a photo set, finish all required views first; one representative frame is hung for each story. You can replay completed assignments if an older frame has left your journal.</p>'}`, topLevel ? 'menu' : 'page');
@@ -950,7 +952,8 @@ function openGallery(topLevel = false) {
     if (!photo) return;
     const result = printPhoto(save.story, save.economy, save.completed, photo);
     if (!result.ok) { toast(result.reason); return; }
-    save.story = result.story; save.economy = result.economy; world.storyPlaces.displayPrints(save.story.prints); persist(); openGallery(topLevel);
+    save.story = result.story; save.economy = result.economy; world.storyPlaces.displayPrints(save.story.prints);
+    persist(); openGallery(topLevel);
     toast(['intro-deer', 'nature-bear'].includes(photo.missionId) ? 'Your print is on the gallery wall. Bring Arthur the story at his porch.' : 'Printed and hung in your gallery.');
   });
 }
@@ -1171,6 +1174,13 @@ function talkToNPC() {
     if (collectionComplete(save.collection)) openCollection();
     return;
   }
+  const visitor=world.galleryVisitors.nearest(player.x,player.y,player.z);
+  if(visitor){
+    showModal(visitor.name,'AT YOUR EXHIBITION','A visitor takes a moment with your photograph.',`<p class="npc-dialogue">${esc(visitor.comment)}</p><img src="${esc(visitor.print.image)}" alt="The photograph this visitor is discussing" style="width:100%;max-height:45vh;object-fit:contain"/><div class="review-actions"><button class="primary" id="leave-visitor">Keep exploring</button></div>`);
+    $('leave-visitor').onclick=()=>modal.close();return;
+  }
+  const cabin=woodlandCabins.find(c=>nearStoryPlace(c,player.x,player.y,player.z)||nearStoryPlace({entrance:[c.x,c.z+1]},player.x,player.y,player.z));
+  if(cabin){showModal(cabin.name,'THE TRAIL GUESTBOOK','A quiet shelter, open to everyone.',`<p class="npc-dialogue">${esc(cabin.note)}</p><div class="review-actions"><button class="primary" id="leave-cabin">Back to the clearing</button></div>`);$('leave-cabin').onclick=()=>modal.close();return;}
   if (atCameraStore(player.x, player.y, player.z)) { openGearShop(); return; }
   if (nearStoryPlace(galleryPlace, player.x, player.y, player.z)) { openGallery(); return; }
   if (nearStoryPlace(unclePlace, player.x, player.y, player.z)) { openUncle(); return; }
@@ -1200,13 +1210,17 @@ function updateNPCPrompt() {
   const item = cameraMode || modal.open || capturing || tripod.transitioning || meditation || openingStep !== null ? undefined : nearbyKeepsake();
   const region = nearestLandmark(player.x, player.z);
   const storeNearby = atCameraStore(player.x, player.y, player.z);
+  const visitor = world.galleryVisitors.nearest(player.x,player.y,player.z);
+  const cabin = woodlandCabins.find(c=>nearStoryPlace(c,player.x,player.y,player.z)||nearStoryPlace({entrance:[c.x,c.z+1]},player.x,player.y,player.z));
   const storyPlace = nearStoryPlace(galleryPlace, player.x, player.y, player.z) ? galleryPlace : nearStoryPlace(unclePlace, player.x, player.y, player.z) ? unclePlace : nearStoryPlace(paperPlace, player.x, player.y, player.z) ? paperPlace : nearStoryPlace(workshopPlace, player.x, player.y, player.z) ? workshopPlace : undefined;
-  prompt.hidden = cameraMode || (!npc && !storeNearby && !storyPlace && !region && !item) || modal.open || capturing || tripod.transitioning || !!meditation || openingStep !== null;
+  prompt.hidden = cameraMode || (!npc && !storeNearby && !storyPlace && !region && !item && !visitor && !cabin) || modal.open || capturing || tripod.transitioning || !!meditation || openingStep !== null;
   if (item) {
     const key = `keepsake:${item.id}`;
     if (prompt.dataset.npc !== key) { prompt.dataset.npc = key; prompt.innerHTML = `<kbd>R</kbd> Collect ${esc(item.name)}`; }
     return;
   }
+  if(visitor){prompt.dataset.npc=visitor.name;prompt.innerHTML=`<kbd>R</kbd> ${esc(visitor.name)} · Photo thoughts`;return;}
+  if(cabin){prompt.dataset.npc=cabin.id;prompt.innerHTML='<kbd>R</kbd> Trail guestbook';return;}
   if (storeNearby) { prompt.dataset.npc = 'camera-store'; prompt.innerHTML = `<kbd>R</kbd> Camera store`; return; }
   if (storyPlace) { prompt.dataset.npc = storyPlace.name; prompt.innerHTML = `<kbd>R</kbd> ${storyPlace === galleryPlace ? 'Gallery' : storyPlace === paperPlace ? 'Newspaper' : storyPlace === workshopPlace ? 'Ruth · Workshop' : 'Arthur'}`; return; }
   if (region) { prompt.dataset.npc = region.id; prompt.innerHTML = `<kbd>R</kbd> History board`; return; }
@@ -1281,13 +1295,14 @@ function drawMap(canvas: HTMLCanvasElement, townDetail = false) {
   ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fillStyle='#92c8b2';ctx.fill();ctx.restore();
 }
 const landmarks = [
+  ...woodlandCabins.map(c=>({id:c.id,name:c.name,x:c.entrance[0],z:c.entrance[1],target:[c.x,terrainHeight(c.x,c.z)+1.6,c.z]})),
   { id: 'hospital', name: hospitalPlace.name, x: hospitalPlace.entrance[0], z: hospitalPlace.entrance[1], target: [hospitalPlace.x, terrainHeight(hospitalPlace.x, hospitalPlace.z) + 2, hospitalPlace.z] },
   { id: 'historian', name: 'Elspeth · Local historian', x: historian.x, z: historian.z, target: [historian.x, terrainHeight(historian.x, historian.z) + 1.5, historian.z] },
   ...regionalLandmarks.map(p => ({ id: p.id, name: p.name, x: p.entrance[0], z: p.entrance[1], target: [p.x, terrainHeight(p.x, p.z) + p.height * 0.47, p.z] })),
   { id: 'paper', name: paperPlace.name, x: paperPlace.entrance[0], z: paperPlace.entrance[1], target: [paperPlace.x, 1.7, paperPlace.z] },
   { id: 'boundary', name: boundaryPlace.name, x: boundaryPlace.entrance[0], z: boundaryPlace.entrance[1], target: [boundaryPlace.x, terrainHeight(boundaryPlace.x, boundaryPlace.z) + 1.6, boundaryPlace.z] },
   { id: 'workshop', name: workshopPlace.name, x: workshopPlace.entrance[0], z: workshopPlace.entrance[1], target: [44.2, 2.3, 84.8] },
-  { id: 'gallery', name: galleryPlace.name, x: galleryPlace.entrance[0], z: galleryPlace.entrance[1], target: [galleryPlace.x, 2, galleryPlace.z] },
+  { id: 'gallery', name: galleryPlace.name, x: galleryPlace.entrance[0], z: galleryPlace.entrance[1], target: [galleryPlace.x, terrainHeight(galleryPlace.x,galleryPlace.z)+2, galleryPlace.z] },
   { id: 'uncle', name: unclePlace.name, x: unclePlace.entrance[0], z: unclePlace.entrance[1], target: [unclePlace.x + 1, terrainHeight(unclePlace.x, unclePlace.z) + 1.6, unclePlace.z + 3] },
   { id: 'room', name: 'Your town room', x: 4, z: 56, target: [4, 2, 48] },
   { id: 'cottage', name: 'Garden cottage', x: 40, z: 65, target: [40, 2, 71] },
@@ -1311,7 +1326,7 @@ function resolveDestination(id: string): Destination | undefined {
     return { id, name: `${m.title}${shot ? ` · ${shot.title}` : ''}`, point: [brief.viewpoint[0], brief.viewpoint[2]], hint: 'Viewpoint reached. Raise the camera and frame your subject.' };
   }
   const place = landmarks.find(p => `place:${p.id}` === id);
-  if (place) return { id, name: place.name, point: [place.x, place.z], hint: ['gallery', 'uncle', 'paper', 'workshop', 'camera-store', 'historian', ...regionalLandmarks.map(p => p.id)].includes(place.id) ? 'You have arrived. Look for the R interaction prompt.' : 'You have arrived. Take a moment to explore.' };
+  if (place) return { id, name: place.name, point: [place.x, place.z], hint: ['gallery', 'uncle', 'paper', 'workshop', 'camera-store', 'historian', ...woodlandCabins.map(c=>c.id), ...regionalLandmarks.map(p => p.id)].includes(place.id) ? 'You have arrived. Look for the R interaction prompt.' : 'You have arrived. Take a moment to explore.' };
 }
 function clearDirections() { destination = undefined; walkRoute = []; $('walking-guide').hidden = true; }
 function guideTo(next: Destination | undefined) {
@@ -1402,7 +1417,7 @@ function openNewNotebook() {
     catch { toast('The backup could not be saved. Your current notebook has been kept.'); return; }
     sneaking = false; eyeHeight = standingEyeHeight; $('sneak').setAttribute('aria-pressed', 'false'); $('sneak-label').textContent = 'Sneak';
     clearDirections(); save.openingSeen = false;
-    save.story = freshStory(); world.storyPlaces.displayPrints([]);
+    save.story = freshStory(); world.storyPlaces.displayPrints([]); world.galleryVisitors.setExhibition(false,[]);
     save.collection = normalizeCollection(undefined); world.collectibles.setFound([]);
     save.series = {}; save.activeShot = undefined; save.completed = []; save.discovered = ['intro-deer']; save.photos = []; equippedLens = 'prime'; save.economy = normalizeEconomy(undefined, []); focalLength = 35; activeMission = missions.find(m => m.id === 'intro-deer')!;
     settings = { shutter: 1 / 125, aperture: 5.6, iso: 100, filter: 'none', tripod: false, panning: false, flashPower: 0 }; studioRig = defaultStudioRig();
@@ -1558,6 +1573,7 @@ renderer.domElement.addEventListener('wheel', e => {
 renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault(); keys.clear(); toast('Graphics were interrupted. Reload to return to your saved journal.'); });
 
 world.storyPlaces.displayPrints(save.story.prints);
+world.galleryVisitors.setExhibition(save.story.exhibition,save.story.prints,save.story.day);
 world.storyPlaces.setReportPublished(save.story.reportPublished, save.story.workshopShared);
 world.harbor.setShared(save.story.workshopShared);
 world.setTime(clock.hour); applyStudioRig(); world.update(0, settings); world.scene.updateMatrixWorld(true);

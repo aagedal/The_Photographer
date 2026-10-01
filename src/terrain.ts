@@ -1,4 +1,5 @@
 import { creekDistance } from './creek.ts';
+import { buildingSites, woodlandCabins } from './world-layout.ts';
 
 export const WORLD_HALF = 260;
 export const TERRAIN_SEGMENTS = 260;
@@ -9,7 +10,7 @@ const smooth = (a: number, b: number, value: number) => {
   return t * t * (3 - 2 * t);
 };
 // Keep the original town level; rolling foothills begin beyond its streets.
-export function terrainHeight(x: number, z: number) {
+function naturalHeight(x: number, z: number) {
   const edge = smooth(34, 64, Math.max(Math.abs(x), Math.abs(z)));
   const ridge = 19 * Math.exp(-(((x + 53) / 35) ** 2) - ((z + 76) / 42) ** 2);
   const meadow = 7 * Math.exp(-(((x + 75) / 40) ** 2) - ((z - 65) / 37) ** 2);
@@ -38,6 +39,23 @@ export function terrainHeight(x: number, z: number) {
   const harborShelf = (1 - smooth(6, 11, Math.abs(x - 45))) * (1 - smooth(5, 9, Math.abs(z - 84)));
   return (inland * (1 - coastal) + beach * coastal) * (1 - harborShelf) + 0.8 * harborShelf;
 }
+// Flat footprints include the entrances and a grid-cell margin. Soft shoulders
+// blend back into the hillside instead of leaving floors suspended or buried.
+const gradedSites = buildingSites.map(site => ({ ...site, level: site.height ?? naturalHeight(site.x, site.z) }));
+export function terrainHeight(x: number, z: number) {
+  let height = naturalHeight(x, z);
+  // Grading shoulders never fill a water basin or the creek channel.
+  if ((x > -23 && x < 9 && z > -16.5 && z < 10.5) || creekDistance(x,z)<1.3 || Math.hypot((x-76)/14,(z+54)/11)<1) return height;
+  const core = gradedSites.find(site => Math.abs(x-site.x)<=site.halfWidth && Math.abs(z-site.z)<=site.halfDepth);
+  if (core) return core.level;
+  for (const site of gradedSites) {
+    const shoulder = site.shoulder ?? 14;
+    const weight = (1 - smooth(site.halfWidth, site.halfWidth + shoulder, Math.abs(x-site.x)))
+      * (1 - smooth(site.halfDepth, site.halfDepth + shoulder, Math.abs(z-site.z)));
+    height += (site.level - height) * weight;
+  }
+  return height;
+}
 // Match the actual PlaneGeometry triangles, including the small surface offset.
 // Procedural height alone can sit above the mesh between grid vertices.
 export function terrainSurfaceHeight(x: number, z: number) {
@@ -56,6 +74,10 @@ export function terrainSurfaceHeight(x: number, z: number) {
 }
 
 export const trails: [number, number][][] = [
+  [[-35,25],[-35,0],[-39,-21],[-43,-21]],
+  [[-35,25],[-28,37],[-28,48],[-23,48]],
+  [[48,30],[55,33],[61,33]],
+  ...woodlandCabins.map(cabin => [ [...cabin.trail], [...cabin.entrance] ] as [number, number][]),
   [[-4, -25], [-30, -37], [-46, -51], [-53, -70], [-67, -88], [-89, -98]],
   [[43, 16], [55, 3], [57, -18], [63, -32], [59, -53], [60, -69], [86, -75], [105, -87]],
   [[-35, 25], [-48, 39], [-64, 58], [-82, 72], [-99, 49], [-78, 19], [-48, 15]],
