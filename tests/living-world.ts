@@ -16,6 +16,8 @@ forest.traverse(mesh=>{if(!(mesh instanceof THREE.InstancedMesh)||foundHillTree)
   if(hillTree.x<-60&&hillTree.z>10&&hillTree.z<50&&terrainHeight(hillTree.x,hillTree.z)>3){foundHillTree=true;break;}
 }});
 const views: {name:string;hour:number;position:[number,number,number];target:[number,number,number]}[]=[
+  {name:'Observatory foundation',hour:15,position:[-143,terrainHeight(-143,-163)+1.7,-163],target:[-143,terrainHeight(-143,-183)+3,-183]},
+  {name:'Observatory annex',hour:15,position:[-118,terrainHeight(-118,-169)+1.7,-169],target:[-130,terrainHeight(-143,-183)+1,-183]},
   {name:'Town center',hour:15,position:[15,1.7,28],target:[4,2,-22]},
   {name:'Out to sea',hour:15,position:[15,1.7,28],target:[15,2,180]},
   {name:'Neighborhood',hour:15,position:[20,1.7,38],target:[20,2,60]},

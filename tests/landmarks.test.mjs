@@ -3,12 +3,34 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { ARRIVAL_DURATION, arrivalPose, boatBerth } from '../src/arrival-route.ts';
 import { createWorld, subjectPosition } from '../src/world.ts';
-import { WORLD_HALF, coastline, terrainHeight } from '../src/terrain.ts';
+import { WORLD_HALF, coastline, terrainHeight, terrainSurfaceHeight } from '../src/terrain.ts';
 import { regionalLandmarks } from '../src/landmarks.ts';
 import { missions } from '../src/missions.ts';
 import { freshStory, storyDiscoveries, normalizeStory, horizonAlbum, horizonAlbumDialogue } from '../src/story.ts';
 
 const filter = { filter: 'none', shutter: 1 / 125 };
+test('the observatory, annex and steps embed their entire bases in the rendered mountain', () => {
+  const world = createWorld(); world.scene.updateMatrixWorld(true);
+  const observatory = world.scene.getObjectByName('landmark-observatory');
+  const footings = ['observatory-foundation', 'observatory-annex-foundation', ...Array.from({length:5},(_,i)=>`observatory-step-${i}`)];
+  for (const name of footings) {
+    const mesh = world.scene.getObjectByName(name), bounds = new THREE.Box3().setFromObject(mesh);
+    assert.ok(mesh instanceof THREE.Mesh, name);
+    let checked = 0;
+    for (let x = bounds.min.x; x <= bounds.max.x; x += 0.25) for (let z = bounds.min.z; z <= bounds.max.z; z += 0.25) {
+      const ray = new THREE.Raycaster(new THREE.Vector3(x,bounds.min.y-1,z),new THREE.Vector3(0,1,0));
+      const base = ray.intersectObject(mesh,false)[0];
+      if (!base) continue;
+      assert.ok(base.point.y < terrainSurfaceHeight(x,z) - 0.1, `${name}: floating at ${x}, ${z}`);
+      checked++;
+    }
+    assert.ok(checked > 20, `${name}: sampled the full footprint`);
+  }
+  const baseBounds = new THREE.Box3().setFromObject(world.scene.getObjectByName('observatory-foundation'));
+  assert.ok(Math.abs(baseBounds.max.y - (terrainHeight(-143,-183)+2)) < 1e-5, 'preserve the terrace/dome height');
+  assert.deepEqual([observatory.position.x,observatory.position.z],[-143,-183]);
+});
+
 test('the map has four times the area, and each outer landmark has a reachable entrance and viewpoint', () => {
   assert.equal((WORLD_HALF / 130) ** 2, 4);
   const world = createWorld(); world.scene.updateMatrixWorld(true);

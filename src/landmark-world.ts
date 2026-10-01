@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { regionalLandmarks } from './landmarks.ts';
-import { terrainHeight } from './terrain.ts';
+import { terrainHeight, terrainSurfaceHeight } from './terrain.ts';
 
 export function createRegionalLandmarks(scene: THREE.Scene, solids: THREE.Object3D[], subjects: Map<string, THREE.Object3D>) {
   const materials = new Map<string, THREE.MeshStandardMaterial>();
@@ -44,7 +44,25 @@ export function createRegionalLandmarks(scene: THREE.Scene, solids: THREE.Object
   for (const x of [-11, -7]) box(light, x, 2.3, 3.04, 1.2, 1.4, 0.12, '#98b9b0');
 
   const observatory = groups[1];
-  cylinder(observatory, 1, 11, 11.5, 2, '#948b78');
+  // The mountain falls away beneath the building's edges. Extend each footing
+  // into the actual rendered terrain instead of resting it on the summit height.
+  const footingBottom = (x: number, z: number, w: number, d: number, radius?: number) => {
+    let lowest = Infinity;
+    const sample = (dx: number, dz: number) => {
+      lowest = Math.min(lowest, terrainSurfaceHeight(observatory.position.x + x + dx, observatory.position.z + z + dz));
+    };
+    for (let ix = 0; ix <= Math.ceil(w * 2); ix++) for (let iz = 0; iz <= Math.ceil(d * 2); iz++) {
+      const dx = -w / 2 + ix * w / Math.ceil(w * 2), dz = -d / 2 + iz * d / Math.ceil(d * 2);
+      if (radius === undefined || Math.hypot(dx, dz) <= radius) sample(dx, dz);
+    }
+    if (radius !== undefined) for (let i = 0; i < 144; i++) {
+      const angle = i / 144 * Math.PI * 2; sample(Math.sin(angle) * radius, Math.cos(angle) * radius);
+    }
+    return lowest - observatory.position.y - 0.25;
+  };
+  const baseBottom = footingBottom(0, 0, 23, 23, 11.5);
+  const base = cylinder(observatory, (2 + baseBottom) / 2, 11, 11.5, 2 - baseBottom, '#948b78');
+  base.name = 'observatory-foundation';
   cylinder(observatory, 6, 8, 8.6, 10, '#cfccbc');
   cylinder(observatory, 10.9, 9, 9, 0.6, '#71868a');
   const dome = mesh(observatory, new THREE.SphereGeometry(8.7, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), '#abbfbe', 0, 11.2);
@@ -57,8 +75,15 @@ export function createRegionalLandmarks(scene: THREE.Scene, solids: THREE.Object
   box(observatory, 0, 2.6, 8.65, 2.8, 5.2, 0.2, '#4f6a6c');
   for (const x of [-5.4, 5.4]) box(observatory, x, 6, 6.5, 1.7, 2.4, 0.15, '#8dacad');
   box(observatory, 13, 2.4, 0, 9, 4.8, 7, '#c3b9a0');
+  const annexBottom = footingBottom(13, 0, 9, 7);
+  const annexBase = box(observatory, 13, (0.25 + annexBottom) / 2, 0, 9, 0.25 - annexBottom, 7, '#948b78');
+  annexBase.name = 'observatory-annex-foundation';
   box(observatory, 13, 5, 0, 9.6, 0.3, 7.6, '#677b78');
-  for (let i = 0; i < 5; i++) box(observatory, 0, 0.2 + i * 0.16, 12 - i * 0.6, 4, 0.35, 0.65, '#a79c84');
+  for (let i = 0; i < 5; i++) {
+    const z = 12 - i * 0.6, top = 0.375 + i * 0.16, bottom = footingBottom(0, z, 4, 0.65);
+    const step = box(observatory, 0, (top + bottom) / 2, z, 4, top - bottom, 0.65, '#a79c84');
+    step.name = `observatory-step-${i}`;
+  }
   dome.name = 'observatory-dome';
 
   const viaduct = groups[2]; viaduct.scale.x = 0.8;
@@ -107,7 +132,12 @@ export function createRegionalLandmarks(scene: THREE.Scene, solids: THREE.Object
   // Material batches preserve the silhouettes without hundreds of extra draw calls.
   const batch = (parent: THREE.Object3D) => {
     const buckets = new Map<THREE.Material, THREE.Mesh[]>();
-    parent.children.forEach(c => { if (c instanceof THREE.Mesh && !Array.isArray(c.material)) { const b = buckets.get(c.material) ?? []; b.push(c); buckets.set(c.material, b); } });
+    parent.children.forEach(c => {
+      if (!(c instanceof THREE.Mesh) || Array.isArray(c.material)) return;
+      // Preserve named footing geometry so grounding checks inspect its actual base.
+      if (c.name.startsWith('observatory-') && c !== dome) { solids.push(c); return; }
+      const b = buckets.get(c.material) ?? []; b.push(c); buckets.set(c.material, b);
+    });
     for (const [material, meshes] of buckets) {
       const parts = meshes.map(m => { m.updateMatrix(); return (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrix); });
       const combined = mergeGeometries(parts); parts.forEach(g => g.dispose());
