@@ -34,7 +34,7 @@ Validated on 30 September 2026.
 ## Minimal UI and keyboard pass
 
 - Full-screen HUD inspected at the default 1280 × 720 viewport and at 480 × 740; controls stay inside the viewport with no horizontal overflow.
-- Esc opens the pause menu. Assignments, journal, map, and controls are accessed there; Esc from a submenu returns to the menu, and Esc from the menu resumes.
+- Esc opens the pause menu. Assignments, journal, map, and controls are accessed there; Esc or Close from any submenu or message resumes directly.
 - Numeric shortcuts change shutter, aperture, and ISO in the UI. Native input controls retain their keyboard behavior while focused.
 - T starts the visible first-person deployment, marks the tripod busy, and disables capture. When ready, it shows “Pack tripod” and re-enables capture; packing returns it to “Deploy tripod”.
 - Capture saves with a thumbnail and no automatic dialog. Clicking the preview opens feedback; captured settings include the deployed tripod.
@@ -211,3 +211,15 @@ No native application or Linux browser run yet. Performance targets require prof
 - `npm run build` passes; `npm test` passes 160 tests, including dialogue text preservation, milestone-aware optional questions, speaker projection across desktop/mobile/landscape, and clear camera sightlines at eight routine hours.
 - In-app browser checks used isolated story-expansion and harbor-stories notebooks. Arthur remains visible on desktop and a phone-sized viewport; selecting a memory puts its text at the top of the compact panel. June’s personal question and page controls work, and delivering both photographs still publishes the report. Ruth remains visible facing the lens in the workshop and answers the new question about Nessa and Kit.
 - Long assignment briefs and porch activities scroll independently, with exit/gallery actions held below the scrolling content. Escape and the close button end a conversation directly. Player position, aim, gear and game time are not changed by the conversation lens.
+
+- Message dismissal: browser verification confirms both Close and Escape leave the dialog closed and focus the game canvas, with no intervening pause menu. Escape also ends meditation directly.
+
+## Walking directions · 1 October 2026
+
+- All 164 Node tests pass. Four new navigation tests cover collision-safe detours, thin barriers, disconnected and invalid destinations, camera-relative bearings, route distance, and routes from the ferry to every assignment view and public entrance. Each route segment is checked against the same collision predicate used by the player, including smoothed shortcuts. Routes can be rebuilt from intermediate positions.
+- Strict TypeScript and production build pass; the existing bundle-size advisory remains. `git diff --check` passes.
+- Browser checks used only the isolated `walking-directions` notebook. Starting directions for the opening deer preserved the dock position and showed 81 m on foot; reload restored the same destination. Camera mode hid the cue. Explore displayed the dashed route at both region and town scales, while opening travel shortcuts stayed disabled.
+- The closer workshop portrait survived reload and remained the selected view when choosing Walk from the map. The guide fit a 354 CSS-pixel viewport without page overflow, alongside existing thumb controls. The temporary viewport override was reset afterward.
+- The gallery arrival fixture cleared and saved the destination, showed the R prompt, and retained position, completion and equipment state. Cancellation from the cue survived reload; Stop directions from the map removed its summary. A saved route behind the studio rebuilt to the gallery with a 68 m path. No browser warnings or errors were observed.
+- Development-only `/tests/navigation-playtest.html` provides dock, detour, arrival and selected-view fixtures plus visible save metadata. Evidence: `docs/walking-directions.png` and `docs/walking-route-map.png`.
+- Routes use a two-metre search grid with collision sampling every 0.2 m, and may cross open meadows rather than staying on marked trails. They guide the player without moving them automatically. This does not establish hardware performance targets or add new collision geometry.

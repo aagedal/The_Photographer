@@ -1,0 +1,19 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Walking directions playtest</title>
+<style>body{background:#17251e;color:#f5f1df;font:16px system-ui;padding:32px;max-width:760px}button{margin:8px;padding:16px;font:inherit}pre{white-space:pre-wrap}</style>
+<h1>Find your way on foot</h1><p>Uses only the isolated <strong>walking-directions</strong> notebook. Routes must preserve position, gear and payment. Raise the camera to hide the cue; reload to restore the destination. Stop directions in the cue or Explore. Arrival should dismiss the cue, save that change and show a helpful prompt.</p>
+<button id="dock">Dock to gallery</button><button id="detour">Resume gallery route behind the studio</button><button id="arrival">Arrive at the gallery</button><button id="series">Ruth’s closer portrait view</button><button id="resume">Resume isolated notebook</button><pre id="saved"></pre>
+<script type="module">
+import {freshStory} from '../src/story.ts';import {normalizeEconomy} from '../src/economy.ts';import {missions} from '../src/missions.ts';import {galleryPlace} from '../src/story-world.ts';
+const key='the-photographer-playtest-walking-directions-v1';
+const saved=JSON.parse(localStorage.getItem(key)??'null');
+document.getElementById('saved').textContent=saved?JSON.stringify({position:saved.position,destination:saved.destination??'none',active:saved.active,activeShot:saved.activeShot,completed:saved.completed,economy:saved.economy},null,2):'No isolated notebook yet.';
+function prepare(kind){
+ const completed=['intro-deer'],series=kind==='series',active=series?'harbor-portrait':'nature-1';
+ const m=missions.find(m=>m.id===active),shot=series?m.shots[1]:undefined;
+ const position=kind==='arrival'?[galleryPlace.entrance[0]+.3,galleryPlace.entrance[1]]:kind==='detour'?[26,-32]:[8,94];
+ localStorage.setItem(key,JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:false,story:{...freshStory(),deerShown:true,workshopMet:true},position,hour:14,discovered:[...completed,active],completed,photos:[],active,activeShot:shot?.id,destination:series?`mission:${active}:${shot.id}`:'place:gallery',economy:normalizeEconomy(undefined,completed),sound:{enabled:false,volume:.6},lens:'prime'}));
+ location.href='/?playtest=walking-directions';
+}
+for(const kind of ['dock','detour','arrival','series'])document.getElementById(kind).onclick=()=>prepare(kind);
+document.getElementById('resume').onclick=()=>location.href='/?playtest=walking-directions';
+</script></html>

@@ -450,3 +450,24 @@ dialog.conversation-dialog::backdrop, dialog.story-dialog::backdrop { background
 
 .conversation-dialog > .review-actions { flex-shrink:0; margin:0; padding:12px 22px; background:#10181f; }
 .conversation-coda { margin-bottom:16px; font-size:13px; line-height:1.7; color:var(--muted); }
+
+/* Opt-in walking directions stay out of photographs and conversations. */
+.walking-guide { position:absolute; top:24px; left:24px; display:flex; align-items:center; gap:12px; width:min(330px,calc(100% - 240px)); padding:12px; border:1px solid #92c8b244; border-radius:4px; background:var(--hud-soft); backdrop-filter:blur(8px); z-index:3; }
+.walking-guide[hidden] { display:none; }
+.walking-guide >div { flex:1; min-width:0; }
+.walking-guide strong,.walking-guide span:not(.walking-arrow),.walking-guide small { display:block; }
+.walking-guide strong { font-size:12px; line-height:1.45; }
+.walking-guide div span { color:#92c8b2; font-size:11px; margin-top:4px; }
+.walking-guide small { color:var(--muted); font-size:10px; margin-top:4px; }
+.walking-arrow { flex:0 0 24px; font-size:29px; text-align:center; color:#92c8b2; }
+.walking-guide button { align-self:flex-start; background:transparent; padding:2px; border:0; color:var(--muted); }
+.walking-guide button svg { width:16px; height:16px; }
+.map-route-summary { display:flex; align-items:center; flex-wrap:wrap; gap:8px; color:#92c8b2; font-size:12px; margin:12px 0 18px; }
+.map-route-summary button { margin-left:auto; }
+.map-destination { display:flex; align-items:center; gap:8px; padding:10px; border:1px solid var(--line); border-radius:3px; min-width:0; }
+.map-destination >span { display:flex; align-items:center; gap:8px; flex:1; min-width:0; font-size:12px; line-height:1.5; }
+.map-destination svg { width:17px; height:17px; flex-shrink:0; }
+.map-legend .map-destination button { padding:7px 9px; flex:0 0 auto; width:auto; font-size:10px; }
+.map-destination button[data-walk-landmark],.map-destination button[data-walk-place] { color:#92c8b2; }
+@media(max-width:800px) { .walking-guide { top:70px; left:16px; width:min(330px,calc(100% - 32px)); padding:10px; } }
+@media(max-width:520px) { .map-destination { flex-wrap:wrap; } .map-destination >span { flex-basis:100%; } }
