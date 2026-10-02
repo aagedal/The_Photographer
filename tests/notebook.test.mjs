@@ -43,17 +43,16 @@ test('first deer photograph stays at a respectful distance throughout the arriva
   assert.equal(assessPhoto(m, {...m.recommended, shutter: 1/60}, frame).passed, false);
 });
 
-test('opening camera paths settle without motion and finish hides the gift and ranger', () => {
+test('opening camera paths settle without motion and the shore has no camera gift', () => {
   const world = createWorld(), camera = new THREE.PerspectiveCamera(55, 16/9, 0.1, 450);
   world.opening.update(camera, 0, 1, true);
   const fixed = camera.position.clone();
   world.opening.update(camera, 0, 4, true);
   assert.deepEqual(camera.position, fixed);
-  world.opening.update(camera, 2, 1, false);
-  assert.equal(world.scene.getObjectByName('intro-camera').visible, true);
+  world.opening.update(camera, 1, 1, false);
+  assert.equal(world.scene.getObjectByName('intro-camera'), undefined);
   assert.equal(world.scene.getObjectByName('arrival-ranger').visible, true);
   world.opening.finish();
-  assert.equal(world.scene.getObjectByName('intro-camera').visible, false);
   assert.equal(world.scene.getObjectByName('arrival-ranger').visible, false);
   assert.equal(world.canWalk(8, 103), true);
   assert.equal(world.groundHeight(8, 103), 0.65);

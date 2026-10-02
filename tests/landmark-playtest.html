@@ -7,15 +7,15 @@ import { freshStory } from '../src/story.ts';
 import { regionalLandmarks } from '../src/landmarks.ts';
 import { normalizeEconomy } from '../src/economy.ts';
 const completed=['intro-deer','wedding-1','wedding-2','sports-1'];
-function prepare({position,active='horizon-light',openingSeen=true,story={...freshStory(),deerShown:true},done=completed}) {
+function prepare({position,active='horizon-light',openingSeen=true,story={...freshStory(),cameraReceived:true,deerShown:true},done=completed}) {
  localStorage.setItem('the-photographer-playtest-four-horizons-v1',JSON.stringify({version:1,filterShopVersion:1,openingSeen,walkingIntroduction:false,story,position,hour:17,discovered:[...done,...regionalLandmarks.map(p=>p.mission)],completed:done,photos:[],active,economy:normalizeEconomy(undefined,done),sound:{enabled:false,volume:0.6}}));
  location.href='/?playtest=four-horizons';
 }
-document.querySelector('#arrival').onclick=()=>prepare({active:'intro-deer',openingSeen:false,story:freshStory(),done:[]});
+document.querySelector('#arrival').onclick=()=>prepare({active:'intro-deer',openingSeen:false,story:{...freshStory(),cameraReceived:true},done:[]});
 for(const place of regionalLandmarks){const button=document.createElement('button');button.textContent=place.name;button.onclick=()=>prepare({position:[...place.viewpoint],active:place.mission});document.querySelector('#places').append(button);}
 document.querySelector('#album').onclick=()=>{
  const canvas=document.createElement('canvas');canvas.width=300;canvas.height=200;const ctx=canvas.getContext('2d');ctx.fillStyle='#728d7d';ctx.fillRect(0,0,300,200);ctx.fillStyle='#e3d7b6';ctx.font='20px Georgia';ctx.fillText('Playtest print',72,108);
  const prints=regionalLandmarks.map(p=>({photoId:`fixture-${p.id}`,missionId:p.mission,image:canvas.toDataURL('image/jpeg')}));
- prepare({position:[-23,55],story:{...freshStory(),deerShown:true,prints},done:[...completed,...regionalLandmarks.map(p=>p.mission)]});
+ prepare({position:[-23,55],story:{...freshStory(),cameraReceived:true,deerShown:true,prints},done:[...completed,...regionalLandmarks.map(p=>p.mission)]});
 };
 </script></html>

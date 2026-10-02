@@ -1,8 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gearCatalog, normalizeCompleted, normalizeEconomy, earnedMoney, balance, ownsGear, equippedFilter, purchaseGear, completeMission, captureCount, focalRange, zoomFocal, fovForFocal, CaptureSequence } from '../src/economy.ts';
+import { gearCatalog, withStartingMoney, normalizeCompleted, normalizeEconomy, earnedMoney, balance, ownsGear, equippedFilter, purchaseGear, completeMission, captureCount, focalRange, zoomFocal, fovForFocal, CaptureSequence } from '../src/economy.ts';
 import { missions } from '../src/missions.ts';
 const empty = () => normalizeEconomy(undefined, []);
+
+test('starting money contributes to equipment affordability and cannot grow through save normalization', () => {
+  const state = withStartingMoney(empty());
+  const completed = ['horizon-light'];
+  const bought = purchaseGear(state, completed, 'zoom');
+  assert.equal(bought.ok, true); assert.equal(balance(bought.economy, completed), 0);
+  const restored = normalizeEconomy(JSON.parse(JSON.stringify(bought.economy)), completed);
+  assert.deepEqual(restored, bought.economy); assert.equal(ownsGear(restored, 'zoom'), true);
+  assert.equal(normalizeEconomy({startingMoney:999999}, []).startingMoney, 0);
+});
 
 test('successful missions pay once; failures, unknown missions, and repeats pay nothing', () => {
   assert.equal(completeMission([], 'nature-1', false).payment,0);

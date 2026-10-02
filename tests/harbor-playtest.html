@@ -8,7 +8,7 @@ const base=['intro-deer','wedding-1','wedding-2','sports-1','news-townhall','new
 function prepare(kind) {
  const completed=[...base];if(kind==='crew'||kind==='share')completed.push('harbor-portrait');if(kind==='share')completed.push('harbor-crew');
  const active=kind==='crew'?'harbor-crew':'harbor-portrait',mission=missions.find(m=>m.id===active);
- const story={...freshStory(),deerShown:true,reportPublished:true,workshopMet:kind!=='meet'};
+ const story={...freshStory(),cameraReceived:true,deerShown:true,reportPublished:true,workshopMet:kind!=='meet'};
  if(kind==='share') {const canvas=document.createElement('canvas');canvas.width=300;canvas.height=200;const ctx=canvas.getContext('2d');ctx.fillStyle='#6e8c80';ctx.fillRect(0,0,300,200);ctx.fillStyle='#eee2c7';ctx.font='20px Georgia';ctx.fillText('Workshop fixture',55,110);story.prints=['harbor-portrait','harbor-crew'].map(id=>({photoId:'fixture-'+id,missionId:id,image:canvas.toDataURL('image/jpeg')}));}
  localStorage.setItem('the-photographer-playtest-harbor-stories-v1',JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:false,story,position:kind==='meet'||kind==='share'?[45,81]:[mission.viewpoint[0],mission.viewpoint[2]],hour:14,discovered:[...completed,active],completed,photos:[],active,economy:normalizeEconomy(undefined,completed),sound:{enabled:false,volume:0.6},lens:'prime'}));
  location.href='/?playtest=harbor-stories';

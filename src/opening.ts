@@ -5,9 +5,8 @@ import { arrivalPose, ARRIVAL_DURATION, boatBerth } from './arrival-route.ts';
 export { ARRIVAL_DURATION } from './arrival-route.ts';
 
 export const openingScenes = [
-  { title: 'Coming home to Willowbrook.', speaker: 'Arthur · A letter from your uncle', line: 'The doctors say I haven’t long. If you can, come stay. There’s a pale bear in the northern woods I saw once when I was young. I’d love to see it again. Mostly, I’d love to see you.', action: 'Step ashore' },
-  { title: 'Begin with a quiet moment.', speaker: 'Mara · Creek ranger', line: 'Arthur told me you were coming. I’ll help you find his bear, but you need a telephoto lens to keep your distance. First, try the deer in the western meadow. Here’s a camera to get you started.', action: 'Take the camera' },
-  { title: 'A photograph worth bringing home.', speaker: 'Mara · Creek ranger', line: 'You passed Bracken Head’s light on the ferry. Beyond town, the old observatory, stone railway arches and Briar Hill’s sails still mark Arthur’s walks. Start with the western trail past the chapel. C to sneak; Space for the shutter. Print your deer photograph at the gallery, then show Arthur. You have a room in town when you’re ready to settle in.', action: 'Start exploring' },
+  { title: 'Coming home to Willowbrook.', speaker: 'Arthur · A letter from your uncle', line: 'The doctors say I haven’t long. If you can, come stay. There’s a chair beside mine on the porch. We’ve let too many years go by. Mostly, I’d love to see you.', action: 'Step ashore' },
+  { title: 'He’s been waiting for you.', speaker: 'Mara · Creek ranger', line: 'Arthur told me you were coming. His porch is inland, beside the western lane. He used to be out with his camera in every kind of weather. These days, a visit means more. Go and sit with him. The town can wait.', action: 'Walk to Arthur’s porch' },
 ];
 export const arrivalPosition = [8, 94] as const;
 
@@ -59,11 +58,6 @@ export function createOpening(scene: THREE.Scene) {
   ranger.getObjectByName('npc-marker-ranger')?.removeFromParent();
   const rangerRig = createIdleRig(ranger, ranger.children.filter((child): child is THREE.Group => child instanceof THREE.Group && child.name === 'character-arm'));
   ranger.position.set(8, terrainHeight(8, 89), 89); ranger.rotation.y = 0; ranger.visible = false; scene.add(ranger);
-  const gift = new THREE.Group(); gift.name = 'intro-camera'; gift.visible = false; scene.add(gift);
-  block(gift, 0, 0, 0, 0.45, 0.29, 0.15, '#2e423a');
-  block(gift, -0.09, 0.18, 0, 0.16, 0.08, 0.12, '#53685c');
-  const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.2, 16), new THREE.MeshStandardMaterial({ color: '#202f2b', metalness: 0.35, roughness: 0.3 }));
-  lens.rotation.x = Math.PI / 2; lens.position.z = 0.14; gift.add(lens);
   return {
     update(camera: THREE.PerspectiveCamera, step: number, seconds: number, reducedMotion: boolean) {
       const pose = arrivalPose(step === 0 && !reducedMotion ? seconds : ARRIVAL_DURATION);
@@ -72,7 +66,7 @@ export function createOpening(scene: THREE.Scene) {
       wake.visible = step === 0 && pose.progress < 0.97;
       wakeMaterial.opacity = 0.15 + Math.sin(Math.min(1, pose.progress) * Math.PI) * 0.14;
       boat.position.y = reducedMotion ? 0.05 : 0.05 + Math.sin(seconds * 1.2) * 0.035;
-      gift.visible = step === 2; ranger.visible = step > 0;
+      ranger.visible = step > 0;
       animateIdle(rangerRig, seconds, 3);
       if (step === 0) {
         camera.fov = 62; camera.updateProjectionMatrix();
@@ -83,14 +77,10 @@ export function createOpening(scene: THREE.Scene) {
       } else {
         camera.position.set(8, 2.2, 94);
         camera.lookAt(8, terrainHeight(8, 89) + 1.4, 89);
-        if (step === 2) {
-          gift.position.copy(camera.position).add(new THREE.Vector3(-0.35, 0.22, -2).applyQuaternion(camera.quaternion));
-          gift.quaternion.copy(camera.quaternion);
-        }
       }
       camera.updateMatrixWorld();
     },
-    finish() { gift.visible = false; ranger.visible = false; boat.position.set(boatBerth[0], 0.05, boatBerth[1]); boat.rotation.y = 0; wake.visible = false; },
+    finish() { ranger.visible = false; boat.position.set(boatBerth[0], 0.05, boatBerth[1]); boat.rotation.y = 0; wake.visible = false; },
     dockHeight(x: number, z: number) { return Math.abs(x - 8) < 1.2 && z >= 91.5 && z <= 104.5 ? 0.65 : terrainHeight(x, z); },
     onDock(x: number, z: number) { return Math.abs(x - 8) < 1.1 && z >= 91.5 && z <= 104.4; },
   };

@@ -11,7 +11,7 @@ function prepare(kind){
  const opening=kind==='opening',replay=kind==='completed',completed=opening?[]:replay?['intro-deer','nature-1']:['intro-deer'],series=kind==='series',active=opening?'intro-deer':series?'harbor-portrait':'nature-1';
  const m=missions.find(m=>m.id===active),shot=series?m.shots[1]:undefined;
  const position=kind==='arrival'?[galleryPlace.entrance[0]+.3,galleryPlace.entrance[1]]:kind==='detour'?[26,-32]:[8,94];
- localStorage.setItem(key,JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:opening,story:{...freshStory(),deerShown:!opening,workshopMet:!opening},position,hour:14,discovered:[...new Set([...completed,active])],completed,photos:[],active,activeShot:shot?.id,destination:opening||replay?undefined:series?`mission:${active}:${shot.id}`:'place:gallery',economy:normalizeEconomy(undefined,completed),sound:{enabled:false,volume:.6},lens:'prime'}));
+ localStorage.setItem(key,JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:opening,story:{...freshStory(),cameraReceived:true,deerShown:!opening,workshopMet:!opening},position,hour:14,discovered:[...new Set([...completed,active])],completed,photos:[],active,activeShot:shot?.id,destination:opening||replay?undefined:series?`mission:${active}:${shot.id}`:'place:gallery',economy:normalizeEconomy(undefined,completed),sound:{enabled:false,volume:.6},lens:'prime'}));
  location.href='/?playtest=walking-directions';
 }
 for(const kind of ['dock','detour','arrival','series','opening','completed'])document.getElementById(kind).onclick=()=>prepare(kind);

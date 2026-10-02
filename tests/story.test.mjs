@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { freshStory, normalizeStory, storyMissionUnlocked, storyDiscoveries, storyObjective, printPhoto, visitUncle, startExhibition, settleDays, buyCottage, publishReport, rememberArthur, arthurMemories, localStoryDialogue } from '../src/story.ts';
+import { freshStory, receiveArthurCamera, normalizeStory, storyMissionUnlocked, storyDiscoveries, storyObjective, printPhoto, visitUncle, startExhibition, settleDays, buyCottage, publishReport, rememberArthur, arthurMemories, localStoryDialogue } from '../src/story.ts';
 import { normalizeEconomy, balance, purchaseGear, completeMission } from '../src/economy.ts';
 import { missions } from '../src/missions.ts';
 import { assessPhoto } from '../src/photography.ts';
@@ -13,6 +13,11 @@ const emptyKit = () => normalizeEconomy(undefined, []);
 test('the complete story requires a deer print, town reputation, safe bear photography, and a visit home', () => {
   let story = freshStory(), economy = emptyKit(), completed = [];
   const all = missions.map(m=>m.id);
+  assert.equal(storyObjective(story, completed).action, 'uncle');
+  assert.deepEqual(storyDiscoveries(story, completed, all), []);
+  assert.equal(storyMissionUnlocked('intro-deer', story, completed), false);
+  story = receiveArthurCamera(story);
+  assert.deepEqual(receiveArthurCamera(story), story);
   assert.deepEqual(storyDiscoveries(story, completed, all), ['intro-deer']);
   assert.equal(storyObjective(story,completed).missionId,'intro-deer');
   completed.push('intro-deer');
@@ -157,7 +162,7 @@ test('Arthur memories are optional, deduplicated and persist without advancing c
   for (const memory of arthurMemories) {
     story=rememberArthur(story,memory.id);
     assert.deepEqual(rememberArthur(story,memory.id),story);
-    assert.equal(storyObjective(story,[]).missionId,'intro-deer');
+    assert.equal(storyObjective(story,[]).action,'uncle');
   }
   assert.equal(story.memories.length,3);
   assert.equal(story.day,1); assert.equal(story.deerShown,false);
@@ -180,4 +185,11 @@ test('the investigation changes notices without closing the public trail or hidi
     world.storyPlaces.setReportPublished(published);
     for (const place of [paperPlace,boundaryPlace]) assert.equal(world.canWalk(...place.entrance),true);
   }
+});
+
+test('old notebooks keep their camera while new arrivals and explicit pending handoffs stay pending', () => {
+  assert.equal(normalizeStory({version:1},[]).cameraReceived,true);
+  assert.equal(normalizeStory(undefined,['intro-deer']).cameraReceived,true);
+  assert.equal(normalizeStory(freshStory(),[]).cameraReceived,false);
+  assert.equal(normalizeStory(receiveArthurCamera(freshStory()),[]).cameraReceived,true);
 });

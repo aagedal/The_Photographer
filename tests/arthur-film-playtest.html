@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><title>Arthur and film playtest</title>
+<style>body{background:#17251e;color:#f5f1df;font:16px system-ui;padding:32px;max-width:760px}button{margin:8px;padding:16px;font:inherit}</style>
+<h1>Arthur and film playtest</h1>
+<p>Fixtures use only the <strong>arthur-film-review</strong> notebook. Normal player progress is untouched. Press R at the porch or shop; the deer fixture requires a real capture.</p>
+<button id="porch">Prepare Arthur’s camera handoff</button>
+<button id="deer">Prepare last film frame</button>
+<button id="empty">Prepare empty camera and wallet</button>
+<button id="spares">Prepare a loaded roll and two spares</button>
+<button id="reload">Prepare an empty roll and two spares</button>
+<button id="gear">Prepare an owned zoom lens and filter</button>
+<button id="paid">Prepare paid film purchase</button>
+<script type="module">
+import { unclePlace } from '../src/story-world.ts';
+import { cameraStore } from '../src/camera-store.ts';
+import { freshStory } from '../src/story.ts';
+import { normalizeEconomy, withStartingMoney, purchaseGear } from '../src/economy.ts';
+function prepare(position, cameraReceived, frames, completed = [], rolls = 0, filmCosts = 0, gear = []) {
+  let economy = withStartingMoney(normalizeEconomy(undefined,completed));
+  for (const id of gear) economy = purchaseGear(economy, completed, id).economy;
+  localStorage.setItem('the-photographer-playtest-arthur-film-review-v1', JSON.stringify({
+    version:1, filterShopVersion:1, openingSeen:true, walkingIntroduction:true,
+    story:{...freshStory(),cameraReceived}, position, hour:15,
+    discovered:cameraReceived ? ['intro-deer', ...completed] : [], completed, photos:[], active:'intro-deer',
+    economy:{...economy,film:{frames,rolls,costs:filmCosts}}, sound:{enabled:false,volume:0.6}
+  }));
+  location.href='/?playtest=arthur-film-review';
+}
+document.querySelector('#porch').onclick=()=>prepare([...unclePlace.entrance],false,0);
+document.querySelector('#deer').onclick=()=>prepare([-61,53],true,1);
+document.querySelector('#empty').onclick=()=>prepare([...cameraStore.entrance],true,0,[],0,20);
+document.querySelector('#spares').onclick=()=>prepare([-61,53],true,18,[],2);
+document.querySelector('#reload').onclick=()=>prepare([-61,53],true,0,[],2);
+document.querySelector('#gear').onclick=()=>prepare([-61,53],true,18,['intro-deer','nature-1','wedding-1'],2,0,['zoom','cpl']);
+document.querySelector('#paid').onclick=()=>prepare([...cameraStore.entrance],true,0,['intro-deer','nature-1']);
+</script>
+</html>

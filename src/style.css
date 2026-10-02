@@ -578,3 +578,36 @@ dialog.hospital-recovery { animation:hospital-wake 1.4s both; }
 
 .notebook-stories { margin-top:16px; }
 .pause-assignment .menu-info { margin-top:0; }
+
+.kit-hud { position:absolute; top:24px; left:24px; z-index:3; width:176px; border:1px solid var(--line); border-top:2px solid var(--accent); border-radius:4px; background:var(--hud-soft); backdrop-filter:blur(8px); font-variant-numeric:tabular-nums; }
+.kit-summary { display:block; width:100%; padding:11px 13px; text-align:left; }
+.kit-summary:hover { background:var(--surface-hover); }
+.kit-wallet { display:block; color:var(--accent); font-size:14px; font-weight:600; }
+.kit-film { display:block; margin-top:7px; }
+.kit-film strong { display:block; font-size:12px; font-weight:500; }
+.kit-film small { display:block; margin-top:4px; font-size:10px; color:var(--muted); }
+.kit-reload { display:block; width:100%; padding:8px 13px; border-top:1px solid var(--line); font-size:11px; text-align:left; color:var(--accent); }
+.opening .kit-hud,.in-conversation .kit-hud { visibility:hidden; }
+.walking-guide { top:136px; }
+.inventory-wallet { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px; margin-bottom:20px; border:1px solid var(--line); background:var(--surface); border-radius:4px; }
+.inventory-wallet strong { display:block; font:34px var(--heading); color:var(--accent); margin-top:5px; }
+.inventory-wallet p { font-size:12px; color:var(--muted); line-height:1.7; }
+.inventory-film { padding:20px; border:1px solid var(--line); border-radius:4px; margin-bottom:26px; }
+.inventory-film h3,.inventory-equipment >h3 { font:25px var(--heading); margin:6px 0 10px; }
+.inventory-film >p { font-size:12px; color:var(--muted); line-height:1.7; }
+.inventory-counts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:20px 0; }
+.inventory-counts >div { padding:14px; background:var(--surface); border-radius:3px; }
+.inventory-counts strong { display:block; font:30px var(--heading); }
+.inventory-counts span { display:block; margin-top:5px; color:var(--muted); font-size:11px; line-height:1.5; }
+.inventory-item { display:flex; gap:12px; padding:17px; background:var(--surface); border:1px solid var(--line); border-radius:4px; }
+.inventory-item >div:last-child { flex:1; min-width:0; }
+.inventory-item h3 { font:22px var(--heading); margin-bottom:7px; }
+.inventory-item p { font-size:12px; line-height:1.7; color:var(--muted); }
+.inventory-item button { margin-top:12px; }
+.inventory-equipment { margin-bottom:24px; }
+@media(max-width:1000px) { .pause-tabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; } .pause-tabs button { min-height:44px; } }
+@media(max-width:800px) { .kit-hud { top:16px; left:16px; width:156px; } .walking-guide { top:128px; } }
+@media(max-width:600px) { .pause-tabs { grid-template-columns:repeat(4,minmax(0,1fr)); } .inventory-wallet { align-items:flex-start; } .inventory-film { padding:16px; } }
+@media(max-width:400px) { .kit-hud { width:134px; } .kit-summary { padding:9px 10px; } .kit-reload { padding:8px 10px; } .inventory-wallet { flex-direction:column; gap:10px; } }
+
+@media(max-width:400px) { .focus-control,.gradient-control,.shot-guide { top:142px; } }

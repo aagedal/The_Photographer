@@ -6,7 +6,7 @@
 import { freshStory } from '../src/story.ts';
 import { normalizeEconomy } from '../src/economy.ts';
 for (const [id,position] of [['safe',[-66,-77]],['warning',[-88,-74]],['attack',[-88,-87]]]) document.getElementById(id).onclick = () => {
-  localStorage.setItem('the-photographer-playtest-bear-review-v1', JSON.stringify({version:1,filterShopVersion:1,story:freshStory(),discovered:['intro-deer'],completed:[],photos:[],active:'intro-deer',position,hour:15,openingSeen:true,walkingIntroduction:true,economy:normalizeEconomy(undefined,[])}));
+  localStorage.setItem('the-photographer-playtest-bear-review-v1', JSON.stringify({version:1,filterShopVersion:1,story:{...freshStory(),cameraReceived:true},discovered:['intro-deer'],completed:[],photos:[],active:'intro-deer',position,hour:15,openingSeen:true,walkingIntroduction:true,economy:normalizeEconomy(undefined,[])}));
   location.href='/?playtest=bear-review';
 };
 </script></body></html>

@@ -22,7 +22,7 @@ function prepare(position,count=5,exhibition=true){
   ctx.fillStyle=['#789482','#ae8765','#71879a','#97849e'][i%4];ctx.fillRect(0,0,600,400);ctx.fillStyle='#f6edd8';ctx.font='26px Georgia';ctx.textAlign='center';ctx.fillText(m.title,300,190);ctx.font='20px Georgia';ctx.fillText('Exhibition playtest card',300,230);
   return {photoId:`fixture-${m.id}`,missionId:m.id,image:canvas.toDataURL('image/jpeg',.75)};
  });
- localStorage.setItem('the-photographer-playtest-island-layout-v1',JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:false,story:{...freshStory(),deerShown:true,prints,exhibition},position,hour:14,discovered:completed,completed,photos:[],active:completed[0],economy:normalizeEconomy(undefined,completed),sound:{enabled:false,volume:.6}}));
+ localStorage.setItem('the-photographer-playtest-island-layout-v1',JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:false,story:{...freshStory(),cameraReceived:true,deerShown:true,prints,exhibition},position,hour:14,discovered:completed,completed,photos:[],active:completed[0],economy:normalizeEconomy(undefined,completed),sound:{enabled:false,volume:.6}}));
  location.href='/?playtest=island-layout';
 }
 document.querySelector('#closed').onclick=()=>prepare([...galleryPlace.entrance],5,false);

@@ -15,7 +15,7 @@ const completed=['intro-deer','wedding-1','wedding-2','sports-1','news-townhall'
 function prepare(position, done=completed) {
   localStorage.setItem('the-photographer-playtest-story-expansion-v1',JSON.stringify({
     version:1, filterShopVersion:1, openingSeen:true, walkingIntroduction:false,
-    story:{...freshStory(),deerShown:true}, position, hour:14,
+    story:{...freshStory(),cameraReceived:true,deerShown:true}, position, hour:14,
     discovered:[...done,'news-boundary'],completed:done,photos:[],active:'news-boundary',
     economy:normalizeEconomy(undefined,done),sound:{enabled:false,volume:0.6}
   }));

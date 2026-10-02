@@ -8,7 +8,7 @@ function prepare(kind) {
  const completed=['intro-deer','wedding-1','wedding-2','sports-1','news-townhall','news-boundary'];
  const active=kind==='pottery'?'studio-2':'harbor-portrait',m=missions.find(m=>m.id===active);
  const economy=normalizeEconomy(kind==='burst'?{gifted:['burst'],burstEnabled:true}:undefined,completed);
- localStorage.setItem('the-photographer-playtest-photo-series-v1',JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:false,story:{...freshStory(),deerShown:true,reportPublished:true,workshopMet:true},position:[m.viewpoint[0],m.viewpoint[2]],hour:14,discovered:[...completed,active],completed,photos:[],active,economy,sound:{enabled:false,volume:.6},lens:'prime'}));
+ localStorage.setItem('the-photographer-playtest-photo-series-v1',JSON.stringify({version:1,filterShopVersion:1,openingSeen:true,walkingIntroduction:false,story:{...freshStory(),cameraReceived:true,deerShown:true,reportPublished:true,workshopMet:true},position:[m.viewpoint[0],m.viewpoint[2]],hour:14,discovered:[...completed,active],completed,photos:[],active,economy,sound:{enabled:false,volume:.6},lens:'prime'}));
  location.href='/?playtest=photo-series';
 }
 for(const kind of ['harbor','pottery','burst'])document.getElementById(kind).onclick=()=>prepare(kind);
