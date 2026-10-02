@@ -36,6 +36,7 @@ import { regionalLandmarks, nearestLandmark } from './landmarks.ts';
 import { TouchWalk } from './touch-controls.ts';
 import { walkingRoute, clearWalk, routeDistance, relativeBearing, type WalkPoint } from './navigation.ts';
 import { keepsakes, historian, historianReward, normalizeCollection, collectKeepsake, collectionComplete, receiveHistorianGift, nearestKeepsake, type Collection, type Keepsake } from './collectibles.ts';
+import { framingGrids, normalizePreferences, restoreExposure, normalizeLook, FrameClock, type PlayerPreferences } from './player-preferences.ts';
 import './style.css';
 
 const paths: Record<string, string> = {
@@ -74,8 +75,71 @@ const categoryIcon: Record<Category, string> = { Nature: 'mountain', Sports: 'sp
 const esc = (text: string) => text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
+// Native disclosures work with touch, Enter and Space, without hover tooltips.
+function foldMenuExplanation(heading: HTMLElement, nodes: Node[], label = heading.textContent ?? 'Details') {
+  if (!nodes.length) return;
+  const details = document.createElement('details'); details.className = 'menu-info';
+  const summary = document.createElement('summary');
+  summary.setAttribute('aria-label', `${label.trim()} information`);
+  const marker = document.createElement('span'); marker.className = 'info-marker';
+  marker.innerHTML = icon('info'); marker.setAttribute('aria-hidden', 'true');
+  const content = document.createElement('div'); content.className = 'menu-info-content';
+  heading.before(details); summary.append(heading, marker); content.append(...nodes);
+  details.append(summary, content);
+}
+function compactMenuText(root: HTMLElement) {
+  // Keep controls, costs, time windows, warnings and dialogue immediately visible.
+  for (const selector of ['.settings-card > div', '.story-summary', '.gallery-status', '.living-status', '.gear-card > div:last-child', '.assignment-card', '.collection-card.found > div']) {
+    root.querySelectorAll<HTMLElement>(selector).forEach(card => {
+      const heading = card.querySelector<HTMLElement>(':scope > h3');
+      const paragraphs = [...card.querySelectorAll<HTMLElement>(':scope > p:not(.gear-requirement):not(.menu-essential)')];
+      if (heading) foldMenuExplanation(heading, paragraphs);
+    });
+  }
+  root.querySelectorAll<HTMLElement>('.pause-assignment').forEach(card => {
+    const heading = card.querySelector<HTMLElement>(':scope > h3');
+    const brief = card.querySelector<HTMLElement>(':scope > p:not(.mission-time):not(.menu-essential)');
+    const fieldNotes = card.querySelector<HTMLElement>(':scope > details > p');
+    const notesWrapper = fieldNotes?.parentElement;
+    if (heading && brief) foldMenuExplanation(heading, [brief, ...(fieldNotes ? [fieldNotes] : [])]);
+    notesWrapper?.remove();
+  });
+  root.querySelectorAll<HTMLElement>('.help-grid > .help-card').forEach(card => {
+    const heading = card.querySelector<HTMLElement>(':scope > strong');
+    if (heading) foldMenuExplanation(heading, [...card.childNodes].filter(node => node !== heading));
+  });
+  // Successful feedback stays compact; missed checks keep their actionable advice.
+  root.querySelectorAll<HTMLElement>('.feedback-row:not(.missed) > div').forEach(row => {
+    const heading = row.querySelector<HTMLElement>('strong'), text = row.querySelector<HTMLElement>('p');
+    if (heading && text) foldMenuExplanation(heading, [text]);
+  });
+  for (const selector of ['.collection-intro', '.notebook-hint', '.meditation-note', '.starter-kit', '.explore-hint', '.photo-rendering-note']) {
+    const text = root.querySelector<HTMLElement>(selector);
+    if (!text) continue;
+    const heading = document.createElement('span'); heading.className = 'info-label';
+    heading.textContent = selector === '.photo-rendering-note' ? 'About the photograph' : selector === '.starter-kit' ? 'Your starter kit' : 'Tips';
+    text.before(heading); foldMenuExplanation(heading, [text]);
+  }
+  root.querySelectorAll<HTMLElement>('.lighting-note:not([id])').forEach(text => {
+    const heading = document.createElement('span'); heading.className = 'info-label';
+    heading.textContent = !text.closest('.lighting-section') ? 'Lighting details' : text.textContent?.startsWith('Continuous') ? 'Studio tips' : 'Flash tips';
+    text.before(heading); foldMenuExplanation(heading, [text]);
+  });
+  root.querySelectorAll<HTMLDetailsElement>('.menu-info').forEach(details => details.addEventListener('toggle', () => {
+    if (!details.open) return;
+    root.querySelectorAll<HTMLDetailsElement>('.menu-info[open]').forEach(other => { if (other !== details) other.open = false; });
+  }));
+}
+function closeMenuInfo() {
+  const root = modal.open ? modal : $('lighting-panel');
+  const opened = root.querySelector<HTMLDetailsElement>('.menu-info[open]');
+  if (!opened) return false;
+  opened.open = false; opened.querySelector<HTMLElement>('summary')?.focus(); return true;
+}
+
+
 interface Photo { shotId?: string; payment?: number; burst?: { id: string; index: number; total: number }; id: string; missionId: string; image: string; settings: CameraSettings; result: Assessment; date: number; studio?: StudioRig; environment?: { hour: number; cloudCover: number } }
-interface Save { bearBites?: number; collection: Collection; destination?: string; series: SeriesProgress; activeShot?: string; story: Story; walkingIntroduction?: boolean; position?: [number, number]; openingSeen?: boolean; focus?: { mode: 'auto' | 'manual'; distance: number }; sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
+interface Save { preferences?: PlayerPreferences; exposure?: Partial<CameraSettings>; look?: { yaw: number; pitch: number }; bearBites?: number; collection: Collection; destination?: string; series: SeriesProgress; activeShot?: string; story: Story; walkingIntroduction?: boolean; position?: [number, number]; openingSeen?: boolean; focus?: { mode: 'auto' | 'manual'; distance: number }; sound?: { enabled: boolean; volume: number }; discovered: string[]; lens?: LensId; version: 1; filterShopVersion: 1; filter?: FilterId; gradPosition?: number; completed: string[]; photos: Photo[]; active: string; hour?: number; focalLength?: number; economy: Economy; lighting?: { flashPower: number; studio: StudioRig } }
 const playtest = new URLSearchParams(location.search).get('playtest');
 const storageKey = playtest === null ? 'the-photographer-save-v1' : `the-photographer-playtest${playtest && playtest !== '1' ? `-${playtest.slice(0,32)}` : ''}-v1`;
 let storageAvailable = true;
@@ -88,7 +152,7 @@ function loadSave(): Save {
       const story = normalizeStory(raw.story, completed, known);
       const discovered = storyDiscoveries(story, completed, known);
       return {
-      version: 1, story, collection: normalizeCollection(raw.collection), destination: typeof raw.destination === 'string' ? raw.destination : undefined,
+      version: 1, preferences: normalizePreferences(raw.preferences), exposure: raw.exposure, look: normalizeLook(raw.look), story, collection: normalizeCollection(raw.collection), destination: typeof raw.destination === 'string' ? raw.destination : undefined,
       bearBites: normalizeBearBites(raw.bearBites),
       series: normalizeSeries(raw.series, Array.isArray(raw.photos) ? raw.photos : []),
       activeShot: typeof raw.activeShot === 'string' ? raw.activeShot : undefined,
@@ -113,6 +177,8 @@ function loadSave(): Save {
   return { collection: normalizeCollection(undefined), series: {}, story: freshStory(), openingSeen: false, version: 1, filterShopVersion: 1, discovered: ['intro-deer'], completed: [], photos: [], active: 'intro-deer', economy: normalizeEconomy(undefined, []) };
 }
 const save = loadSave();
+const preferences = normalizePreferences(save.preferences);
+const frameClock = new FrameClock();
 const focus = new FocusState(save.focus);
 const audio = new WorldAudio(save.sound?.enabled ?? true, save.sound?.volume ?? 0.6);
 // These listeners execute within the browser’s user-gesture window.
@@ -129,7 +195,7 @@ let meditation: { start: number; distance: number; elapsed: number; target: numb
 let lastClockSave = 0;
 let equippedLens = normalizeLens(save.lens, save.economy);
 let focalLength = THREE.MathUtils.clamp(save.focalLength ?? 35, ...focalRange(save.economy, equippedLens));
-let settings: CameraSettings = { shutter: 1 / 125, aperture: 5.6, iso: 100, filter: equippedFilter(save.filter, save.economy), gradPosition: gradientPosition(save.gradPosition), tripod: false, panning: false, flashPower: ownsGear(save.economy, 'flash') ? save.lighting?.flashPower ?? 0 : 0 };
+let settings: CameraSettings = restoreExposure(save.exposure, { ...(activeMission.id === 'intro-deer' ? activeMission.recommended : { shutter: 1 / 125, aperture: 5.6, iso: 100 }), filter: equippedFilter(save.filter, save.economy), gradPosition: gradientPosition(save.gradPosition), tripod: false, panning: false, flashPower: ownsGear(save.economy, 'flash') ? save.lighting?.flashPower ?? 0 : 0 });
 let studioRig = normalizeStudioRig(save.lighting?.studio);
 let lightingOpen = false;
 let lightingMode: 'flash' | 'studio' = 'flash';
@@ -138,7 +204,7 @@ let sneaking = false;
 const standingEyeHeight = 1.7, sneakingEyeHeight = 1.05;
 let eyeHeight = standingEyeHeight;
 const viewfinder = new ViewfinderState();
-let lowQuality = false;
+let lowQuality = preferences.quality === 'performance';
 const mobileGraphics = matchMedia('(any-pointer: coarse)');
 type PauseTab = 'assignments' | 'journal' | 'gallery' | 'collection' | 'explore' | 'settings';
 let pauseTab: PauseTab = 'assignments';
@@ -152,6 +218,7 @@ let shotId = '';
 let shootReadyAt = 0;
 let lastGearHint = -Infinity;
 let toastTimer = 0;
+let exposureSaveTimer = 0;
 
 const tripod = new TripodState();
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -178,7 +245,7 @@ $('app').innerHTML = `
       <button class="sneak-button" id="sneak" aria-label="Toggle sneaking (C)" aria-pressed="false" title="Sneak quietly (C)">${icon('sneak')}<span id="sneak-label">Sneak</span><kbd>C</kbd></button>
       <button class="walk-pad" id="walk-pad" aria-label="Walk: drag to move, release to stop" hidden><span class="walk-thumb" aria-hidden="true">${icon('compass')}</span></button>
       <aside id="lighting-panel" class="lighting-panel" aria-label="Lighting kit" hidden></aside>
-      <div class="viewfinder" id="viewfinder"><span class="finder-meta"><span id="lens-label">35</span> MM · <span id="lens-type">PRIME</span> · 3:2</span><span class="focus-point" id="focus-point"></span><span class="finder-focus" id="focus-label"></span></div>
+      <div class="viewfinder" id="viewfinder" data-grid="${preferences.grid}"><span class="finder-meta"><span id="lens-label">35</span> MM · <span id="lens-type">PRIME</span> · 3:2</span><span class="focus-point" id="focus-point"></span><span class="finder-focus" id="focus-label"></span></div>
       <aside class="focus-control" id="focus-control" aria-label="Lens focus" hidden>
         <div class="focus-heading"><strong>Lens focus</strong><button id="focus-mode" title="Switch autofocus / manual focus (M)">AF · Autofocus</button></div>
         <label for="focus-distance">Focus distance <output id="focus-distance-value" aria-live="off"></output></label>
@@ -229,8 +296,8 @@ try {
   stage.insertAdjacentHTML('beforeend', `<div class="error-screen"><h2>A little more graphics power, please.</h2><p>This prototype needs WebGL2. Enable hardware acceleration in your browser, then reload. Current Safari, Chrome, and Firefox on desktop are the intended starting point.</p></div>`);
   throw new Error('WebGL2 renderer could not be initialized.');
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, mobileGraphics.matches ? 1.25 : 1.5));
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.setPixelRatio(lowQuality ? 1 : Math.min(devicePixelRatio, mobileGraphics.matches ? 1.25 : 1.5));
+renderer.shadowMap.enabled = !lowQuality; renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 renderer.domElement.classList.add('world'); renderer.domElement.tabIndex = 0;
@@ -342,6 +409,9 @@ function persist() {
   world.harbor.setShared(save.story.workshopShared);
   world.collectibles.setFound(save.collection.found);
   save.position = [player.x, player.z];
+  save.look = normalizeLook({ yaw, pitch });
+  save.preferences = { ...preferences };
+  save.exposure = { shutter: settings.shutter, aperture: settings.aperture, iso: settings.iso, panning: settings.panning };
   save.destination = destination?.id;
   save.focus = { mode: focus.mode, distance: focus.distance };
   save.sound = { enabled: audio.enabled, volume: audio.volume };
@@ -357,6 +427,7 @@ function persist() {
 }
 function updateProgress() {
   const xp = missions.filter(m => save.completed.includes(m.id)).reduce((total, m) => total + m.reward, 0);
+  if ($('menu-summary')) $('menu-summary').textContent = `${money(balance(save.economy, save.completed))} · ${save.completed.length}/${missions.length} assignments${storageAvailable ? '' : ' · Not saved'}`;
   if ($('menu-progress')) $('menu-progress').textContent = `${save.completed.length}/${missions.length} assignments · ${save.discovered.length} discovered · ${save.photos.length} photos · ${save.collection.found.length}/${keepsakes.length} keepsakes · ${xp} XP · ${money(balance(save.economy, save.completed))} · Day ${save.story.day}`;
   if ($('save-status')) $('save-status').textContent = storageAvailable ? 'Saved on this device' : 'Saving unavailable · This session only';
   const shot = currentShot();
@@ -418,16 +489,18 @@ function activeMissionContent() {
   if (save.completed.includes(m.id)) return `<div class="empty"><span class="mission-badge complete">${icon('check')}Completed</span><h3>${esc(m.title)}</h3><p>This assignment is finished. Choose an available story for your next photograph${m.shots ? ', or revisit either view without another payment' : ''}.</p>${seriesChecklist(m,true)}<div class="pause-actions"><button class="secondary" id="walk-assignment">${icon('compass')}Guide me to the viewpoint</button><button class="secondary" id="suggest">Suggested settings</button></div><button class="secondary" id="choose-available">Browse available assignments</button></div>`;
   return `<article class="pause-assignment"><span class="mission-badge">Active assignment</span><span class="eyebrow">${m.category} · ${esc(m.location)} · ${m.payment ? `${money(m.payment)} payment` : m.id === 'nature-bear' ? 'A gift for Arthur' : 'First photograph'}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>
     ${m.timeWindow ? `<p class="mission-time ${isMissionTime(m, clock.hour) ? 'ready' : 'waiting'}">${esc(m.timeWindow.label)} · ${isMissionTime(m, clock.hour) ? 'Ready now' : 'Wait for the light'}</p>` : ''}
+    <p class="menu-essential subject-cue">Subject · ${esc(frameMission().subject)}</p>
     ${seriesChecklist(m, true)}
     <details><summary>Field notes</summary><p>${esc(frameMission().lesson)}</p></details>
     <div class="pause-actions"><button class="secondary" id="walk-assignment">${icon('compass')}Guide me to the viewpoint</button><button class="secondary" id="suggest">Suggested settings</button></div></article>`;
 }
 function seriesChecklist(m: Mission, selectable = false) {
   if (!m.shots) return '';
-  return `<section class="shot-checklist" aria-label="Required photographs"><p><strong>${seriesCount(m,save.series,save.completed)}/${m.shots.length} views accepted</strong> · Each view must pass. The full set earns the commission.</p>${m.shots.map((shot,index) => {
+  return `<section class="shot-checklist" aria-label="Required photographs"><p><strong>${seriesCount(m,save.series,save.completed)}/${m.shots.length} views accepted</strong></p>${m.shots.map((shot,index) => {
     const done=shotDone(m,shot,save.series,save.completed), selected=m.id===activeMission.id && currentShot()?.id===shot.id;
-    const contents=`<span class="shot-number">${done ? '✓' : index+1}</span><span><strong>${esc(shot.title)}</strong><small>${esc(shot.description)}</small></span><span class="shot-status">${done ? 'Accepted' : selected ? 'Shooting' : 'Needed'}</span>`;
-    return selectable ? `<button class="shot-brief" data-shot="${shot.id}" aria-pressed="${selected}">${contents}</button>` : `<div class="shot-brief">${contents}</div>`;
+    const contents=`<span class="shot-number">${done ? '✓' : index+1}</span><span><strong>${esc(shot.title)}</strong></span><span class="shot-status">${done ? 'Accepted' : selected ? 'Shooting' : 'Needed'}</span>`;
+    const selection = selectable ? `<button class="shot-brief" data-shot="${shot.id}" aria-pressed="${selected}">${contents}</button>` : `<div class="shot-brief">${contents}</div>`;
+    return `<div class="shot-row">${selection}<details class="menu-info shot-info"><summary aria-label="${esc(shot.title)} view information">${icon('info')}</summary><div class="menu-info-content">${esc(shot.description)}</div></details></div>`;
   }).join('')}</section>`;
 }
 function chooseShot(id: string) {
@@ -440,10 +513,14 @@ function openSettings() {
   showModal('Make yourself at home.', 'PAUSED · SETTINGS', 'Sound, display, controls, and your saved notebook.', `<div class="settings-stack">
     <section class="settings-card"><div><h3>Sound</h3><p>Character voices, wind, water, birds, and quiet streets.</p></div><button class="secondary" id="sound-toggle" aria-pressed="${audio.enabled}" ${audio.available ? '' : 'disabled'}>${audio.enabled ? 'Mute' : 'Enable sound'}</button><label class="volume-setting" for="sound-volume">Volume <output id="sound-value">${Math.round(audio.volume * 100)}%</output><input id="sound-volume" type="range" min="0" max="100" value="${Math.round(audio.volume * 100)}" ${audio.available ? '' : 'disabled'}/></label></section>
     <section class="settings-card"><div><h3>Graphics</h3><p>Balanced adapts reflection refresh and resolution for touch devices. Performance also reduces shadows and resolution.</p></div><button class="secondary" id="quality">${lowQuality ? 'Performance' : 'Balanced'}</button></section>
-    <section class="settings-card"><div><h3>Controls</h3><p>Movement, camera shortcuts, and photography basics.</p></div><button class="secondary" id="menu-help">View controls</button></section>
+    <section class="settings-card"><div><h3>Framing grid</h3><p>Guides stay inside the viewfinder. Press G while photographing to cycle them.</p></div><select id="framing-grid" aria-label="Framing grid">${framingGrids.map(grid => `<option value="${grid}" ${preferences.grid === grid ? 'selected' : ''}>${grid === 'thirds' ? 'Rule of thirds' : grid === 'center' ? 'Center cross' : 'Off'}</option>`).join('')}</select></section>
+    <section class="settings-card"><div><h3>Controls</h3><p>Adjust drag and arrow-key aiming. Long lenses keep their finer control.</p></div><button class="secondary" id="menu-help">View controls</button><label class="volume-setting" for="look-sensitivity">Look sensitivity <output id="sensitivity-value">${Math.round(preferences.sensitivity * 100)}%</output><input id="look-sensitivity" type="range" min="50" max="150" step="5" value="${Math.round(preferences.sensitivity * 100)}"/></label></section>
     <section class="settings-card"><div><h3>Notebook</h3><p>Restart with a backup, or restore your previous progress.</p></div><button class="secondary" id="new-notebook">Manage notebook</button></section>
   </div>`, 'menu');
-  $('quality').onclick = () => { toggleQuality(); openSettings(); };
+  $('quality').onclick = () => { toggleQuality(); openSettings(); $('quality').focus(); };
+  $<HTMLSelectElement>('framing-grid').onchange = e => setFramingGrid((e.target as HTMLSelectElement).value as PlayerPreferences['grid']);
+  $<HTMLInputElement>('look-sensitivity').oninput = e => { preferences.sensitivity = Number((e.target as HTMLInputElement).value) / 100; $('sensitivity-value').textContent = `${Math.round(preferences.sensitivity * 100)}%`; };
+  $('look-sensitivity').addEventListener('change', persist);
   $('menu-help').onclick = openHelp; $('new-notebook').onclick = openNewNotebook;
   $('sound-toggle').onclick = () => { audio.enabled = !audio.enabled; if (audio.enabled) audio.unlock(); else audio.silence(); persist(); openSettings(); };
   $<HTMLInputElement>('sound-volume').oninput = e => { audio.volume = Number((e.target as HTMLInputElement).value) / 100; $('sound-value').textContent = `${Math.round(audio.volume * 100)}%`; persist(); };
@@ -512,11 +589,15 @@ function finishMeditation() {
   updateExposure(); syncTripod(); persist();
 }
 function leaveModal() { modal.close(); }
+function setFramingGrid(grid: PlayerPreferences['grid']) {
+  preferences.grid = grid; $('viewfinder').dataset.grid = grid; persist();
+}
 function toggleQuality() {
   lowQuality = !lowQuality;
+  preferences.quality = lowQuality ? 'performance' : 'balanced';
   renderer.setPixelRatio(lowQuality ? 1 : Math.min(devicePixelRatio, mobileGraphics.matches ? 1.25 : 1.5));
   world.prepareRender();
-  renderer.shadowMap.enabled = !lowQuality; renderer.shadowMap.needsUpdate = true; resize();
+  renderer.shadowMap.enabled = !lowQuality; renderer.shadowMap.needsUpdate = true; resize(); persist();
 }
 function faceSubject(m: Mission) {
   if (m.id === activeMission.id) m = frameMission();
@@ -647,6 +728,7 @@ function renderLightingPanel() {
         <label class="light-select-label" for="${name}-colour">Colour</label><select id="${name}-colour" data-light-colour="${name}" aria-label="${label} light colour">${['daylight', 'warm', 'cool'].map(c => `<option value="${c}" ${c === config.colour ? 'selected' : ''}>${c[0].toUpperCase() + c.slice(1)}</option>`).join('')}</select></div>`;
       }).join('')}
     </div>` : ''}<p class="lighting-note">GN 24 at ISO 100 · sync limit 1/250 s · no high-speed sync. The subject meter is approximate; the scene renders light angles and shadows.</p>`;
+  compactMenuText($('lighting-panel'));
   $('close-lighting').onclick = toggleLightingKit;
   for (const id of ['unlock-flash', 'studio-unlock-flash']) if ($(id)) $(id).onclick = openGearShop;
   $('lighting-panel').querySelectorAll<HTMLButtonElement>('[data-light-mode]').forEach(button => button.onclick = () => {
@@ -937,10 +1019,10 @@ function openGallery(topLevel = false) {
   const candidates = save.photos.filter(p => p.result.passed && save.completed.includes(p.missionId) && !prints.some(print => print.missionId === p.missionId)).filter((p, i, all) => all.findIndex(other => other.missionId === p.missionId) === i);
   const cash = balance(save.economy, save.completed);
   showModal(galleryPlace.name, 'PRINTS · EXHIBITIONS', `Day ${save.story.day} · ${money(cash)} available · ${prints.length} different stories on the wall`, `
-    <section class="gallery-status"><h3>${save.story.exhibition ? 'Your exhibition is open.' : 'A wall of your own.'}</h3><p>${save.story.exhibition ? `${world.galleryVisitors.count} visitors are looking at your photographs. Add more prints to welcome more people, up to 12 at a time. Walk inside and press R beside a visitor to hear what caught their eye. Visitors bring in $${EXHIBITION_DAILY} each game day.` : `Hang five different successful photographs to open a paid exhibition. It earns $${EXHIBITION_DAILY} each game day.`} Prints cost $${PRINT_PRICE}; the deer and Arthur’s bear print are free.</p><p class="discovery-note">${nearby ? 'You are at the gallery. Prints below will be framed and hung here.' : 'Visit the gallery inland, west of Fern Creek, then press R to print and open your exhibition.'}</p><div class="pause-actions"><button class="secondary" id="gallery-map">Walk to the gallery ${icon('compass')}</button>${!save.story.exhibition ? `<button class="primary" id="start-exhibition" ${nearby && prints.length >= 5 ? '' : 'disabled'}>Open paid exhibition · ${Math.min(5, prints.length)}/5</button>` : ''}</div></section>
-    <section class="living-status"><h3>${save.story.home === 'cottage' ? 'Your garden cottage' : 'Your room in town'}</h3><p>${save.story.home === 'cottage' ? 'You own the cottage. No daily rent.' : save.story.deerShown ? `Rent is $${ROOM_RENT} per game day. A garden cottage costs $${COTTAGE_PRICE}; ask Arthur at his porch.` : 'Mara has arranged a room. Rent starts after you show Arthur the deer print.'}${save.story.rentArrears ? ` ${money(save.story.rentArrears)} in rent is waiting; it will be settled from future funds at midnight.` : ''}</p><p class="discovery-note">Income and rent settle at midnight. Menus pause time; meditation advances it. No charges or income while you are away.</p><p class="discovery-note">Exhibitions earned ${money(save.economy.living?.exhibitionIncome ?? 0)} · Rent paid ${money(save.economy.living?.rentPaid ?? 0)} · Printing ${money(save.economy.living?.printCosts ?? 0)}</p></section>
-    ${prints.length ? `<h3>On the wall</h3><div class="journal-grid">${prints.map(print => `<article class="photo-card"><img src="${esc(print.image)}" alt="Framed ${esc(missions.find(m => m.id === print.missionId)!.title)}"/><h3>${esc(missions.find(m => m.id === print.missionId)!.title)}</h3><p>Printed and exhibited · Kept in the gallery</p></article>`).join('')}</div>` : '<p class="discovery-note">Your first print will live here, even when the journal makes room for newer photographs.</p>'}
-    <h3>Ready to print</h3>${candidates.length ? `<div class="journal-grid">${candidates.map(photo => `<article class="photo-card"><img src="${esc(photo.image)}" alt="Print preview"/><h3>${esc(missions.find(m => m.id === photo.missionId)!.title)}</h3><button class="secondary" data-print="${photo.id}" ${nearby && (['intro-deer', 'nature-bear'].includes(photo.missionId) || cash >= PRINT_PRICE) ? '' : 'disabled'}>Print & hang · ${['intro-deer', 'nature-bear'].includes(photo.missionId) ? 'Free' : money(PRINT_PRICE)}</button></article>`).join('')}</div>` : '<p class="discovery-note">Complete an assignment to add a new print. For a photo set, finish all required views first; one representative frame is hung for each story. You can replay completed assignments if an older frame has left your journal.</p>'}`, topLevel ? 'menu' : 'page');
+    <section class="gallery-status"><p class="menu-essential">${save.story.exhibition ? `$${EXHIBITION_DAILY}/day · ${world.galleryVisitors.count} visitors` : `${Math.min(5, prints.length)}/5 prints to open · $${EXHIBITION_DAILY}/day`} · Prints $${PRINT_PRICE} (deer & bear free)</p><h3>${save.story.exhibition ? 'Your exhibition is open.' : 'A wall of your own.'}</h3><p>${save.story.exhibition ? `${world.galleryVisitors.count} visitors are looking at your photographs. Add more prints to welcome more people, up to 12 at a time. Walk inside and press R beside a visitor to hear what caught their eye. Visitors bring in $${EXHIBITION_DAILY} each game day.` : `Hang five different successful photographs to open a paid exhibition. It earns $${EXHIBITION_DAILY} each game day.`} Prints cost $${PRINT_PRICE}; the deer and Arthur’s bear print are free.</p><p class="discovery-note">${nearby ? 'You are at the gallery. Prints below will be framed and hung here.' : 'Visit the gallery inland, west of Fern Creek, then press R to print and open your exhibition.'}</p><div class="pause-actions"><button class="secondary" id="gallery-map">Walk to the gallery ${icon('compass')}</button>${!save.story.exhibition ? `<button class="primary" id="start-exhibition" ${nearby && prints.length >= 5 ? '' : 'disabled'}>Open paid exhibition · ${Math.min(5, prints.length)}/5</button>` : ''}</div></section>
+    <section class="living-status"><p class="menu-essential">${save.story.home === 'cottage' ? 'Owned · No rent' : save.story.deerShown ? `$${ROOM_RENT}/day rent` : 'Rent not started'}${save.story.rentArrears ? ` · ${money(save.story.rentArrears)} owing` : ''}</p><h3>${save.story.home === 'cottage' ? 'Your garden cottage' : 'Your room in town'}</h3><p>${save.story.home === 'cottage' ? 'You own the cottage. No daily rent.' : save.story.deerShown ? `Rent is $${ROOM_RENT} per game day. A garden cottage costs $${COTTAGE_PRICE}; ask Arthur at his porch.` : 'Mara has arranged a room. Rent starts after you show Arthur the deer print.'}${save.story.rentArrears ? ` ${money(save.story.rentArrears)} in rent is waiting; it will be settled from future funds at midnight.` : ''}</p><p class="discovery-note">Income and rent settle at midnight. Menus pause time; meditation advances it. No charges or income while you are away.</p><p class="discovery-note">Exhibitions earned ${money(save.economy.living?.exhibitionIncome ?? 0)} · Rent paid ${money(save.economy.living?.rentPaid ?? 0)} · Printing ${money(save.economy.living?.printCosts ?? 0)}</p></section>
+    ${prints.length ? `<h3>On the wall</h3><div class="journal-grid">${prints.map(print => `<article class="photo-card"><img src="${esc(print.image)}" alt="Framed ${esc(missions.find(m => m.id === print.missionId)!.title)}"/><h3>${esc(missions.find(m => m.id === print.missionId)!.title)}</h3><p>Printed and exhibited · Kept in the gallery</p></article>`).join('')}</div>` : ''}
+    <h3>Ready to print</h3>${candidates.length ? `<div class="journal-grid">${candidates.map(photo => `<article class="photo-card"><img src="${esc(photo.image)}" alt="Print preview"/><h3>${esc(missions.find(m => m.id === photo.missionId)!.title)}</h3><button class="secondary" data-print="${photo.id}" ${nearby && (['intro-deer', 'nature-bear'].includes(photo.missionId) || cash >= PRINT_PRICE) ? '' : 'disabled'}>Print & hang · ${['intro-deer', 'nature-bear'].includes(photo.missionId) ? 'Free' : money(PRINT_PRICE)}</button></article>`).join('')}</div>` : '<p class="discovery-note">No completed photographs ready to print.</p>'}`, topLevel ? 'menu' : 'page');
   $('gallery-map').onclick = () => guideTo(resolveDestination('place:gallery'));
   if ($('start-exhibition')) $('start-exhibition').onclick = () => {
     if (!nearStoryPlace(galleryPlace, player.x, player.y, player.z)) return;
@@ -966,7 +1048,7 @@ function openUncle(memoryId?: string) {
   const memory = arthurMemories.find(item => item.id === memoryId);
   const album = horizonAlbum(save.story);
   const price = COTTAGE_PRICE + save.story.rentArrears;
-  showModal(ending ? 'A little time together.' : 'Uncle Arthur', ending ? 'ARTHUR’S STORY · HOME, AT LAST' : 'ARTHUR’S PORCH', ending ? 'The photograph is home. So are you.' : 'The kettle is on. There is a chair for you.', `<p class="npc-dialogue">“${esc(line)}”</p>${ending ? '<p class="conversation-coda">You start to apologise for the years you let pass. Arthur shakes his head. “I let them pass, too.” You sit beside him as the light turns. There is no photograph to make, and nowhere else you need to be.</p>' : ''}<section class="arthur-memories"><h3>Stay for a cup of tea</h3><p class="discovery-note">There is time to talk. You can return to these conversations whenever you like.</p><div class="pause-actions">${arthurMemories.map(item => `<button class="secondary" data-memory="${item.id}" aria-pressed="${memoryId === item.id}">${esc(item.title)}${save.story.memories.includes(item.id) ? ' · Remembered' : ''}</button>`).join('')}</div>${memory ? `<p class="npc-dialogue">${esc(memory.text)}</p>` : ''}</section>${save.story.deerShown ? `<section class="horizon-album"><span class="eyebrow">AN ALBUM FOR ARTHUR · ${album.filter(p => p.printed).length} / 4 PRINTS</span><h3>Four places. A lifetime between them.</h3><p class="npc-dialogue">${esc(horizonAlbumDialogue(save.story))}</p><div class="pause-actions">${album.map(p => `<button class="secondary" data-horizon="${p.id}">${p.printed ? '✓ ' : ''}${p.name}</button>`).join('')}</div></section>` : ''}<section class="living-status"><h3>${save.story.home === 'cottage' ? 'A home of your own' : 'Settle into Willowbrook'}</h3><p>${save.story.home === 'cottage' ? 'Your garden cottage is on the southern street. You can keep photographing and running the gallery.' : `Your room costs $${ROOM_RENT} per game day after your first visit with the deer print. The garden cottage is available for $${COTTAGE_PRICE}, with no daily rent.${save.story.rentArrears ? ` Clear ${money(save.story.rentArrears)} in waiting rent as part of the purchase.` : ''}`}</p>${save.story.home === 'room' ? `<button class="secondary" id="buy-home" ${save.story.deerShown && balance(save.economy, save.completed) >= price ? '' : 'disabled'}>Buy garden cottage · ${money(price)}</button>` : ''}</section><div class="review-actions"><button class="secondary" id="uncle-gallery">View the gallery</button><button class="primary" id="uncle-next">${ending || save.story.reconciled ? 'Keep exploring' : 'Continue the story'} ${icon('arrow')}</button></div>`);
+  showModal(ending ? 'A little time together.' : 'Uncle Arthur', ending ? 'ARTHUR’S STORY · HOME, AT LAST' : 'ARTHUR’S PORCH', ending ? 'The photograph is home. So are you.' : 'The kettle is on. There is a chair for you.', `<p class="npc-dialogue">“${esc(line)}”</p>${ending ? '<p class="conversation-coda">You start to apologise for the years you let pass. Arthur shakes his head. “I let them pass, too.” You sit beside him as the light turns. There is no photograph to make, and nowhere else you need to be.</p>' : ''}<section class="arthur-memories"><h3>Stay for a cup of tea</h3><p class="discovery-note">There is time to talk. You can return to these conversations whenever you like.</p><div class="pause-actions">${arthurMemories.map(item => `<button class="secondary" data-memory="${item.id}" aria-pressed="${memoryId === item.id}">${esc(item.title)}${save.story.memories.includes(item.id) ? ' · Remembered' : ''}</button>`).join('')}</div>${memory ? `<p class="npc-dialogue">${esc(memory.text)}</p>` : ''}</section>${save.story.deerShown ? `<section class="horizon-album"><span class="eyebrow">AN ALBUM FOR ARTHUR · ${album.filter(p => p.printed).length} / 4 PRINTS</span><h3>Four places. A lifetime between them.</h3><p class="npc-dialogue">${esc(horizonAlbumDialogue(save.story))}</p><div class="pause-actions">${album.map(p => `<button class="secondary" data-horizon="${p.id}">${p.printed ? '✓ ' : ''}${p.name}</button>`).join('')}</div></section>` : ''}<section class="living-status"><p class="menu-essential">${save.story.home === 'cottage' ? 'Owned · No rent' : save.story.deerShown ? `$${ROOM_RENT}/day rent` : 'Rent not started'}${save.story.rentArrears ? ` · ${money(save.story.rentArrears)} owing` : ''}</p><h3>${save.story.home === 'cottage' ? 'A home of your own' : 'Settle into Willowbrook'}</h3><p>${save.story.home === 'cottage' ? 'Your garden cottage is on the southern street. You can keep photographing and running the gallery.' : `Your room costs $${ROOM_RENT} per game day after your first visit with the deer print. The garden cottage is available for $${COTTAGE_PRICE}, with no daily rent.${save.story.rentArrears ? ` Clear ${money(save.story.rentArrears)} in waiting rent as part of the purchase.` : ''}`}</p>${save.story.home === 'room' ? `<button class="secondary" id="buy-home" ${save.story.deerShown && balance(save.economy, save.completed) >= price ? '' : 'disabled'}>Buy garden cottage · ${money(price)}</button>` : ''}</section><div class="review-actions"><button class="secondary" id="uncle-gallery">View the gallery</button><button class="primary" id="uncle-next">${ending || save.story.reconciled ? 'Keep exploring' : 'Continue the story'} ${icon('arrow')}</button></div>`);
   if (memory) {
     const memoryLine = modal.querySelector<HTMLElement>('.npc-dialogue')!;
     memoryLine.textContent = memory.text; memoryLine.dataset.narrative = 'true';
@@ -994,7 +1076,10 @@ function showModal(title: string, eyebrow: string, subtitle: string, content: st
   conversationSpeaker = undefined;
   modal.classList.remove('conversation-dialog', 'story-dialog'); stage.classList.remove('in-conversation');
   keys.clear(); drag = false; audio.silence();
-  modal.innerHTML = `<div class="modal-header"><div><div class="eyebrow">${esc(eyebrow)}</div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="close" id="close-modal" aria-label="Resume game">${icon('close')}</button></div>${view === 'menu' ? pauseNavigation() : ''}<div class="modal-body" ${view === 'menu' ? `id="pause-panel" role="tabpanel" aria-labelledby="tab-${pauseTab}"` : ''}>${content}</div>${view === 'menu' ? '<div class="pause-footer"><div><span id="menu-progress"></span><small id="save-status"></small></div><button class="primary" id="resume">Resume <kbd>Esc</kbd></button></div>' : ''}`;
+  const menuTitles: Record<PauseTab, string> = { assignments: 'Assignments', journal: 'Photographs', gallery: 'Gallery', collection: 'Keepsakes', explore: 'Explore', settings: 'Settings' };
+  const displayedTitle = view === 'menu' ? menuTitles[pauseTab] : title;
+  modal.innerHTML = `<div class="modal-header ${view === 'menu' ? 'compact-header' : ''}"><div><div class="eyebrow">${esc(eyebrow)}</div><h2 id="modal-title">${esc(displayedTitle)}</h2>${view === 'menu' ? `${pauseTab === 'gallery' ? `<p class="menu-essential">Day ${save.story.day} · ${save.story.prints.length} prints</p>` : ''}<details class="menu-info header-info"><summary aria-label="About ${esc(displayedTitle)}" title="About this menu">${icon('info')}</summary><div class="menu-info-content"><p>${esc(subtitle)}</p></div></details>` : `<p>${esc(subtitle)}</p>`}</div><button class="close" id="close-modal" aria-label="Resume game">${icon('close')}</button></div>${view === 'menu' ? pauseNavigation() : ''}<div class="modal-body" ${view === 'menu' ? `id="pause-panel" role="tabpanel" aria-labelledby="tab-${pauseTab}"` : ''}>${content}</div>${view === 'menu' ? `<div class="pause-footer"><div><details class="menu-info progress-info"><summary aria-label="Progress information"><span id="menu-summary"></span><span class="info-marker">${icon('info')}</span></summary><div class="menu-info-content"><span id="menu-progress"></span><small id="save-status"></small></div></details></div><button class="primary" id="resume">Resume <kbd>Esc</kbd></button></div>` : ''}`;
+  compactMenuText(modal);
   if (!modal.open) modal.showModal();
   $('close-modal').onclick = leaveModal;
   if (view === 'menu') {
@@ -1006,6 +1091,8 @@ function showModal(title: string, eyebrow: string, subtitle: string, content: st
         let next = index;
         if (e.key === 'ArrowRight') next = (index + 1) % tabs.length;
         else if (e.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+        else if (e.key === 'ArrowDown' && matchMedia('(max-width:600px)').matches) next = (index + 3) % tabs.length;
+        else if (e.key === 'ArrowUp' && matchMedia('(max-width:600px)').matches) next = (index + tabs.length - 3) % tabs.length;
         else if (e.key === 'Home') next = 0;
         else if (e.key === 'End') next = tabs.length - 1;
         else return;
@@ -1067,7 +1154,7 @@ function beginConversation(speaker: string) {
 
 function missionCard(m: Mission) {
   const ready = missionGearReady(m, save.economy);
-  return `<button class="assignment-card ${ready ? '' : 'mission-locked'}" data-mission="${m.id}"><span class="eyebrow">${icon(categoryIcon[m.category])}${mainStoryIds.includes(m.id) ? 'Main story' : 'Side assignment'} · ${m.category} · ${esc(m.location)}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>${ready ? '' : '<p class="gear-requirement">Requires 200–600 mm lens · $480 · Visit camera store →</p>'}<span class="card-footer"><span>${save.completed.includes(m.id) ? '✓ Story told' : m.shots ? `${seriesCount(m,save.series,save.completed)}/${m.shots.length} views accepted` : m.timeWindow ? esc(m.timeWindow.label) : 'Any time'}</span><span>${save.completed.includes(m.id) ? 'Replay · no extra payment' : `${m.payment ? `${money(m.payment)} · ` : ''}${m.reward} XP →`}</span></span></button>`;
+  return `<article class="assignment-card ${ready ? '' : 'mission-locked'}"><span class="eyebrow">${icon(categoryIcon[m.category])}${mainStoryIds.includes(m.id) ? 'Main story' : 'Side assignment'} · ${m.category} · ${esc(m.location)}</span><h3>${esc(m.title)}</h3><p>${esc(m.description)}</p>${ready ? '' : '<p class="gear-requirement">Requires 200–600 mm lens · $480 · Visit camera store →</p>'}<span class="card-footer"><span>${save.completed.includes(m.id) ? '✓ Story told' : m.shots ? `${seriesCount(m,save.series,save.completed)}/${m.shots.length} views accepted` : m.timeWindow ? esc(m.timeWindow.label) : 'Any time'}</span><span>${save.completed.includes(m.id) ? 'Replay · no extra payment' : `${m.payment ? `${money(m.payment)} · ` : ''}${m.reward} XP`}</span></span><button class="secondary" data-mission="${m.id}">${save.completed.includes(m.id) ? 'Replay' : 'Accept assignment'} ${icon('arrow')}</button></article>`;
 }
 function wireMissionCards() {
   modal.querySelectorAll<HTMLButtonElement>('[data-mission]').forEach(b => b.onclick = () => {
@@ -1079,7 +1166,10 @@ function openBoard() {
   const sections: [MissionSection, string][] = [['active', 'Active'], ['available', 'Available'], ['completed', 'Completed']];
   const list = notebookMissions(save.discovered, save.completed, activeMission.id, missionSection);
   const content = missionSection === 'active' ? activeMissionContent() : `<div class="mission-grid">${list.map(missionCard).join('')}</div>${list.length ? '' : `<div class="empty"><h3>${missionSection === 'completed' ? 'Your stories will live here.' : 'More stories are out there.'}</h3><p>${missionSection === 'completed' ? 'Finish an assignment to add it to your completed collection.' : 'Talk to locals to discover your next assignment.'}</p></div>`}`;
-  showModal('Your field notebook.', 'PAUSED · ASSIGNMENTS', 'One active story at a time. Completed assignments stay here to revisit.', `<section class="story-summary"><span class="eyebrow">${esc(storyObjective(save.story, save.completed).chapter)}</span><h3>${esc(storyObjective(save.story, save.completed).title)}</h3><p>${esc(storyObjective(save.story, save.completed).text)}</p><button class="secondary" id="story-details">Continue the story ${icon('arrow')}</button></section>${workshopSummary()}<div class="mission-sections" role="group" aria-label="Assignment status">${sections.map(([id, label]) => `<button data-mission-section="${id}" aria-pressed="${missionSection === id}">${label}<span>${notebookMissions(save.discovered, save.completed, activeMission.id, id).length}</span></button>`).join('')}</div>${content}<p class="discovery-note notebook-hint">${save.discovered.length} of ${missions.length} stories discovered · Press R near a local to find more.</p>`, 'menu');
+  const objective = storyObjective(save.story, save.completed);
+  const storySummary = `<section class="story-summary"><span class="eyebrow">${esc(objective.chapter)}</span><h3>${esc(objective.title)}</h3><p>${esc(objective.text)}</p><button class="secondary" id="story-details">Continue the story ${icon('arrow')}</button></section>`;
+  const status = `<div class="mission-sections" role="group" aria-label="Assignment status">${sections.map(([id, label]) => `<button data-mission-section="${id}" aria-pressed="${missionSection === id}">${label}<span>${notebookMissions(save.discovered, save.completed, activeMission.id, id).length}</span></button>`).join('')}</div>`;
+  showModal('Your field notebook.', 'PAUSED · ASSIGNMENTS', 'One active story at a time. Completed assignments stay here to revisit.', `${status}${content}<div class="notebook-stories">${storySummary}${workshopSummary()}</div><p class="discovery-note notebook-hint">${save.discovered.length} of ${missions.length} stories discovered · Press R near a local to find more.</p>`, 'menu');
   modal.querySelectorAll<HTMLButtonElement>('[data-mission-section]').forEach(b => b.onclick = () => { missionSection = b.dataset.missionSection as MissionSection; openBoard(); modal.querySelector<HTMLButtonElement>(`[data-mission-section="${missionSection}"]`)?.focus(); });
   if ($('walk-assignment')) $('walk-assignment').onclick = () => guideTo(assignmentDestination());
   if ($('suggest')) $('suggest').onclick = suggestSettings;
@@ -1142,9 +1232,9 @@ function openCollection(topLevel = false) {
   if (topLevel) pauseTab = 'collection';
   const complete = collectionComplete(save.collection);
   const reward = complete ? `<section class="collection-reward" aria-label="Historian’s invitation"><span class="eyebrow">A LETTER FROM ELSPETH</span><h3>${esc(historianReward.invitation)}</h3><p>${esc(historianReward.letter)}</p>${save.collection.giftReceived ? `<div class="collection-gift">${icon('compass')}<div><strong>${esc(historianReward.gift)}</strong><p>${esc(historianReward.description)}</p><small>Gift received · Kept in your collection</small></div></div>` : '<p class="discovery-note">Your gift is waiting. Visit Elspeth beside the gallery and press R to accept it.</p>'}<button class="secondary" id="collection-historian">${icon('compass')}Walk to Elspeth</button></section>` : `<p class="collection-intro">Old tokens, forgotten tools and small treasures are hidden around Willowbrook. Lower your camera and press R when you find one. Elspeth, the local historian beside the gallery, has an invitation and a gift for whoever finds all thirty.</p>`;
-  showModal('Little pieces of Willowbrook.', 'YOUR KEEPSAKES', `${save.collection.found.length}/${keepsakes.length} found · An optional collection, outside your assignments.`, `${reward}<progress class="collection-progress" value="${save.collection.found.length}" max="${keepsakes.length}" aria-label="Keepsakes collected"></progress><div class="collection-grid">${keepsakes.map((item, index) => {
+  showModal('Little pieces of Willowbrook.', 'YOUR KEEPSAKES', `${save.collection.found.length}/${keepsakes.length} found · An optional collection, outside your assignments.`, `${reward}<p class="menu-essential">${save.collection.found.length}/${keepsakes.length} found</p><progress class="collection-progress" value="${save.collection.found.length}" max="${keepsakes.length}" aria-label="Keepsakes collected"></progress><div class="collection-grid">${keepsakes.map((item, index) => {
     const found = save.collection.found.includes(item.id);
-    return `<article class="collection-card ${found ? 'found' : 'unfound'}"><span class="collection-number">${found ? icon('check') : String(index + 1).padStart(2, '0')}</span><div><span class="eyebrow">${found ? esc(item.region) : 'STILL HIDDEN'}</span><h3>${found ? esc(item.name) : 'Undiscovered keepsake'}</h3><p>${found ? esc(item.story) : 'A little piece of local history is waiting somewhere on your walks.'}</p></div></article>`;
+    return `<article class="collection-card ${found ? 'found' : 'unfound'}"><span class="collection-number">${found ? icon('check') : String(index + 1).padStart(2, '0')}</span><div><span class="eyebrow">${found ? esc(item.region) : 'STILL HIDDEN'}</span><h3>${found ? esc(item.name) : 'Not found'}</h3>${found ? `<p>${esc(item.story)}</p>` : ''}</div></article>`;
   }).join('')}</div>`, topLevel ? 'menu' : 'page');
   if ($('collection-historian')) $('collection-historian').onclick = () => guideTo(resolveDestination('place:historian'));
 }
@@ -1229,7 +1319,7 @@ function updateNPCPrompt() {
 }
 function openJournal(topLevel = false) {
   if (topLevel) pauseTab = 'journal';
-  showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told. The latest 16 photos are kept on this device.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category}${p.shotId ? ` · ${esc(m.shots?.find(s=>s.id===p.shotId)?.title ?? '')}` : ''} · ${p.result.passed ? save.completed.includes(m.id) ? '✓ Assignment complete' : '✓ View accepted · set in progress' : 'A work in progress'} · ${p.result.score}/100${p.burst ? ` · Burst ${p.burst.index}/${p.burst.total}` : ''}</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press Space to make your first photograph.</p></div>`, topLevel ? 'menu' : 'page');
+  showModal('Your way of seeing.', 'THE PHOTO JOURNAL', `${save.photos.length} photographs collected · ${save.completed.length} stories told.`, save.photos.length ? `<div class="journal-grid">${save.photos.map(p => { const m = missions.find(m => m.id === p.missionId)!; return `<button class="photo-card" data-photo="${p.id}"><img src="${esc(p.image)}" alt="Your photograph for ${esc(m.title)}"/><h3>${esc(m.title)}</h3><p>${m.category}${p.shotId ? ` · ${esc(m.shots?.find(s=>s.id===p.shotId)?.title ?? '')}` : ''} · ${p.result.passed ? save.completed.includes(m.id) ? '✓ Assignment complete' : '✓ View accepted · set in progress' : 'A work in progress'} · ${p.result.score}/100${p.burst ? ` · Burst ${p.burst.index}/${p.burst.total}` : ''}</p></button>`; }).join('')}</div>` : `<div class="empty">${icon('camera')}<h3>Every photographer starts here.</h3><p>Explore the world, find something worth noticing,<br/>and press Space to make your first photograph.</p></div>`, topLevel ? 'menu' : 'page');
   modal.querySelectorAll<HTMLButtonElement>('[data-photo]').forEach(b => b.onclick = () => openReview(save.photos.find(p => p.id === b.dataset.photo)!));
 }
 function openReview(photo: Photo) {
@@ -1240,7 +1330,7 @@ function openReview(photo: Photo) {
   const shot = m.shots?.find(s=>s.id===photo.shotId);
   const verdict = result.passed ? partial ? `View accepted · ${seriesCount(m,save.series,save.completed)}/${m.shots!.length} · ${money(m.payment)} paid when the set is complete` : `Assignment complete · ${m.shots ? `${seriesCount(m,save.series,save.completed)}/${m.shots.length} views · ` : ''}${m.payment === 0 ? m.id === 'nature-bear' ? 'A gift for Arthur' : 'First photograph' : photo.payment ? `${money(photo.payment)} paid` : 'Payment already earned'} · ${m.reward} XP` : 'Keep exploring. Every attempt teaches you something.';
   showModal(result.passed ? partial ? 'One view of a bigger story.' : 'A story worth keeping.' : 'One frame closer.', 'IN THE DARKROOM', `${m.title}${shot ? ` · ${shot.title}` : ''} · ${m.location}`, `
-    <div class="review-layout"><div><img class="review-photo" src="${esc(photo.image)}" alt="Your captured photograph"/><div class="photo-settings"><span>${shutterLabel(s.shutter)}${s.shutter < 0.25 ? ' s' : ''}</span><span>f/${s.aperture}</span><span>ISO ${s.iso}</span>${s.focalLength ? `<span>${Math.round(s.focalLength)} mm</span>` : ''}${s.focusDistance && Number.isFinite(s.focusDistance) ? `<span>${s.focusMode === 'manual' ? 'MF' : 'AF'} ${s.focusDistance >= 1e5 ? '∞' : `${s.focusDistance.toFixed(1)} m`}</span>` : ''}${photo.burst ? `<span>Burst ${photo.burst.index}/${photo.burst.total}</span>` : ''}${Number.isFinite(photo.environment?.hour) ? `<span>${formatTime(photo.environment!.hour)} · ${Math.round(photo.environment!.cloudCover * 100)}% cloud cover</span>` : ''}<span>${filterLabel(s.filter)}${s.filter === 'gnd3' ? ` · transition ${Math.round(gradientPosition(s.gradPosition) * 100)}%` : ''}</span>${s.tripod ? '<span>Tripod</span>' : ''}${s.panning ? '<span>Panning</span>' : ''}${flashPower(s) > 0 ? `<span>Flash ${flashPower(s) === 1 ? 'full' : `1/${Math.round(1 / flashPower(s))}`} ${flashCanFire(s) ? '' : '(not synced)'}</span>` : ''}${photo.studio ? `<span>Studio: ${lightNames.map(n => `${n} ${photo.studio![n].enabled ? Math.round(photo.studio![n].power * 100) : 0}%`).join(' · ')}</span>` : ''}</div><p style="font-size:9px;color:var(--muted);line-height:1.6;margin-top:14px">Exposure and lighting falloff are calculated. Depth of field uses scene depth and lens settings; motion accumulates over the shutter interval. Optics and noise remain simplified.</p></div>
+    <div class="review-layout"><div><img class="review-photo" src="${esc(photo.image)}" alt="Your captured photograph"/><div class="photo-settings"><span>${shutterLabel(s.shutter)}${s.shutter < 0.25 ? ' s' : ''}</span><span>f/${s.aperture}</span><span>ISO ${s.iso}</span>${s.focalLength ? `<span>${Math.round(s.focalLength)} mm</span>` : ''}${s.focusDistance && Number.isFinite(s.focusDistance) ? `<span>${s.focusMode === 'manual' ? 'MF' : 'AF'} ${s.focusDistance >= 1e5 ? '∞' : `${s.focusDistance.toFixed(1)} m`}</span>` : ''}${photo.burst ? `<span>Burst ${photo.burst.index}/${photo.burst.total}</span>` : ''}${Number.isFinite(photo.environment?.hour) ? `<span>${formatTime(photo.environment!.hour)} · ${Math.round(photo.environment!.cloudCover * 100)}% cloud cover</span>` : ''}<span>${filterLabel(s.filter)}${s.filter === 'gnd3' ? ` · transition ${Math.round(gradientPosition(s.gradPosition) * 100)}%` : ''}</span>${s.tripod ? '<span>Tripod</span>' : ''}${s.panning ? '<span>Panning</span>' : ''}${flashPower(s) > 0 ? `<span>Flash ${flashPower(s) === 1 ? 'full' : `1/${Math.round(1 / flashPower(s))}`} ${flashCanFire(s) ? '' : '(not synced)'}</span>` : ''}${photo.studio ? `<span>Studio: ${lightNames.map(n => `${n} ${photo.studio![n].enabled ? Math.round(photo.studio![n].power * 100) : 0}%`).join(' · ')}</span>` : ''}</div><p class="photo-rendering-note" style="font-size:9px;color:var(--muted);line-height:1.6;margin-top:14px">Exposure and lighting falloff are calculated. Depth of field uses scene depth and lens settings; motion accumulates over the shutter interval. Optics and noise remain simplified.</p></div>
     <div><div class="review-score">${result.score}<small> / 100</small></div><p class="review-verdict">${esc(verdict)}</p>${result.feedback.map(f => `<div class="feedback-row ${f.passed ? '' : 'missed'}"><span class="feedback-icon">${icon(f.passed ? 'check' : 'info')}</span><div><strong>${esc(f.label)}</strong><p>${esc(f.text)}</p></div></div>`).join('')}</div></div>
     ${seriesChecklist(m)}
     <div class="review-actions"><a class="secondary" id="download-photo" style="text-decoration:none;color:inherit" href="${esc(photo.image)}" download="willowbrook-${m.id}-${photo.date}.jpg">${icon('download')}Keep a copy</a>${result.passed && complete ? '<button class="secondary" id="review-gallery">Print at the gallery</button>' : ''}<button class="primary" id="review-next">${result.passed ? partial ? 'Choose the next view' : 'Find another story' : 'Try another frame'}${icon('arrow')}</button></div>`);
@@ -1365,7 +1455,7 @@ function updateDirections(now: number) {
 function openMap(topLevel = false) {
   if (topLevel) pauseTab = 'explore';
   const known = missions.filter(m => save.discovered.includes(m.id) && missionGearReady(m, save.economy) && storyMissionUnlocked(m.id, save.story, save.completed));
-  showModal('Beyond the town.', 'EXPLORE WILLOWBROOK', '520 m across · Four times the area. Follow the connected trails to Bracken Head Light, Northstar Observatory, Hollowstone Viaduct and Briar Hill Windmill. Arthur’s four horizons await beyond town. Green: you. Gold: current subject and locals you have met. Blue: camera store. Dashed green: your walking route.', `<div class="explore-tools"><span>${formatTime(clock.hour)} in Willowbrook</span><button class="secondary" id="map-detail">Town detail</button><button class="secondary" id="menu-meditate">${icon('moon')}Meditate</button><button class="secondary" id="menu-lighting">${icon('studio')}Lighting kit</button></div><canvas id="large-map" class="map-large" width="680" height="560"></canvas><p class="discovery-note">${save.walkingIntroduction ? 'Walk inland from the dock, then follow the western trail past the chapel into the meadow. Travel shortcuts unlock after your first deer photograph.' : 'Travel shortcuts appear for stories you have discovered. Explore on foot to meet new locals.'}</p><div class="map-route-summary">${destination ? `Walking to <strong>${esc(destination.name)}</strong> · ${Math.ceil(routeDistance([player.x, player.z], walkRoute))} m<button class="secondary" id="map-stop">Stop directions</button>` : 'Choose Walk to get directions without moving your position.'}</div><div class="map-legend">${landmarks.map(p => `<div class="map-destination"><span>${icon('pin')}${esc(p.name)}</span><button data-walk-landmark="${p.id}" aria-label="Walk to ${esc(p.name)}">Walk</button><button data-landmark="${p.id}" aria-label="Travel to ${esc(p.name)}" ${save.walkingIntroduction ? 'disabled' : ''}>Travel</button></div>`).join('')}${known.map(m => `<div class="map-destination"><span>${icon(categoryIcon[m.category])}${esc(m.title)}</span><button data-walk-place="${m.id}" aria-label="Walk to ${esc(m.title)}">Walk</button><button data-place="${m.id}" aria-label="Travel to ${esc(m.title)}" ${save.walkingIntroduction ? 'disabled' : ''}>Travel</button></div>`).join('')}</div>`, topLevel ? 'menu' : 'page');
+  showModal('Beyond the town.', 'EXPLORE WILLOWBROOK', '520 m across · Four times the area. Follow the connected trails to Bracken Head Light, Northstar Observatory, Hollowstone Viaduct and Briar Hill Windmill. Arthur’s four horizons await beyond town. Green: you. Gold: current subject and locals you have met. Blue: camera store. Dashed green: your walking route.', `<div class="explore-tools"><span>${formatTime(clock.hour)} in Willowbrook</span><button class="secondary" id="map-detail">Town detail</button><button class="secondary" id="menu-meditate">${icon('moon')}Meditate</button><button class="secondary" id="menu-lighting">${icon('studio')}Lighting kit</button></div><canvas id="large-map" class="map-large" width="680" height="560"></canvas><p class="discovery-note explore-hint">${save.walkingIntroduction ? 'Walk inland from the dock, then follow the western trail past the chapel into the meadow. Travel shortcuts unlock after your first deer photograph.' : 'Travel shortcuts appear for stories you have discovered. Explore on foot to meet new locals.'}</p><div class="map-route-summary">${destination ? `Walking to <strong>${esc(destination.name)}</strong> · ${Math.ceil(routeDistance([player.x, player.z], walkRoute))} m<button class="secondary" id="map-stop">Stop directions</button>` : 'Choose a destination below.'}</div><div class="map-legend">${landmarks.map(p => `<div class="map-destination"><span>${icon('pin')}${esc(p.name)}</span><button data-walk-landmark="${p.id}" aria-label="Walk to ${esc(p.name)}">Walk</button><button data-landmark="${p.id}" aria-label="Travel to ${esc(p.name)}" ${save.walkingIntroduction ? 'disabled' : ''}>Travel</button></div>`).join('')}${known.map(m => `<div class="map-destination"><span>${icon(categoryIcon[m.category])}${esc(m.title)}</span><button data-walk-place="${m.id}" aria-label="Walk to ${esc(m.title)}">Walk</button><button data-place="${m.id}" aria-label="Travel to ${esc(m.title)}" ${save.walkingIntroduction ? 'disabled' : ''}>Travel</button></div>`).join('')}</div>`, topLevel ? 'menu' : 'page');
   if ($('map-stop')) $('map-stop').onclick = () => { clearDirections(); persist(); openMap(topLevel); };
   modal.querySelectorAll<HTMLButtonElement>('[data-walk-landmark]').forEach(b => b.onclick = () => guideTo(resolveDestination(`place:${b.dataset.walkLandmark}`)));
   modal.querySelectorAll<HTMLButtonElement>('[data-walk-place]').forEach(b => b.onclick = () => { const m = missions.find(m => m.id === b.dataset.walkPlace)!; if (m.id === activeMission.id || selectMission(m)) guideTo(assignmentDestination()); });
@@ -1393,7 +1483,7 @@ function openHelp() {
     <div class="help-card"><strong>Make a photograph</strong><kbd>1 / 2</kbd> slower / faster shutter.<br/><kbd>3 / 4</kbd> wider / narrower aperture.<br/><kbd>5 / 6</kbd> lower / higher ISO.<br/><kbd>Space</kbd> takes a photo. With the burst camera, <kbd>B</kbd> toggles three-frame bursts at 5 fps. <kbd>T</kbd> sets or packs the tripod in a quick animation. Walk again once it is packed.</div>
     <div class="help-card"><strong>Find your next story</strong><kbd>Esc</kbd> opens the pause menu: assignments, journal, gallery, map and field notes. Press it again to resume. Esc or the close button dismisses any message or submenu directly back to the game.<br/>Walk from the arrival dock to the western meadow for your first deer photograph. Approach with <kbd>C</kbd> to sneak: walking close or running will scare the deer. Step away and wait for it to settle if it bolts. Print the deer for free at the gallery and visit Arthur’s porch to begin the wedding commission. The lighthouse is an optional paid assignment. Approach a local and press <kbd>R</kbd> to talk. A small interaction prompt appears when you are close enough. Their available stories are added to your notebook as you complete main story milestones. Follow the trails into the hills and eastern wetland. Shortcuts become available for discovered assignments. Choose Guide me to the viewpoint in Assignments, or Walk beside a place in Explore, for a walking route and a direction cue. The route saves with your notebook; use its × button to stop directions.</div>
     <div class="help-card"><strong>Learn from the frame</strong>A photo is assessed for composition, exposure, and the assignment's lesson. Some briefs require a set of distinct views. Choose each view in Assignments, then use Guide me to the viewpoint and Suggested settings. Move around the subject for a new perspective; repeated bursts and zoom changes do not fill another view. All required views must pass before the assignment pays. Accepted views survive reloads and the rolling journal. Click the brief thumbnail or open the journal to read feedback and try again. Slow shutters record moving subjects as streaks; fast shutters freeze them. A tripod steadies the scenery, while Panning follows the runner and streaks the background. Higher ISO is often the right choice when a moment moves fast.</div>
-    <div class="help-card"><strong>Choose your depth of field</strong>The viewfinder previews focus. Autofocus follows an unobstructed assignment subject inside the frame; otherwise it focuses on the center surface. Press <kbd>M</kbd> to lock the current distance and enter manual focus. Use the focus slider or <kbd>[ / ]</kbd> to focus nearer or farther; <kbd>Q</kbd> focuses once without releasing the lock. Press M again for autofocus. The distance and focus mode save with your notebook, and the reticle turns amber when the subject is out of focus. A wider aperture, longer lens, or closer subject softens the foreground and background. Stop down to bring more depth into focus. Shutter motion appears in the saved photograph.</div>
+    <div class="help-card"><strong>Choose your depth of field</strong>The viewfinder previews focus. Autofocus follows an unobstructed assignment subject inside the frame; otherwise it focuses on the center surface. Press <kbd>G</kbd> to cycle rule-of-thirds, center, or no grid. Set your preferred grid and look sensitivity in Esc → Settings. Press <kbd>M</kbd> to lock the current distance and enter manual focus. Use the focus slider or <kbd>[ / ]</kbd> to focus nearer or farther; <kbd>Q</kbd> focuses once without releasing the lock. Press M again for autofocus. The distance and focus mode save with your notebook, and the reticle turns amber when the subject is out of focus. A wider aperture, longer lens, or closer subject softens the foreground and background. Stop down to bring more depth into focus. Shutter motion appears in the saved photograph.</div>
     <div class="help-card"><strong>Shape the light</strong><kbd>L</kbd> opens the Lighting kit; <kbd>F</kbd> toggles purchased flash. Adjust manual flash power anywhere. Studio controls appear only near Daylight Studio, where you can move and tune key, fill, and rim lights. A brief flash favours close subjects; shutter speed controls the ambient within the 1/250 s sync limit.</div>
     <div class="help-card"><strong>Wait for the light</strong>The sun, clouds, exposure and stars change through a 30-minute day. Some assignments need a particular time. Open <kbd>Esc</kbd> → Explore → Meditate to skip ahead to dawn, daylight, golden hour, night or the assignment’s preferred time. Time pauses while menus are open.</div>
     <div class="help-card"><strong>A living town</strong>Locals walk familiar routes by day; Ida watches the ridge at night. The map follows the locals you have met. Residents and their dog wander the south neighborhood; cars slow the streets, ducks settle at dusk, deer graze in the meadow, and a fox emerges at night. Visit the wedding chapel or follow the southern path to the ocean. <kbd>Esc</kbd> → Settings controls sound and volume.</div>
@@ -1490,7 +1580,7 @@ for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'] as cons
 touchLayout.addEventListener('change', () => { resetTouchWalking(); syncTouchWalking(); });
 window.addEventListener('resize', resetTouchWalking);
 
-for (const key of ['shutter', 'aperture', 'iso'] as const) $<HTMLSelectElement>(key).addEventListener('change', e => { settings[key] = Number((e.target as HTMLSelectElement).value); updateExposure(); });
+for (const key of ['shutter', 'aperture', 'iso'] as const) $<HTMLSelectElement>(key).addEventListener('change', e => { settings[key] = Number((e.target as HTMLSelectElement).value); updateExposure(); persist(); });
 $<HTMLSelectElement>('lens').addEventListener('change', e => { equipLens((e.target as HTMLSelectElement).value as LensId); updateFocus(); persist(); });
 $<HTMLSelectElement>('filter').addEventListener('change', e => fitFilter((e.target as HTMLSelectElement).value as FilterId));
 $<HTMLInputElement>('gradient-position').addEventListener('input', e => {
@@ -1499,7 +1589,7 @@ $<HTMLInputElement>('gradient-position').addEventListener('input', e => {
   if (!cameraMode) setCameraMode(true); updateExposure(); persist();
 });
 $('tripod').onclick = () => requestTripod(tripod.target === 0);
-$('panning').onclick = () => { settings.panning = !settings.panning; syncSettings(); };
+$('panning').onclick = () => { settings.panning = !settings.panning; syncSettings(); persist(); };
 $('capture').onclick = capture;
 $('sneak').onclick = toggleSneak;
 $('stop-directions').onclick = () => { clearDirections(); persist(); };
@@ -1519,21 +1609,22 @@ $<HTMLInputElement>('focus-distance').addEventListener('input', e => {
 $('focus-distance').addEventListener('change', persist);
 $('menu-button').onclick = () => openPauseMenu();
 $('help-button').onclick = openHelp;
-modal.addEventListener('cancel', e => { e.preventDefault(); leaveModal(); });
+modal.addEventListener('cancel', e => { e.preventDefault(); if (!closeMenuInfo()) leaveModal(); });
 modal.addEventListener('click', e => { if (e.target === modal) { const r = modal.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) leaveModal(); } });
 modal.addEventListener('close', () => { if (!modal.open) { conversationSpeaker = undefined; modal.classList.remove('conversation-dialog', 'story-dialog'); stage.classList.remove('in-conversation'); } if (!modal.open && openingStep === null) audio.stopSpeaking(); keys.clear(); drag = false; renderer.domElement.focus({ preventScroll: true }); });
 document.addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const key = e.key.toLowerCase();
   if (openingStep !== null) { if (key === 'escape') { e.preventDefault(); finishOpening(true); } return; }
-  if (key === 'escape') { e.preventDefault(); if (meditation) { finishMeditation(); return; } if (!e.repeat) { if (modal.open) leaveModal(); else openPauseMenu(); } return; }
+  if (key === 'escape') { e.preventDefault(); if (meditation) { finishMeditation(); return; } if (!e.repeat) { if (modal.open) { if (!closeMenuInfo()) leaveModal(); } else if (!closeMenuInfo()) openPauseMenu(); } return; }
   if ((e.target as HTMLElement).matches('select,input,textarea') || modal.open || meditation) return;
   if (key === ' ' && (e.target as HTMLElement).closest('button,a,[contenteditable]')) return;
   if (capturing) { if (key === ' ') e.preventDefault(); if (e.key.startsWith('Arrow')) { e.preventDefault(); keys.add(key); } return; }
   if (e.code === 'BracketLeft' || e.code === 'BracketRight') { e.preventDefault(); adjustFocus(e.code === 'BracketLeft' ? -1 : 1); return; }
   if (['-', '=', '+'].includes(key)) { e.preventDefault(); zoomCamera(key === '-' ? 100 : -100); return; }
   const adjustment = adjustCameraSetting(settings, e.code.startsWith('Digit') ? e.code.slice(5) : key);
-  if (adjustment) { e.preventDefault(); settings = adjustment.settings; syncSettings(); return; }
+  if (adjustment) { e.preventDefault(); settings = adjustment.settings; syncSettings();
+    window.clearTimeout(exposureSaveTimer); exposureSaveTimer = window.setTimeout(persist, 300); return; }
   if (['w', 'a', 's', 'd', 'shift', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) { e.preventDefault(); keys.add(key); }
   if (key === ' ') e.preventDefault();
   if (e.repeat) return;
@@ -1541,6 +1632,7 @@ document.addEventListener('keydown', e => {
   if (key === 'c') { e.preventDefault(); toggleSneak(); }
   if (key === ' ') { e.preventDefault(); capture(); }
   if (key === 'e') { e.preventDefault(); setCameraMode(!cameraMode); }
+  if (key === 'g' && cameraMode) { e.preventDefault(); const grid = framingGrids[(framingGrids.indexOf(preferences.grid) + 1) % framingGrids.length]; setFramingGrid(grid); toast(`Framing grid: ${grid === 'thirds' ? 'rule of thirds' : grid === 'center' ? 'center cross' : 'off'}.`); }
   if (key === 'm') { e.preventDefault(); toggleFocus(); }
   if (key === 'q') { e.preventDefault(); acquireFocus(); }
   if (key === 't') { e.preventDefault(); $('tripod').click(); }
@@ -1549,16 +1641,24 @@ document.addEventListener('keydown', e => {
   if (key === 'l') toggleLightingKit();
 });
 document.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
-window.addEventListener('blur', () => { resetTouchWalking(); keys.clear(); drag = false; audio.silence(); });
-document.addEventListener('visibilitychange', () => { resetTouchWalking(); keys.clear(); drag = false; previousTime = performance.now(); if (document.hidden) { audio.silence(); if (capturing) finishShooting(); persist(); } });
-window.addEventListener('pagehide', () => { resetTouchWalking(); audio.silence(); if (capturing) finishShooting(); persist(); });
+function pauseWhenInactive() {
+  frameClock.reset(performance.now()); resetTouchWalking(); keys.clear(); drag = false; audio.silence();
+  if (capturing) finishShooting();
+  if (meditation) finishMeditation();
+  if (!modal.open && openingStep === null) openPauseMenu();
+  else persist();
+}
+window.addEventListener('blur', pauseWhenInactive);
+window.addEventListener('focus', () => frameClock.reset(performance.now()));
+document.addEventListener('visibilitychange', () => { if (document.hidden) pauseWhenInactive(); else frameClock.reset(performance.now()); });
+window.addEventListener('pagehide', () => { frameClock.reset(performance.now()); resetTouchWalking(); audio.silence(); if (capturing) finishShooting(); persist(); });
 renderer.domElement.addEventListener('pointerdown', e => {
   if (e.button !== 0 || drag || modal.open || tripod.transitioning || meditation || openingStep !== null) return;
   lookPointerId = e.pointerId; drag = true; lastPointerX = e.clientX; lastPointerY = e.clientY; renderer.domElement.setPointerCapture(e.pointerId);
 });
 renderer.domElement.addEventListener('pointermove', e => {
   if (!drag || e.pointerId !== lookPointerId || modal.open || tripod.transitioning || meditation || openingStep !== null) return;
-  const sensitivity = (cameraMode ? Math.min(1, 35 / focalLength) : 1);
+  const sensitivity = preferences.sensitivity * (cameraMode ? Math.min(1, 35 / focalLength) : 1);
   yaw -= (e.clientX - lastPointerX) * 0.004 * sensitivity;
   pitch = THREE.MathUtils.clamp(pitch - (e.clientY - lastPointerY) * 0.003 * sensitivity, -1.3, 1.3);
   lastPointerX = e.clientX; lastPointerY = e.clientY;
@@ -1578,16 +1678,19 @@ world.storyPlaces.setReportPublished(save.story.reportPublished, save.story.work
 world.harbor.setShared(save.story.workshopShared);
 world.setTime(clock.hour); applyStudioRig(); world.update(0, settings); world.scene.updateMatrixWorld(true);
 $('shot-guide').onclick = () => { missionSection='active'; openPauseMenu('assignments'); };
-faceSubject(activeMission); syncSettings(); updateProgress(); resize(); updateLensLabel();
+faceSubject(activeMission);
+if (save.look) { yaw = save.look.yaw; pitch = save.look.pitch; }
+syncSettings(); updateProgress(); resize(); updateLensLabel();
 renderer.shadowMap.needsUpdate = true;
-if (activeMission.id === 'intro-deer') { settings = { ...activeMission.recommended, flashPower: 0 }; syncSettings(); if (!save.position) { yaw = 0; pitch = 0; } }
+if (activeMission.id === 'intro-deer' && !save.position) { yaw = 0; pitch = 0; }
 if (save.destination) { destination = resolveDestination(save.destination); if (destination) walkRoute = walkingRoute([player.x, player.z], destination.point, world.canWalk); }
 if (save.openingSeen === false) startOpening();
-let previousTime = performance.now(), lastMeterTime = 0;
+let lastMeterTime = 0;
 function animate(now: number) {
   syncTouchWalking();
-  const realDt = document.hidden ? 0 : Math.max(0, (now - previousTime) / 1000);
-  const dt = Math.min(realDt, 0.05); previousTime = now;
+  const active = !document.hidden && document.hasFocus();
+  const realDt = frameClock.tick(now, active);
+  const dt = Math.min(realDt, 0.05);
   if (openingStep !== null) {
     if (!document.hidden && document.hasFocus()) openingSeconds += realDt;
     world.update(elapsed + openingSeconds, settings);
@@ -1613,7 +1716,7 @@ function animate(now: number) {
     advanceWorldTime(travelled - meditation.travelled); meditation.travelled = travelled;
     world.setTime(clock.hour); $('meditation-time').textContent = formatTime(clock.hour);
     if (progress === 1) { clock.skipTo(meditation.target); finishMeditation(); }
-  } else if (!modal.open) {
+  } else if (!modal.open && active) {
     elapsed += dt; advanceWorldTime(realDt * 24 / DAY_SECONDS); world.setTime(clock.hour);
     // Keep one stance height for exploration, framing, flash and saved photographs.
     // Freeze it during a capture so exposure samples cannot move the camera vertically.
@@ -1632,7 +1735,7 @@ function animate(now: number) {
       settings.tripod = tripod.deployed; syncTripod();
       if (!tripod.transitioning) tripodSettle = tripod.deployed ? 0.18 : 0;
     } else tripodSettle = Math.max(0, tripodSettle - dt);
-    const aimStep = dt * (cameraMode ? Math.min(1, 35 / focalLength) : 1);
+    const aimStep = dt * preferences.sensitivity * (cameraMode ? Math.min(1, 35 / focalLength) : 1);
     if (!tripod.transitioning && keys.has('arrowleft')) yaw += aimStep; if (!tripod.transitioning && keys.has('arrowright')) yaw -= aimStep;
     if (!tripod.transitioning && keys.has('arrowup')) pitch = Math.min(1.3, pitch + aimStep * 0.7); if (!tripod.transitioning && keys.has('arrowdown')) pitch = Math.max(-1.3, pitch - aimStep * 0.7);
     if (!tripod.movementLocked && !capturing) {
@@ -1654,7 +1757,7 @@ function animate(now: number) {
   else updateCamera();
   world.collectibles.update(elapsed, player.x, player.z);
   syncLightingAvailability(); updateNPCPrompt(); updateDirections(now); world.scene.updateMatrixWorld(true);
-  if (capturing && !modal.open && !meditation) captureFrame(now);
+  if (capturing && active && !modal.open && !meditation) captureFrame(now);
   if (shootReadyAt && now >= shootReadyAt) { shootReadyAt = 0; syncTripod(); }
   applyCameraLight(settings);
   if (now - lastMeterTime > 150) {

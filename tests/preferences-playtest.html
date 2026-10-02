@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Camera preferences playtest</title>
+<div id="app"></div>
+<script type="module">
+  import { freshStory } from '../src/story.ts';
+  import { normalizeEconomy } from '../src/economy.ts';
+  import { arrivalPosition } from '../src/opening.ts';
+  // Reproducible daytime fixture; never touches the player's notebook.
+  history.replaceState(null, '', '?playtest=preferences-check');
+  const key = 'the-photographer-playtest-preferences-check-v1';
+  if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({
+    version: 1, filterShopVersion: 1, openingSeen: true, walkingIntroduction: true,
+    story: freshStory(), position: arrivalPosition, hour: 14, discovered: ['intro-deer'],
+    completed: [], photos: [], active: 'intro-deer', economy: normalizeEconomy(undefined, []),
+    sound: { enabled: false, volume: .6 },
+  }));
+  await import('../src/main.ts');
+  const button = document.createElement('button');
+  button.textContent = 'Simulate losing window focus';
+  button.style.cssText = 'position:fixed;top:20px;left:20px;z-index:30;padding:12px;background:#182322;color:#fff;border:1px solid #e4bb70';
+  button.onclick = () => window.dispatchEvent(new Event('blur'));
+  document.body.append(button);
+</script>
+</html>
